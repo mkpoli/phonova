@@ -5,8 +5,11 @@ export default {
   content: ['./src/**/*.{html,js,svelte,ts}'],
 
   theme: {
-    extend: {}
+    extend: {},
+    fontFamily: {
+      orbitron: ['Orbitron Variable', 'sans-serif'],
+    },
   },
 
-  plugins: [forms]
+  plugins: [forms],
 } satisfies Config;
