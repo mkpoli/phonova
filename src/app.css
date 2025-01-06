@@ -1,3 +1,18 @@
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
-@import 'tailwindcss/utilities'
+@import 'tailwindcss/utilities';
+
+@layer components {
+  .button-primary {
+    @apply px-4 py-2 rounded-r-md relative;
+    @apply relative before:block before:rounded-l-md before:absolute before:inset-0 before:w-[3px] before:bg-blue-600 before:-translate-x-[calc(100%+2px)];
+
+    @apply bg-blue-600 text-white;
+
+    /* Hover state */
+    @apply hover:bg-blue-500 hover:before:bg-blue-500;
+
+    /* Disabled state */
+    @apply disabled:opacity-50 disabled:cursor-not-allowed  disabled:hover:bg-blue-600 disabled:hover:before:bg-blue-600 cursor-pointer;
+  }
+}
