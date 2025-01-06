@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import Header from '../lib/components/Header.svelte';
 
   let name = $state("");
   let greetMsg = $state("");
@@ -10,6 +10,8 @@
     greetMsg = await invoke("greet", { name });
   }
 </script>
+
+<Header />
 
 <main class="container">
   <h1>Welcome to Tauri + Svelte</h1>
