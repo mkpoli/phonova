@@ -1,4 +1,4 @@
-# Phonix
+# Phonova
 
 A new-generation phonetic analysis software.
 
