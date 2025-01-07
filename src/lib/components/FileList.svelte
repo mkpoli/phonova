@@ -16,7 +16,9 @@
 </script>
 
 {#snippet fileOpenButton()}
-  <button class="button-primary" onclick={async () => files.push(...(await openFiles('audio/*')))}>Open a file</button>
+  <button class="button-primary m-4" onclick={async () => files.push(...(await openFiles('audio/*')))}
+    >Open a file</button
+  >
 {/snippet}
 
 <section class="bg-gray-200 dark:bg-gray-800 grid grid-rows-[auto_1fr] w-64">
@@ -30,10 +32,10 @@
         <button class="button-primary" disabled>Record audio</button>
       </div>
     {:else}
-      <ul>
+      <ul class="w-full">
         {#each files as file}
-          <li title={file.id}>
-            <button class="p-4" class:selected={currentFile === file.id} onclick={() => (currentFile = file.id)}
+          <li title={file.id} class="w-full">
+            <button class="p-2 w-full" class:selected={currentFile === file.id} onclick={() => (currentFile = file.id)}
               >{file.name}</button
             >
           </li>
