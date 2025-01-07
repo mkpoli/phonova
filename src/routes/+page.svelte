@@ -2,6 +2,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import Header from '$lib/components/Header.svelte';
   import FileList from '$lib/components/FileList.svelte';
+  import { type File } from '$lib/utils/file';
   let name = $state('');
   let greetMsg = $state('');
 
@@ -10,12 +11,19 @@
     // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
     greetMsg = await invoke('greet', { name });
   }
+
+  let files: File[] = $state([]);
+  let fileMap: Record<string, File> = $derived(Object.fromEntries(files.map((file: File) => [file.id, file])));
+
+  // UUID of the current file
+  let currentFileUUID: string | null = $state(null);
+  let currentFile: File | null = $derived(currentFileUUID ? fileMap[currentFileUUID] : null);
 </script>
 
 <Header />
 
 <main class="container">
-  <FileList />
+  <FileList bind:files bind:currentFile={currentFileUUID} />
   <div>
     <h1 class="text-4xl font-orbitron">Welcome to Tauri + Svelte</h1>
 
@@ -31,6 +39,12 @@
       </a>
     </div>
     <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
+
+    {#if currentFileUUID && fileMap[currentFileUUID]}
+      <p>{fileMap[currentFileUUID].id}</p>
+      <p>{fileMap[currentFileUUID].name}</p>
+      <p>{currentFile?.content.byteLength}</p>
+    {/if}
 
     <form class="row" onsubmit={greet}>
       <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
