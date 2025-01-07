@@ -5,6 +5,7 @@
   import { type File } from '$lib/utils/file';
   let name = $state('');
   let greetMsg = $state('');
+  import formatDuration from 'format-duration';
 
   async function greet(event: Event) {
     event.preventDefault();
@@ -18,6 +19,27 @@
   // UUID of the current file
   let currentFileUUID: string | null = $state(null);
   let currentFile: File | null = $derived(currentFileUUID ? fileMap[currentFileUUID] : null);
+
+  interface AudioInfo {
+    sample_rate: number;
+    channels: number;
+    bits_per_sample: number;
+    length: number;
+    duration: number;
+    rms: number;
+  }
+
+  let parsedFiles: Record<string, Promise<AudioInfo>> = $derived(
+    Object.fromEntries(
+      files.map(
+        ({ id, name, content }: File) => [id, invoke('read_wav', { buffer: content })] as [string, Promise<AudioInfo>]
+      )
+    )
+  );
+
+  //  Record<string, Promise<{ name: string; audio: string }>>
+
+  $inspect('parsedFiles', parsedFiles);
 </script>
 
 <Header />
@@ -44,6 +66,16 @@
       <p>{fileMap[currentFileUUID].id}</p>
       <p>{fileMap[currentFileUUID].name}</p>
       <p>{currentFile?.content.byteLength}</p>
+      {#await parsedFiles[currentFileUUID]}
+        <p>Loading...</p>
+      {:then parsedFile}
+        <p>parsedFile.sample_rate: {parsedFile.sample_rate}</p>
+        <p>parsedFile.channels: {parsedFile.channels}</p>
+        <p>parsedFile.bits_per_sample: {parsedFile.bits_per_sample}</p>
+        <p>parsedFile.length: {parsedFile.length}</p>
+        <p>parsedFile.duration: {formatDuration(parsedFile.duration * 1000)}</p>
+        <p>parsedFile.rms: {parsedFile.rms}</p>
+      {/await}
     {/if}
 
     <form class="row" onsubmit={greet}>
