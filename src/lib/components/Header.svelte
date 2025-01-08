@@ -1,5 +1,6 @@
 <script lang="ts">
   import Logo from '$assets/images/logo.svg.svelte';
+  import ThemeSwitch from '$lib/components/ui/ThemeSwitch.svelte';
 </script>
 
 <header class="flex items-center justify-between h-4 p-4 pt-6 gap-2 select-none">
@@ -33,4 +34,5 @@
       ＋
     </button>
   </nav>
+  <ThemeSwitch />
 </header>
