@@ -1,10 +1,15 @@
 <script lang="ts">
   import Logo from '$assets/images/logo.svg.svelte';
   import ThemeSwitch from '$lib/components/ui/ThemeSwitch.svelte';
+  import About from '$lib/components/dialogs/About.svelte';
+  let open = $state(false);
 </script>
 
 <header class="flex items-center justify-between h-4 p-4 pt-6 gap-2 select-none">
-  <Logo class="text-gray-900 dark:text-gray-300 h-4" />
+  <button onclick={() => (open = true)}>
+    <Logo class="text-gray-900 dark:text-gray-300 h-4" />
+  </button>
+  <About bind:open />
   <nav class="flex items-center h-4 flex-1 gap-1">
     {#snippet tab(name: string, active: boolean)}
       <!-- Fin -->
