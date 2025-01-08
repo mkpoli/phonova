@@ -2,6 +2,7 @@
   import Logo from '$assets/images/logo.svg.svelte';
   import ThemeSwitch from '$lib/components/ui/ThemeSwitch.svelte';
   import About from '$lib/components/dialogs/About.svelte';
+  import { projectsManager } from '$lib/project.svelte';
   let open = $state(false);
 </script>
 
@@ -31,10 +32,12 @@
         <button>✕</button>
       </div>
     {/snippet}
-    {@render tab('Untitled Project 1', true)}
-    {@render tab('Untitled Project 2', false)}
+    {#each projectsManager.projects as project}
+      {@render tab(project.name, project.id == projectsManager.currentProject)}
+    {/each}
     <button
       class="text-gray-900 dark:text-gray-200 dark:bg-gray-950 bg-gray-200 px-3 py-1 rounded-t-md border-b-2 border-gray-900 dark:border-gray-200"
+      onclick={() => projectsManager.createProject(null)}
     >
       ＋
     </button>
