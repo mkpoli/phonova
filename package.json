@@ -21,9 +21,11 @@
     "@tauri-apps/plugin-opener": "^2",
     "format-duration": "^3.0.2",
     "path-browserify": "^1.0.1",
+    "unplugin-icons": "^0.22.0",
     "uuid": "^11.0.4"
   },
   "devDependencies": {
+    "@iconify/json": "^2.2.292",
     "@sveltejs/adapter-static": "^3.0.6",
     "@sveltejs/kit": "^2.9.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
