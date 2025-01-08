@@ -5,11 +5,20 @@
   );
 </script>
 
-<footer class="w-full p-4">
-  {currentMode}
+<footer class="w-full bg-slate-300 p-0">
   <nav class="flex items-center justify-center mx-auto font-orbitron text-xl gap-4">
-    <a href="/">Audio</a>
-    <a href="/analyze">Analyse</a>
-    <a href="/plot">Plot</a>
+    <a href="/" class:active={currentMode == 'Audio'}>Audio</a>
+    <a href="/analyze" class:active={currentMode == 'Analyse'}>Analyse</a>
+    <a href="/plot" class:active={currentMode == 'Plot'}>Plot</a>
   </nav>
 </footer>
+
+<style lang="postcss">
+  a {
+    @apply flex border-b-2 border-transparent;
+  }
+
+  a.active {
+    @apply border-b-2 border-blue-600;
+  }
+</style>
