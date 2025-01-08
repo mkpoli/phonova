@@ -5,3 +5,7 @@ Phonova (\[fó̞.no̞.vä\] or /fəˈnoʊ.və/), a new-generation phonetic anal
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more information.
+
+## License
+
+License is to be determined, due to potential inclusion of GPL distributed libraries. The license will be determined after the project is functional.
