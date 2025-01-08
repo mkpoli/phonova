@@ -1,6 +1,5 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
-  import Header from '$lib/components/Header.svelte';
   import FileList from '$lib/components/FileList.svelte';
   import { type File } from '$lib/utils/file';
   let name = $state('');
@@ -41,8 +40,6 @@
 
   $inspect('parsedFiles', parsedFiles);
 </script>
-
-<Header />
 
 <main class="container">
   <FileList bind:files bind:currentFile={currentFileUUID} />
