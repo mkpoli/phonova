@@ -25,4 +25,5 @@ body {
 body {
   display: grid;
   grid-template-rows: auto 1fr auto;
+  @apply dark:bg-gray-900 dark:text-gray-200;
 }
