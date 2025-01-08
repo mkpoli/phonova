@@ -15,7 +15,7 @@
           'rounded-t-lg border-b-2',
           'flex items-center gap-4',
           // Coloring
-          'text-gray-900 dark:text-gray-200 dark:bg-gray-900 bg-gray-200',
+          'text-gray-900 dark:text-gray-200 dark:bg-gray-950 bg-gray-200',
           'border-gray-900 dark:border-gray-200',
           {
             'border-blue-600 dark:border-blue-600': active,
@@ -29,7 +29,7 @@
     {@render tab('Untitled Project 1', true)}
     {@render tab('Untitled Project 2', false)}
     <button
-      class="text-gray-900 dark:text-gray-200 dark:bg-gray-900 bg-gray-200 px-3 py-1 rounded-t-md border-b-2 border-gray-900 dark:border-gray-200"
+      class="text-gray-900 dark:text-gray-200 dark:bg-gray-950 bg-gray-200 px-3 py-1 rounded-t-md border-b-2 border-gray-900 dark:border-gray-200"
     >
       ＋
     </button>
