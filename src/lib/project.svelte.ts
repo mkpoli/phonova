@@ -54,6 +54,9 @@ export const projectsManager = (() => {
     deleteProject(id: string): void {
       projects = projects.filter((project) => project.id !== id);
     },
+    renameProject(id: string, name: string): void {
+      projectMap[id].name = name;
+    },
     get currentProject(): string | null {
       return currentProject;
     },

@@ -4,6 +4,8 @@
   import About from '$lib/components/dialogs/About.svelte';
   import { projectsManager, type Project } from '$lib/project.svelte';
   let open = $state(false);
+  let renameProjectName: Record<string, string> = $state({});
+  let renamingMap: Record<string, boolean> = $state({});
 </script>
 
 <header class="flex items-center justify-between h-4 p-4 pt-6 gap-2 select-none">
@@ -29,7 +31,27 @@
           },
         ]}
       >
-        {project.name}
+        {#if renamingMap[project.id]}
+          <form onsubmit={() => projectsManager.renameProject(project.id, renameProjectName[project.id])}>
+            <input
+              class="bg-black/50 p-0"
+              bind:value={renameProjectName[project.id]}
+              onblur={() => {
+                renamingMap[project.id] = false;
+                projectsManager.renameProject(project.id, renameProjectName[project.id]);
+              }}
+            />
+          </form>
+        {:else}
+          <button
+            ondblclick={() => {
+              renamingMap[project.id] = true;
+              renameProjectName[project.id] = project.name;
+            }}
+          >
+            {project.name}
+          </button>
+        {/if}
         <button
           class="text-gray-900 dark:text-gray-200"
           onclick={() => {
