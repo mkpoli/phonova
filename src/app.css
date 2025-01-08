@@ -16,3 +16,13 @@
     @apply disabled:opacity-50 disabled:cursor-not-allowed  disabled:hover:bg-blue-600 disabled:hover:before:bg-blue-600 cursor-pointer;
   }
 }
+
+html,
+body {
+  height: 100vh;
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
