@@ -9,7 +9,7 @@
 </script>
 
 <footer class="w-full bg-slate-300 p-0">
-  <nav class="flex items-center justify-center mx-auto font-orbitron text-xl gap-4">
+  <nav class="flex items-center justify-center mx-auto font-orbitron text-xl">
     <a href="/" class:active={currentMode == 'Audio'}>
       <MingcuteMusicLine class="w-8 h-8" />
       <span> Audio </span>
@@ -27,10 +27,10 @@
 
 <style lang="postcss">
   a {
-    @apply flex flex-col items-center border-b-2 border-transparent;
+    @apply flex flex-col items-center border-b-2 border-transparent w-32 pt-1;
   }
 
   a.active {
-    @apply border-b-2 border-blue-600;
+    @apply border-blue-600 bg-blue-600/20;
   }
 </style>
