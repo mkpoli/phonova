@@ -2,7 +2,7 @@
   import Logo from '$assets/images/logo.svg.svelte';
   import ThemeSwitch from '$lib/components/ui/ThemeSwitch.svelte';
   import About from '$lib/components/dialogs/About.svelte';
-  import { projectsManager } from '$lib/project.svelte';
+  import { projectsManager, type Project } from '$lib/project.svelte';
   let open = $state(false);
 </script>
 
@@ -12,7 +12,8 @@
   </button>
   <About bind:open />
   <nav class="flex items-center h-4 flex-1 gap-1">
-    {#snippet tab(name: string, active: boolean)}
+    {#snippet tab(project: Project)}
+      {@const active = project.id == projectsManager.currentProject}
       <!-- Fin -->
       <div
         class={[
@@ -28,12 +29,23 @@
           },
         ]}
       >
-        {name}
-        <button>✕</button>
+        {project.name}
+        <button
+          class="text-gray-900 dark:text-gray-200"
+          onclick={() => {
+            if (!project.dirty) {
+              projectsManager.deleteProject(project.id);
+            } else {
+              alert('Project is dirty, please save before deleting');
+            }
+          }}
+        >
+          ✕
+        </button>
       </div>
     {/snippet}
     {#each projectsManager.projects as project}
-      {@render tab(project.name, project.id == projectsManager.currentProject)}
+      {@render tab(project)}
     {/each}
     <button
       class="text-gray-900 dark:text-gray-200 dark:bg-gray-950 bg-gray-200 px-3 py-1 rounded-t-md border-b-2 border-gray-900 dark:border-gray-200"

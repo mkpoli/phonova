@@ -1,9 +1,11 @@
-interface Project {
+export interface Project {
   // UUID of the project
   id: string;
   name: string;
   // UUIDs of files in the project
   files: string[];
+  // Whether the project has been modified
+  dirty: boolean;
 }
 
 export const projectsManager = (() => {
@@ -12,6 +14,7 @@ export const projectsManager = (() => {
       id: crypto.randomUUID(),
       name: 'Untitled Project 1',
       files: [],
+      dirty: false,
     },
   ]);
   // Current project UUID
@@ -40,12 +43,16 @@ export const projectsManager = (() => {
               .at(-1) ?? 0) + 1
           }`,
         files: [],
+        dirty: false,
       };
       projects.push(project);
       return project;
     },
     getProject(id: string): Project | null {
       return projectMap[id] || null;
+    },
+    deleteProject(id: string): void {
+      projects = projects.filter((project) => project.id !== id);
     },
     get currentProject(): string | null {
       return currentProject;
