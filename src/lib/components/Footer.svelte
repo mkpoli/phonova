@@ -9,7 +9,7 @@
 </script>
 
 <footer class="w-full bg-slate-300 p-0 dark:bg-gray-950">
-  <nav class="flex items-center justify-center mx-auto font-orbitron text-xl">
+  <nav class="flex items-center justify-center mx-auto font-orbitron text-md">
     <a href="/" class:active={currentMode == 'Audio'}>
       <MingcuteMusicLine class="w-8 h-8" />
       <span> Audio </span>
