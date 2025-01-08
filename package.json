@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "hook": "lefthook install"
   },
   "license": "MIT",
   "dependencies": {
@@ -25,6 +26,9 @@
     "uuid": "^11.0.4"
   },
   "devDependencies": {
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
+    "@commitlint/types": "^19.5.0",
     "@iconify/json": "^2.2.292",
     "@sveltejs/adapter-static": "^3.0.6",
     "@sveltejs/kit": "^2.9.0",
@@ -32,6 +36,7 @@
     "@tauri-apps/cli": "^2",
     "@types/path-browserify": "^1.0.3",
     "autoprefixer": "^10.4.20",
+    "lefthook": "^1.10.1",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
     "tailwindcss": "^3.4.9",
