@@ -26,6 +26,14 @@
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+
+  .shadow-glow-blue {
+    box-shadow: 0 0 5px 0 rgba(130, 178, 246, 0.5);
+  }
+
+  .shadow-glow-white {
+    box-shadow: 0 0 5px 0 rgba(255, 255, 255, 0.5);
+  }
 }
 
 html,
