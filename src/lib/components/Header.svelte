@@ -8,12 +8,12 @@
   let renamingMap: Record<string, boolean> = $state({});
 </script>
 
-<header class="flex items-center justify-between h-4 p-4 pt-6 gap-2 select-none">
+<header class="grid grid-cols-[auto_1fr_auto] items-center w-full h-fit py-2 px-4 gap-2 select-none">
   <button onclick={() => (open = true)}>
     <Logo class="text-gray-900 dark:text-gray-300 h-4" />
   </button>
   <About bind:open />
-  <nav class="flex items-center h-4 flex-1 gap-1">
+  <nav class="flex items-center h-fit flex-1 gap-1 overflow-scroll w-full relative scrollbar-none">
     {#snippet tab(project: Project)}
       {@const active = project.id == projectsManager.currentProject}
       <!-- Fin -->
@@ -26,6 +26,7 @@
           // Coloring
           'text-gray-900 dark:text-gray-200 dark:bg-gray-950 bg-gray-200',
           'border-gray-900 dark:border-gray-200',
+          'break-keep w-fit whitespace-nowrap',
           {
             'border-blue-600 dark:border-blue-600': active,
           },
