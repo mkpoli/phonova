@@ -3,7 +3,11 @@ name = "oracle"
 version = "0.1.0"
 description = "Out-of-process Praat/parselmouth oracle for validation.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "numpy>=2.4.6",
+    "scipy>=1.17.1",
+    "soundfile>=0.14.0",
+]
 
 [project.optional-dependencies]
 # praat-parselmouth wraps Praat (GPLv3). It runs only inside this

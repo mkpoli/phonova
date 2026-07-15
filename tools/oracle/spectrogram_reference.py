@@ -1,17 +1,57 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#   "numpy",
-#   "scipy",
-#   "soundfile",
-# ]
-# ///
-"""Generate a small Gaussian STFT PSD reference fixture.
+#!/usr/bin/env python3
+"""Generate a Gaussian STFT PSD reference fixture on scipy.signal.ShortTimeFFT.
+
+Run via the tools/oracle uv project (numpy, scipy, soundfile are project
+dependencies, not a standalone script environment):
+
+    uv run --project tools/oracle tools/oracle/spectrogram_reference.py
 
 With no WAV argument, the script analyzes a deterministic 80 ms synthetic
 signal. A WAV path can be supplied to analyze external audio with the same
-parameters. Output is CSV so the Rust test can include it as text.
+parameters. Output is CSV so the Rust test can include it as text
+(`crates/phx-spectrogram/src/lib.rs::scipy_oracle_fixture_matches_relative_tolerance`).
+
+Independence from the Rust implementation: only two things are shared with
+`crates/phx-dsp` and `crates/phx-spectrogram` by design, and both are grid
+*selection* formulas, not measurement code —
+
+- `gaussian_window` is the window shape itself, defined in Praat's manual
+  ("Sound: To Spectrogram...") and restated in
+  `docs/research/algorithms-and-validation.md` §3.2 (−3 dB bandwidth
+  `1.2982804 / windowLength`) and in `crates/phx-dsp/src/window.rs`. The
+  window is the spec being validated against, not an implementation detail;
+  reusing its formula here is the same thing an independent Praat-manual
+  reader would do.
+- `frame_centers` / `frequency_grid` reproduce `phx_dsp::FrameGrid` and
+  `phx-spectrogram`'s frequency-bin selection *only* to know which (t, f)
+  coordinates to report — the coordinates a caller of `compute_tile` would
+  also land on. They never touch how a PSD value is computed at those
+  coordinates.
+
+Everything else — extracting the windowed frame from the signal, running the
+FFT, and scaling the result to a one-sided power spectral density — is done
+by `scipy.signal.ShortTimeFFT` (`scale_to="psd"`, `fft_mode="onesided2X"`),
+independently of the hand-rolled arithmetic in `phx-spectrogram`. A shared
+conceptual bug in that arithmetic (rounding, normalisation constant, one-sided
+factor) would no longer be invisible to this comparison.
+
+Frame alignment. `ShortTimeFFT` places its p-th frame at continuous time
+`t[p] = p * hop / fs`, window centred at `t[p]` using its own centering
+convention `m_num_mid = m_num // 2`. `phx-spectrogram::Analysis::frame_db`
+places a window sample `i` at `round(center * fs + i - (window_len - 1) / 2)`,
+i.e. the same centred convention when `window_len` is odd (`m_num // 2 ==
+(m_num - 1) / 2` for odd `m_num`); it differs by half a sample when
+`window_len` is even. This script sets `hop = 1` sample, the finest possible
+native scipy grid, and for each target `FrameGrid` center `c` selects the
+single nearest native frame, `p = round(c * fs)` — by construction the
+closest scipy can get on a 1-sample grid, so no cross-frame interpolation is
+needed. For the committed fixture below, `window_len` is 321 (odd; see
+`stft_db`), so nearest-frame selection lands exactly on the same sample
+positions `phx-spectrogram` would extract and the two computations agree to
+floating-point noise (see the module-level comment in the Rust test for
+measured numbers). Callers who pass parameters that make `window_len` even
+should expect up to half a sample of extra alignment error, undocumented
+further here because the committed fixture never exercises that case.
 """
 
 from __future__ import annotations
@@ -21,8 +61,7 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
-from scipy.fft import rfft
-
+from scipy.signal import ShortTimeFFT
 
 DEFAULT_SAMPLE_RATE = 16_000.0
 DEFAULT_DURATION = 0.08
@@ -30,6 +69,7 @@ PSD_FLOOR = 1.0e-300
 
 
 def rust_round(x: float) -> int:
+    """`f64::round()` (half away from zero), not Python/NumPy's round-half-to-even."""
     if x >= 0.0:
         return int(np.floor(x + 0.5))
     return int(np.ceil(x - 0.5))
@@ -40,6 +80,7 @@ def next_pow2(n: int) -> int:
 
 
 def frame_centers(duration: float, window: float, step: float) -> list[float]:
+    """Reproduces `phx_dsp::FrameGrid` — the reporting grid, not the measurement."""
     if duration < window:
         return []
     count = int(np.floor((duration - window) / step)) + 1
@@ -48,6 +89,8 @@ def frame_centers(duration: float, window: float, step: float) -> list[float]:
 
 
 def gaussian_window(n: int, effective_len_factor: float = 2.0) -> np.ndarray:
+    """Praat's Gaussian analysis window (Praat manual "Sound: To Spectrogram...";
+    docs/research/algorithms-and-validation.md §3.2; crates/phx-dsp/src/window.rs)."""
     if n == 0:
         return np.array([], dtype=np.float64)
     if n == 1:
@@ -56,11 +99,8 @@ def gaussian_window(n: int, effective_len_factor: float = 2.0) -> np.ndarray:
     factor_sq = effective_len_factor * effective_len_factor
     edge = np.exp(-3.0 * factor_sq)
     denom = 1.0 - edge
-    values = []
-    for i in range(n):
-        u = i / last - 0.5
-        values.append((np.exp(-12.0 * factor_sq * u * u) - edge) / denom)
-    return np.array(values, dtype=np.float64)
+    u = np.arange(n, dtype=np.float64) / last - 0.5
+    return (np.exp(-12.0 * factor_sq * u * u) - edge) / denom
 
 
 def synthetic_signal(sample_rate: float, duration: float) -> np.ndarray:
@@ -84,6 +124,7 @@ def mono_wav(path: Path) -> tuple[np.ndarray, float]:
 def frequency_grid(
     sample_rate: float, fft_len: int, max_frequency: float, frequency_step: float
 ) -> tuple[list[int], list[float]]:
+    """Reproduces phx-spectrogram's bin selection — again a reporting grid."""
     nyquist = sample_rate / 2.0
     max_frequency = min(max_frequency, nyquist)
     fft_bin_hz = sample_rate / fft_len
@@ -112,6 +153,9 @@ def stft_db(
     time_step: float,
     frequency_step: float,
 ) -> tuple[list[float], list[float], np.ndarray]:
+    """PSD in dB at the FrameGrid centers and frequency-grid bins, computed by
+    scipy.signal.ShortTimeFFT (see module docstring for the alignment strategy
+    and what is/isn't shared with the Rust implementation)."""
     time_step = max(time_step, window_length / (8.0 * np.sqrt(np.pi)))
     frequency_step = max(frequency_step, np.sqrt(np.pi) / (8.0 * window_length))
     physical_window = 2.0 * window_length
@@ -119,25 +163,38 @@ def stft_db(
     min_fft_len = int(np.ceil(sample_rate / frequency_step)) + 1
     fft_len = next_pow2(max(window_len, min_fft_len))
     window = gaussian_window(window_len)
-    window_energy = float(np.sum(window * window))
     bins, frequencies = frequency_grid(sample_rate, fft_len, max_frequency, frequency_step)
     duration = len(samples) / sample_rate
     centers = frame_centers(duration, window_length, time_step)
 
     db = np.empty((len(frequencies), len(centers)), dtype=np.float64)
-    midpoint = (window_len - 1) / 2.0
+    if not centers or not frequencies:
+        return centers, frequencies, db
+
+    sft = ShortTimeFFT(
+        win=window,
+        hop=1,
+        fs=sample_rate,
+        mfft=fft_len,
+        scale_to="psd",
+        fft_mode="onesided2X",
+    )
+    p_min = sft.p_min
+    p_max = sft.p_max(len(samples))
+
     for t_index, center in enumerate(centers):
-        frame = np.zeros(fft_len, dtype=np.float64)
-        center_sample = center * sample_rate
-        for i, weight in enumerate(window):
-            sample_index = rust_round(center_sample + i - midpoint)
-            if 0 <= sample_index < len(samples):
-                frame[i] = samples[sample_index] * weight
-        spectrum = rfft(frame)
+        p = rust_round(center * sample_rate)
+        if not (p_min <= p < p_max):
+            raise ValueError(
+                f"frame center {center}s (native index {p}) falls outside "
+                f"scipy's valid native frame range [{p_min}, {p_max}); "
+                "the requested parameters push the analysis window entirely "
+                "off the signal"
+            )
+        spectrum = sft.stft(samples, p0=p, p1=p + 1)[:, 0]
+        psd = np.abs(spectrum) ** 2
         for f_index, bin_index in enumerate(bins):
-            one_sided = 1.0 if bin_index == 0 or bin_index == fft_len // 2 else 2.0
-            psd = one_sided * abs(spectrum[bin_index]) ** 2 / (sample_rate * window_energy)
-            db[f_index, t_index] = 10.0 * np.log10(max(psd, PSD_FLOOR))
+            db[f_index, t_index] = 10.0 * np.log10(max(psd[bin_index], PSD_FLOOR))
     return centers, frequencies, db
 
 
@@ -146,6 +203,7 @@ def write_fixture(path: Path, centers: list[float], frequencies: list[float], db
     selected_freqs = range(0, min(len(frequencies), 27))
     with path.open("w", encoding="utf-8") as out:
         out.write("# generated_by=tools/oracle/spectrogram_reference.py\n")
+        out.write("# method=scipy.signal.ShortTimeFFT(scale_to=psd, fft_mode=onesided2X)\n")
         out.write("# signal=synthetic\n")
         out.write("# sample_rate=16000\n")
         out.write("# duration=0.08\n")
