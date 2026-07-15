@@ -658,7 +658,19 @@ dependencies = [
 name = "phx-figure"
 version = "0.0.1"
 dependencies = [
- "plotters",
+ "base64",
+ "phx-annot",
+ "phx-audio",
+ "phx-formant",
+ "phx-intensity",
+ "phx-pitch",
+ "phx-render",
+ "phx-spectrogram",
+ "phx-textgrid",
+ "png 0.17.16",
+ "resvg",
+ "serde",
+ "serde_json",
  "svg2pdf",
 ]
 
@@ -732,6 +744,7 @@ version = "0.0.1"
 dependencies = [
  "js-sys",
  "phx-engine",
+ "phx-textgrid",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]
@@ -747,24 +760,6 @@ name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
-
-[[package]]
-name = "plotters"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5aeb6f403d7a4911efb1e33402027fc44f29b5bf6def3effcc22d7bb75f2b747"
-dependencies = [
- "num-traits",
- "plotters-backend",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
-name = "plotters-backend"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df42e13c12958a16b3f7f4386b9ab1f3e7933914ecea48da7139435263a4172a"
 
 [[package]]
 name = "png"
@@ -1575,16 +1570,6 @@ name = "wasm-bindgen-test-shared"
 version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c31d56021e873866c968588ed85ccdf56db5c426e44afdb4618c39895104b920"
-
-[[package]]
-name = "web-sys"
-version = "0.3.103"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8622dcb61c0bcc9fffa6938bed81210af2da9a7e4a1a834b2e37a59b6dfb6141"
-dependencies = [
- "js-sys",
- "wasm-bindgen",
-]
 
 [[package]]
 name = "weezl"
