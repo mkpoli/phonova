@@ -165,7 +165,7 @@ def stft_db(
     window = gaussian_window(window_len)
     bins, frequencies = frequency_grid(sample_rate, fft_len, max_frequency, frequency_step)
     duration = len(samples) / sample_rate
-    centers = frame_centers(duration, window_length, time_step)
+    centers = frame_centers(duration, physical_window, time_step)
 
     db = np.empty((len(frequencies), len(centers)), dtype=np.float64)
     if not centers or not frequencies:

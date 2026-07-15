@@ -156,9 +156,15 @@ pub fn intensity_track(audio: AudioView<'_>, params: &IntensityParams) -> Intens
     let sample_rate = audio.sample_rate();
     let samples = audio.mono_mix();
     let window_duration = params.window_duration();
+    // The frame count subtracts the physical window (the truncated Gaussian's
+    // full `EFFECTIVE_LEN_FACTOR × effective` span) from the discrete signal
+    // duration, `sample count × sampling period`, so the leading and trailing
+    // margins hold the whole analysis window inside the signal exactly as
+    // Praat's frame placement does.
+    let grid_duration = samples.len() as f64 * (1.0 / sample_rate);
     let grid = FrameGrid::new(
-        audio.duration(),
-        window_duration,
+        grid_duration,
+        EFFECTIVE_LEN_FACTOR * window_duration,
         params.resolved_time_step(),
     );
 
@@ -361,8 +367,8 @@ mod tests {
         let track = intensity_track(view.clone(), &params);
 
         let expected_grid = FrameGrid::new(
-            view.duration(),
-            params.window_duration(),
+            view.frames() as f64 * (1.0 / view.sample_rate()),
+            EFFECTIVE_LEN_FACTOR * params.window_duration(),
             params.resolved_time_step(),
         );
         assert_eq!(track.frame_grid(), &expected_grid);

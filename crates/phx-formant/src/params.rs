@@ -51,11 +51,20 @@ pub fn effective_time_step(params: &FormantParams) -> f64 {
 
 /// Builds the frame grid used by formant analysis.
 ///
-/// The grid uses the Gaussian effective window length and the effective time
-/// step, matching the workspace-wide [`FrameGrid`] convention.
+/// The grid margin uses the physical Gaussian window length, twice the
+/// `window_length` parameter. Praat's manual ("Sound: To Formant (burg)...")
+/// states the actual analysis window "is twice this value, because Praat uses
+/// a Gaussian-like analysis window", and the frame count subtracts that actual
+/// window from the signal duration before dividing by the step. `duration`
+/// must be the analyzed signal's sample count times its sampling period, the
+/// same discrete duration Praat measures frames over.
 #[must_use]
 pub fn frame_grid(duration: f64, params: &FormantParams) -> FrameGrid {
-    FrameGrid::new(duration, params.window_length, effective_time_step(params))
+    FrameGrid::new(
+        duration,
+        2.0 * params.window_length,
+        effective_time_step(params),
+    )
 }
 
 pub(crate) fn validate_params(params: &FormantParams) {

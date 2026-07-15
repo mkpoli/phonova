@@ -61,7 +61,7 @@ impl TrackingRefs {
 /// Computes Burg LPC formant candidates for an audio view.
 ///
 /// The input is mixed to mono, resampled to `2 * params.ceiling_hz`, framed on
-/// [`FrameGrid`] with the Gaussian effective window length, pre-emphasized,
+/// [`FrameGrid`] with the physical Gaussian window length, pre-emphasized,
 /// analysed with Burg LPC order `2 * params.max_formants`, and converted from
 /// LPC roots to frequency-bandwidth candidates. Each frame retains the
 /// candidates surviving the 50 Hz and `ceiling_hz - 50 Hz` gate, sorted by
@@ -88,7 +88,11 @@ pub fn formant_track(audio: AudioView<'_>, params: &FormantParams) -> FormantTra
         resampled.sample_rate(),
     );
 
-    let analysis = Analysis::new(resampled.sample_rate(), audio.duration(), params);
+    // Frame count follows the resampled signal Praat actually analyses: its
+    // sample count times its sampling period, matching Praat's `dx * nx`
+    // discrete duration rather than a rounded `duration()` quotient.
+    let grid_duration = samples.len() as f64 * (1.0 / resampled.sample_rate());
+    let analysis = Analysis::new(resampled.sample_rate(), grid_duration, params);
     let frames = analysis
         .grid
         .centers()

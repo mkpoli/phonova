@@ -50,8 +50,9 @@ impl Default for SpectrogramParams {
 /// Request for a spectrogram tile.
 ///
 /// The time axis is selected from the object-level [`FrameGrid`] derived from
-/// the whole audio view duration, the effective window length, and the clamped
-/// time step. The frequency axis is selected from a grid derived from the
+/// the whole audio view duration, the physical window length (twice the
+/// effective length for the Gaussian window), and the clamped time step. The
+/// frequency axis is selected from a grid derived from the
 /// clamped frequency step and FFT bins. `width_px` and `height_px` request the
 /// number of selected snapped coordinates; when the natural snapped interval
 /// contains a different count, nearest-index resampling is used over that
@@ -249,7 +250,7 @@ impl Analysis {
 
         Self {
             sample_rate,
-            frame_grid: FrameGrid::new(duration, params.window_length, time_step),
+            frame_grid: FrameGrid::new(duration, physical_window, time_step),
             window,
             window_energy,
             fft_len,
