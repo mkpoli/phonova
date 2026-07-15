@@ -1,11 +1,15 @@
-//! Squared signal convolved with a Gaussian window (`3.2 / pitchFloor`), dB
-//! SPL re 2×10⁻⁵ Pa.
+//! Squared signal convolved with a Kaiser-20 analysis window of effective
+//! duration `3.2 / pitchFloor`, dB SPL re 2×10⁻⁵ Pa.
 //!
 //! Praat manual: "Sound: To Intensity..."
 //! <https://www.fon.hum.uva.nl/praat/manual/Sound__To_Intensity___.html>,
 //! "Intensity" <https://www.fon.hum.uva.nl/praat/manual/Intensity.html>,
 //! "Intro 6.2. Configuring the intensity contour"
 //! <https://www.fon.hum.uva.nl/praat/manual/Intro_6_2__Configuring_the_intensity_contour.html>.
+//! The manual states the squared samples are convolved with a "Gaussian
+//! analysis window (Kaiser-20; sidelobes below −190 dB)" of effective duration
+//! `3.2 / pitchFloor`; the window is a Kaiser window whose shape parameter is
+//! given by that "Kaiser-20" name (see [`INTENSITY_KAISER_BETA`]).
 //! A `Sound` object's samples are documented as air pressure directly in
 //! Pascal, so no separate calibration factor sits between sample amplitude
 //! and the reference pressure below.
@@ -20,16 +24,27 @@ use phx_dsp::{FrameGrid, Window, window_samples};
 const REFERENCE_PRESSURE_SQUARED: f64 = 4.0e-10;
 
 /// Ratio of the truncated analysis window's physical length to its effective
-/// (Gaussian-sigma-defining) length.
+/// duration.
 ///
-/// Praat's own Gaussian analysis windows (spectrogram, Burg formant) use a
-/// physical length of twice the effective length; the intensity manual page
-/// does not repeat that ratio for its Kaiser-20 approximation, so this value
-/// is an implementer choice for the clean-room analytic substitute (open
-/// item 2, `algorithms-and-validation.md` §4.1): truncating far enough out
-/// that `phx_dsp::Window::Gaussian`'s built-in edge correction leaves a
-/// negligible discontinuity (edge value `exp(-12) ≈ 6.1e-6` at this ratio).
+/// Praat's Gaussian-family analysis windows (spectrogram, Burg formant,
+/// intensity) run over a physical length of twice the effective duration; for
+/// intensity the effective duration is `3.2 / pitchFloor` (manual, "Sound: To
+/// Intensity...") and the physical support is therefore `6.4 / pitchFloor`.
+/// That same physical length sets the frame-grid margins, so the leading and
+/// trailing frames hold the whole window inside the signal exactly as Praat's
+/// frame placement does.
 const EFFECTIVE_LEN_FACTOR: f64 = 2.0;
+
+/// Kaiser shape parameter for the intensity analysis window.
+///
+/// Praat's "Sound: To Intensity..." manual names the window "Kaiser-20;
+/// sidelobes below −190 dB". A Kaiser window's stopband attenuation `A` (dB)
+/// fixes its shape via `β = 0.1102·(A − 8.7)` for `A > 50` (Kaiser & Schafer,
+/// "On the use of the I0-sinh window for spectrum analysis," *IEEE Trans.
+/// ASSP* 28(1), 1980): `A = 190` gives `β = 0.1102·181.3 ≈ 19.98`, i.e. the
+/// "Kaiser-20" label is the `β = 20` window. The value is documented, not
+/// tuned to the oracle.
+const INTENSITY_KAISER_BETA: f64 = 20.0;
 
 /// Parameters for [`intensity_track`].
 ///
@@ -48,9 +63,9 @@ pub struct IntensityParams {
     /// squaring, so a non-zero recording offset does not inflate the
     /// reported level. Praat-documented default: on. The manual states this
     /// is "computed locally around each point" without naming the local
-    /// window; this implementation reuses the same Gaussian analysis window
-    /// as the intensity smoothing itself, the only window the manual defines
-    /// for this computation.
+    /// window; this implementation reuses the same Kaiser analysis window as
+    /// the intensity smoothing itself, the only window the manual defines for
+    /// this computation.
     pub subtract_mean: bool,
 }
 
@@ -144,23 +159,23 @@ impl IntensityTrack {
 
 /// Computes the intensity contour of `audio`.
 ///
-/// Samples are squared, then convolved with an analytic Gaussian window of
-/// effective duration `3.2 / pitch_floor_hz` — the documented clean-room
-/// substitute for Praat's Kaiser-20 approximation
-/// (`algorithms-and-validation.md` §4.1, open item 2). When
-/// `params.subtract_mean` is set, each frame's windowed-mean pressure is
-/// subtracted before squaring. Frames sit on a [`FrameGrid`] built from the
-/// signal's own duration, so results are independent of any viewport.
+/// Samples are squared, then convolved with a Kaiser window of shape
+/// [`INTENSITY_KAISER_BETA`] and effective duration `3.2 / pitch_floor_hz` —
+/// Praat's documented intensity window (manual, "Sound: To Intensity...";
+/// `algorithms-and-validation.md` §4.1). When `params.subtract_mean` is set,
+/// each frame's windowed-mean pressure is subtracted before squaring. Frames
+/// sit on a [`FrameGrid`] built from the signal's own duration, so results are
+/// independent of any viewport.
 #[must_use]
 pub fn intensity_track(audio: AudioView<'_>, params: &IntensityParams) -> IntensityTrack {
     let sample_rate = audio.sample_rate();
     let samples = audio.mono_mix();
     let window_duration = params.window_duration();
-    // The frame count subtracts the physical window (the truncated Gaussian's
-    // full `EFFECTIVE_LEN_FACTOR × effective` span) from the discrete signal
-    // duration, `sample count × sampling period`, so the leading and trailing
-    // margins hold the whole analysis window inside the signal exactly as
-    // Praat's frame placement does.
+    // The frame count subtracts the physical window (the full
+    // `EFFECTIVE_LEN_FACTOR × effective` span of the Kaiser window) from the
+    // discrete signal duration, `sample count × sampling period`, so the
+    // leading and trailing margins hold the whole analysis window inside the
+    // signal exactly as Praat's frame placement does.
     let grid_duration = samples.len() as f64 * (1.0 / sample_rate);
     let grid = FrameGrid::new(
         grid_duration,
@@ -168,7 +183,7 @@ pub fn intensity_track(audio: AudioView<'_>, params: &IntensityParams) -> Intens
         params.resolved_time_step(),
     );
 
-    let kernel = gaussian_kernel(window_duration, sample_rate);
+    let kernel = kaiser_kernel(window_duration, sample_rate);
     let half = (kernel.len() - 1) / 2;
 
     let db = grid
@@ -182,19 +197,20 @@ pub fn intensity_track(audio: AudioView<'_>, params: &IntensityParams) -> Intens
     IntensityTrack { grid, db }
 }
 
-/// Builds a unit-sum discrete Gaussian convolution kernel of effective
-/// duration `effective_duration` seconds, sampled at `sample_rate`.
+/// Builds a unit-sum discrete Kaiser convolution kernel of effective duration
+/// `effective_duration` seconds, sampled at `sample_rate`.
 ///
-/// The kernel is truncated to `EFFECTIVE_LEN_FACTOR × effective_duration`
-/// seconds and centred on an odd number of samples so a single index is the
-/// exact peak.
-fn gaussian_kernel(effective_duration: f64, sample_rate: f64) -> Vec<f64> {
+/// The kernel spans `EFFECTIVE_LEN_FACTOR × effective_duration` seconds of
+/// physical support and is centred on an odd number of samples so a single
+/// index is the exact peak. Its shape parameter is [`INTENSITY_KAISER_BETA`],
+/// Praat's documented "Kaiser-20" intensity window.
+fn kaiser_kernel(effective_duration: f64, sample_rate: f64) -> Vec<f64> {
     let physical_duration = EFFECTIVE_LEN_FACTOR * effective_duration;
     let half_samples = ((physical_duration / 2.0) * sample_rate).round().max(1.0) as usize;
     let n = 2 * half_samples + 1;
     let mut weights = window_samples(
-        Window::Gaussian {
-            effective_len_factor: EFFECTIVE_LEN_FACTOR,
+        Window::Kaiser {
+            beta: INTENSITY_KAISER_BETA,
         },
         n,
     );
@@ -275,7 +291,7 @@ mod tests {
         let track = intensity_track(audio.slice_samples(0..audio.frames()), &params);
         assert!(track.len() > 20, "need enough frames to trim margins");
 
-        // Trim a few frames off each end: the Gaussian kernel's tails are
+        // Trim a few frames off each end: the Kaiser kernel's tails are
         // clamped to the boundary sample there, which is a legitimate edge
         // effect, not analysis ripple.
         let trim = 5;
