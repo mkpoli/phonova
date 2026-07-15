@@ -745,7 +745,9 @@ version = "0.0.1"
 dependencies = [
  "js-sys",
  "phx-engine",
+ "phx-project",
  "phx-textgrid",
+ "serde",
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-test",

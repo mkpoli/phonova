@@ -9,6 +9,9 @@ use phx_engine::{
     PointId, SpectrogramParams, Theme as EngineTheme, Tier, TierId, TierRelation, TileRequest,
     export_figure as engine_export_figure, figure_to_svg,
 };
+use phx_project::{ContentHash, MediaId, MediaRef, Project};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use wasm_bindgen::prelude::*;
 
 /// Perceptual colormap selection exposed to JavaScript.
@@ -1414,6 +1417,191 @@ impl WasmEngine {
             .to_json()
             .map_err(|err| JsError::new(&err.to_string()))
     }
+
+    /// Serializes the annotation document `annotationId` to its JSON form.
+    ///
+    /// The JSON is the same annotation payload a project container stores under
+    /// `annotations/<id>.json`, so the host can carry a document through OPFS and
+    /// hand it back to [`WasmEngine::attach_annotation_json`] unchanged.
+    ///
+    /// # Errors
+    /// Rejects when `annotationId` names no live document.
+    #[wasm_bindgen(js_name = annotationJson)]
+    pub fn annotation_json(&self, annotation_id: u64) -> Result<String, JsError> {
+        let annotation = self
+            .inner
+            .annotation(AnnotationId::from_u64(annotation_id))?;
+        serde_json::to_string(annotation).map_err(|err| JsError::new(&err.to_string()))
+    }
+
+    /// Attaches a document deserialized from `json` to `audioId`, returning the
+    /// new annotation id.
+    ///
+    /// The attachment is journaled like any other command, so undo detaches the
+    /// restored document. This is the load-time counterpart of
+    /// [`WasmEngine::annotation_json`].
+    ///
+    /// # Errors
+    /// Rejects when `json` is not a valid annotation document, when it fails
+    /// validation, or when `audioId` names no live buffer.
+    #[wasm_bindgen(js_name = attachAnnotationJson)]
+    pub fn attach_annotation_json(&mut self, audio_id: u64, json: &str) -> Result<u64, JsError> {
+        let annotation: Annotation =
+            serde_json::from_str(json).map_err(|err| JsError::new(&err.to_string()))?;
+        let applied = self.inner.apply(Command::AttachAnnotation {
+            audio: AudioId::from_u64(audio_id),
+            annotation,
+        })?;
+        match applied {
+            Applied::AnnotationAttached { annotation, .. } => Ok(annotation.as_u64()),
+            _ => Err(JsError::new("attach did not report an annotation id")),
+        }
+    }
+
+    /// Serializes a project container from `specJson` and the live documents it
+    /// names, returning the versioned ZIP bytes.
+    ///
+    /// `specJson` is a [`SaveProjectSpec`]: the project name, save timestamp,
+    /// opaque view blob, and one media entry per recording. Each entry carries
+    /// the reference fields the manifest stores (relative path, content hash,
+    /// duration, sample rate, channels) and, when the recording is annotated,
+    /// the session annotation id whose document is pulled from the engine and
+    /// stored under the media's stable id. Media stays external; only the
+    /// documents cross into the container.
+    ///
+    /// # Errors
+    /// Rejects when `specJson` does not parse, when a hash is not 64 hex
+    /// characters, or when an annotation id names no live document.
+    #[wasm_bindgen(js_name = saveProjectContainer)]
+    pub fn save_project_container(&self, spec_json: &str) -> Result<Uint8Array, JsError> {
+        let spec: SaveProjectSpec = serde_json::from_str(spec_json)
+            .map_err(|err| JsError::new(&format!("invalid project spec: {err}")))?;
+        let mut project = Project::new(spec.name);
+        project.saved_at = spec.saved_at;
+        project.view = spec.view;
+        for media in spec.media {
+            let hash =
+                ContentHash::from_hex(&media.hash).map_err(|err| JsError::new(&err.to_string()))?;
+            let media_id = MediaId::new(media.media_id);
+            project.media.push(MediaRef {
+                id: media_id,
+                relative_path: media.relative_path,
+                hash,
+                duration: media.duration,
+                sample_rate: media.sample_rate,
+                channels: media.channels,
+            });
+            if let Some(annotation_id) = media.annotation {
+                let annotation = self
+                    .inner
+                    .annotation(AnnotationId::from_u64(annotation_id))?
+                    .clone();
+                project.annotations.insert(media_id, annotation);
+            }
+        }
+        Ok(Uint8Array::from(phx_project::save(&project).as_slice()))
+    }
+}
+
+/// One media entry in a [`SaveProjectSpec`].
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveProjectMedia {
+    media_id: u64,
+    relative_path: String,
+    hash: String,
+    duration: f64,
+    sample_rate: f64,
+    channels: usize,
+    #[serde(default)]
+    annotation: Option<u64>,
+}
+
+/// The `saveProjectContainer` argument: project metadata and its media entries.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveProjectSpec {
+    name: String,
+    saved_at: u64,
+    #[serde(default)]
+    view: Value,
+    media: Vec<SaveProjectMedia>,
+}
+
+/// One media entry returned by [`load_project_container`], with its document
+/// serialized inline for the host to re-attach after importing the audio.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LoadProjectMedia {
+    media_id: u64,
+    relative_path: String,
+    hash: String,
+    duration: f64,
+    sample_rate: f64,
+    channels: usize,
+    annotation_json: Option<String>,
+}
+
+/// The `loadProjectContainer` result: project metadata and its media entries.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LoadProjectResult {
+    name: String,
+    saved_at: u64,
+    view: Value,
+    media: Vec<LoadProjectMedia>,
+}
+
+/// Parses a project container into JSON the host can drive the session from.
+///
+/// Returns the project name, its save timestamp, the opaque view blob, and one
+/// entry per referenced recording. A recording that carried an annotation gets
+/// its document serialized inline (`annotationJson`); the host imports the audio
+/// from its own store, then hands each document back through
+/// [`WasmEngine::attach_annotation_json`]. Recovery compares the `savedAt` this
+/// returns for a project file against the same field of its autosave sidecar.
+///
+/// # Errors
+/// Rejects when the bytes are not a readable project container this build
+/// understands.
+#[wasm_bindgen(js_name = loadProjectContainer)]
+pub fn load_project_container(bytes: &[u8]) -> Result<String, JsError> {
+    let project = phx_project::load(bytes).map_err(|err| JsError::new(&err.to_string()))?;
+    let mut media = Vec::with_capacity(project.media.len());
+    for reference in &project.media {
+        let annotation_json = match project.annotations.get(&reference.id) {
+            Some(annotation) => Some(
+                serde_json::to_string(annotation).map_err(|err| JsError::new(&err.to_string()))?,
+            ),
+            None => None,
+        };
+        media.push(LoadProjectMedia {
+            media_id: reference.id.get(),
+            relative_path: reference.relative_path.clone(),
+            hash: reference.hash.to_hex(),
+            duration: reference.duration,
+            sample_rate: reference.sample_rate,
+            channels: reference.channels,
+            annotation_json,
+        });
+    }
+    let result = LoadProjectResult {
+        name: project.name,
+        saved_at: project.saved_at,
+        view: project.view,
+        media,
+    };
+    serde_json::to_string(&result).map_err(|err| JsError::new(&err.to_string()))
+}
+
+/// Returns the BLAKE3 content hash of `bytes` as 64 lowercase hex characters.
+///
+/// This is the content address a project manifest records for a recording, so
+/// the host computes it once at import and stores it beside the media.
+#[wasm_bindgen(js_name = contentHash)]
+#[must_use]
+pub fn content_hash(bytes: &[u8]) -> String {
+    ContentHash::of(bytes).to_hex()
 }
 
 /// A figure export bundle crossing the boundary: the main document plus any
