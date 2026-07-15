@@ -6,6 +6,18 @@ license.workspace = true
 description = "Backend-agnostic figure model; exporters: SVG, PDF (svg2pdf), PGFPlots/TikZ, Typst/CeTZ, Vega JSON, matplotlib/R/Julia code + data, GraphML"
 
 [dependencies]
+phx-audio = { workspace = true }
+phx-spectrogram = { workspace = true }
+phx-pitch = { workspace = true }
+phx-formant = { workspace = true }
+phx-intensity = { workspace = true }
+phx-annot = { workspace = true }
+phx-textgrid = { workspace = true }
+phx-render = { workspace = true }
+serde = { workspace = true }
+# float_roundtrip makes JSON deserialization recover f64 bit-for-bit, so a
+# serialize -> deserialize -> serialize cycle is byte-identical.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 plotters = { version = "0.3.7", optional = true, default-features = false }
 svg2pdf = { version = "0.13.0", optional = true }
 
