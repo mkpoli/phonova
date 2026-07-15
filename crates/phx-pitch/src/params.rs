@@ -6,10 +6,13 @@
 /// octave cost 0.01, octave-jump cost 0.35, and voiced/unvoiced cost 0.14. The
 /// Praat FAQ text mentions older 0.09/0.50 threshold values; the command
 /// reference is authoritative here. Automatic time step is resolved as
-/// `0.25 / floor_hz`, the simple part of Praat's documented heuristic.
+/// `0.75 / floor_hz`: the manual specifies four pitch values per window length
+/// (oversampling degree 4), and the window is `3 / floor_hz` long, so the hop
+/// is a quarter of that. The manual gives the worked value 0.01 s at a 75 Hz
+/// floor.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PitchParams {
-    /// Frame hop in seconds, or `None` for `0.25 / floor_hz`.
+    /// Frame hop in seconds, or `None` for `0.75 / floor_hz`.
     pub time_step: Option<f64>,
     /// Lowest voiced frequency considered, in hertz.
     pub floor_hz: f64,
@@ -50,7 +53,7 @@ impl Default for PitchParams {
 
 impl PitchParams {
     pub(crate) fn resolved_step(&self) -> Option<f64> {
-        let step = self.time_step.unwrap_or(0.25 / self.floor_hz);
+        let step = self.time_step.unwrap_or(0.75 / self.floor_hz);
         (step.is_finite() && step > 0.0).then_some(step)
     }
 
