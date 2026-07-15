@@ -51,6 +51,42 @@ impl From<WasmTheme> for EngineTheme {
     }
 }
 
+/// Cross-tier integrity relation selector exposed to JavaScript.
+///
+/// `AlignedBoundaries` and `ChildOf` name a second tier in the same document;
+/// that tier's id is passed alongside as `relationTier`. `Independent` ignores
+/// `relationTier`.
+#[wasm_bindgen]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WasmTierRelation {
+    /// No cross-tier integrity relation.
+    Independent,
+    /// Boundaries stay aligned with the tier named by `relationTier`.
+    AlignedBoundaries,
+    /// Every interval nests inside a span of the parent tier `relationTier`.
+    ChildOf,
+}
+
+/// Builds an engine [`TierRelation`] from the selector and the optional target
+/// tier id, rejecting a missing target for the two relating variants.
+fn tier_relation_of(
+    relation: WasmTierRelation,
+    relation_tier: Option<u64>,
+) -> Result<TierRelation, JsError> {
+    let target = || {
+        relation_tier
+            .map(TierId::new)
+            .ok_or_else(|| JsError::new("relationTier is required for this relation"))
+    };
+    match relation {
+        WasmTierRelation::Independent => Ok(TierRelation::Independent),
+        WasmTierRelation::AlignedBoundaries => {
+            Ok(TierRelation::AlignedBoundaries { with: target()? })
+        }
+        WasmTierRelation::ChildOf => Ok(TierRelation::ChildOf { parent: target()? }),
+    }
+}
+
 /// Duration, sample rate, channel count, and name of a stored audio buffer.
 #[wasm_bindgen]
 pub struct WasmAudioInfo {
@@ -184,6 +220,7 @@ pub struct WasmApplied {
     audio: Option<u64>,
     tier: Option<u64>,
     boundary: Option<u64>,
+    point: Option<u64>,
 }
 
 #[wasm_bindgen]
@@ -217,29 +254,60 @@ impl WasmApplied {
     pub fn boundary(&self) -> Option<u64> {
         self.boundary
     }
+
+    /// Affected point id, when the effect names one.
+    #[wasm_bindgen(getter)]
+    pub fn point(&self) -> Option<u64> {
+        self.point
+    }
 }
 
 impl From<Applied> for WasmApplied {
     fn from(applied: Applied) -> Self {
-        let (kind, annotation, audio, tier, boundary) = match applied {
-            Applied::AudioImported { audio } => ("audioImported", None, Some(audio), None, None),
-            Applied::AudioRemoved { audio } => ("audioRemoved", None, Some(audio), None, None),
+        let (kind, annotation, audio, tier, boundary, point) = match applied {
+            Applied::AudioImported { audio } => {
+                ("audioImported", None, Some(audio), None, None, None)
+            }
+            Applied::AudioRemoved { audio } => {
+                ("audioRemoved", None, Some(audio), None, None, None)
+            }
             Applied::AnnotationAttached { annotation, audio } => (
                 "annotationAttached",
                 Some(annotation),
                 Some(audio),
                 None,
                 None,
+                None,
             ),
-            Applied::AnnotationDetached { annotation } => {
-                ("annotationDetached", Some(annotation), None, None, None)
-            }
+            Applied::AnnotationDetached { annotation } => (
+                "annotationDetached",
+                Some(annotation),
+                None,
+                None,
+                None,
+                None,
+            ),
             Applied::TierAdded { annotation, tier } => {
-                ("tierAdded", Some(annotation), None, Some(tier), None)
+                ("tierAdded", Some(annotation), None, Some(tier), None, None)
             }
-            Applied::TierRemoved { annotation, tier } => {
-                ("tierRemoved", Some(annotation), None, Some(tier), None)
-            }
+            Applied::TierRemoved { annotation, tier } => (
+                "tierRemoved",
+                Some(annotation),
+                None,
+                Some(tier),
+                None,
+                None,
+            ),
+            Applied::TierReordered {
+                annotation, tier, ..
+            } => (
+                "tierReordered",
+                Some(annotation),
+                None,
+                Some(tier),
+                None,
+                None,
+            ),
             Applied::BoundaryInserted {
                 annotation,
                 tier,
@@ -251,9 +319,10 @@ impl From<Applied> for WasmApplied {
                 None,
                 Some(tier),
                 Some(boundary),
+                None,
             ),
             Applied::BoundaryMoved { annotation, .. } => {
-                ("boundaryMoved", Some(annotation), None, None, None)
+                ("boundaryMoved", Some(annotation), None, None, None, None)
             }
             Applied::BoundaryRemoved {
                 annotation,
@@ -264,13 +333,45 @@ impl From<Applied> for WasmApplied {
                 None,
                 None,
                 Some(boundary),
+                None,
             ),
             Applied::BoundaryRestored { annotation, .. } => {
-                ("boundaryRestored", Some(annotation), None, None, None)
+                ("boundaryRestored", Some(annotation), None, None, None, None)
             }
             Applied::LabelSet { annotation, .. } => {
-                ("labelSet", Some(annotation), None, None, None)
+                ("labelSet", Some(annotation), None, None, None, None)
             }
+            Applied::PointInserted {
+                annotation,
+                tier,
+                point,
+                ..
+            } => (
+                "pointInserted",
+                Some(annotation),
+                None,
+                Some(tier),
+                None,
+                Some(point),
+            ),
+            Applied::PointMoved {
+                annotation, point, ..
+            } => (
+                "pointMoved",
+                Some(annotation),
+                None,
+                None,
+                None,
+                Some(point),
+            ),
+            Applied::PointRemoved { annotation, point } => (
+                "pointRemoved",
+                Some(annotation),
+                None,
+                None,
+                None,
+                Some(point),
+            ),
         };
         Self {
             kind: kind.to_string(),
@@ -278,6 +379,7 @@ impl From<Applied> for WasmApplied {
             audio: audio.map(IdExt::id),
             tier: tier.map(IdExt::id),
             boundary: boundary.map(IdExt::id),
+            point: point.map(IdExt::id),
         }
     }
 }
@@ -306,6 +408,12 @@ impl IdExt for TierId {
 }
 
 impl IdExt for BoundaryId {
+    fn id(self) -> u64 {
+        self.get()
+    }
+}
+
+impl IdExt for PointId {
     fn id(self) -> u64 {
         self.get()
     }
@@ -801,17 +909,31 @@ impl WasmEngine {
         }
     }
 
-    /// Adds an independent interval tier holding one unlabeled interval over the
-    /// whole domain, returning the new tier id.
+    /// Adds an interval tier holding one unlabeled interval over the whole
+    /// domain, returning the new tier id.
+    ///
+    /// `relation` selects the tier's cross-tier integrity relation;
+    /// `relationTier` names the related tier for `AlignedBoundaries` and
+    /// `ChildOf` and is ignored for `Independent`. An aligned tier's boundaries
+    /// move together with its peer through a single journaled command.
     ///
     /// # Errors
-    /// Rejects when `annotationId` names no live document.
+    /// Rejects when `annotationId` names no live document, when `relationTier`
+    /// is missing for a relating variant, or when the relation leaves the
+    /// document invalid (an unknown or wrong-kind target).
     #[wasm_bindgen(js_name = addIntervalTier)]
-    pub fn add_interval_tier(&mut self, annotation_id: u64, name: String) -> Result<u64, JsError> {
+    pub fn add_interval_tier(
+        &mut self,
+        annotation_id: u64,
+        name: String,
+        relation: WasmTierRelation,
+        relation_tier: Option<u64>,
+    ) -> Result<u64, JsError> {
+        let relation = tier_relation_of(relation, relation_tier)?;
         let applied = self.inner.apply(Command::AddIntervalTier {
             annotation: AnnotationId::from_u64(annotation_id),
             name,
-            relation: TierRelation::Independent,
+            relation,
         })?;
         tier_id_of(applied)
     }
@@ -964,6 +1086,91 @@ impl WasmEngine {
                 point: PointId::new(point_id),
             },
             text,
+        })?;
+        Ok(applied.into())
+    }
+
+    /// Inserts a point into a point tier at its time-sorted position, returning
+    /// the new point id.
+    ///
+    /// # Errors
+    /// Rejects when the document or tier is unknown, when the tier is an
+    /// interval tier, when `time` collides with an existing point or lies
+    /// outside the domain, or when `label` carries a control character.
+    #[wasm_bindgen(js_name = insertPoint)]
+    pub fn insert_point(
+        &mut self,
+        annotation_id: u64,
+        tier_id: u64,
+        time: f64,
+        label: String,
+    ) -> Result<u64, JsError> {
+        let applied = self.inner.apply(Command::InsertPoint {
+            annotation: AnnotationId::from_u64(annotation_id),
+            tier: TierId::new(tier_id),
+            time,
+            label,
+        })?;
+        match applied {
+            Applied::PointInserted { point, .. } => Ok(point.get()),
+            _ => Err(JsError::new("insert did not report a point id")),
+        }
+    }
+
+    /// Moves a point to `to` seconds, keeping its stable id.
+    ///
+    /// # Errors
+    /// Rejects when the document or point is unknown, or when the move would
+    /// cross a neighbouring point or leave the domain.
+    #[wasm_bindgen(js_name = movePoint)]
+    pub fn move_point(
+        &mut self,
+        annotation_id: u64,
+        point_id: u64,
+        to: f64,
+    ) -> Result<WasmApplied, JsError> {
+        let applied = self.inner.apply(Command::MovePoint {
+            annotation: AnnotationId::from_u64(annotation_id),
+            point: PointId::new(point_id),
+            to,
+        })?;
+        Ok(applied.into())
+    }
+
+    /// Removes a point from a point tier.
+    ///
+    /// # Errors
+    /// Rejects when the document or point is unknown.
+    #[wasm_bindgen(js_name = removePoint)]
+    pub fn remove_point(
+        &mut self,
+        annotation_id: u64,
+        point_id: u64,
+    ) -> Result<WasmApplied, JsError> {
+        let applied = self.inner.apply(Command::RemovePoint {
+            annotation: AnnotationId::from_u64(annotation_id),
+            point: PointId::new(point_id),
+        })?;
+        Ok(applied.into())
+    }
+
+    /// Moves a tier to `toIndex` in document order, keeping every stable id.
+    ///
+    /// `toIndex` is clamped to the last position.
+    ///
+    /// # Errors
+    /// Rejects when the document or tier is unknown.
+    #[wasm_bindgen(js_name = reorderTier)]
+    pub fn reorder_tier(
+        &mut self,
+        annotation_id: u64,
+        tier_id: u64,
+        to_index: usize,
+    ) -> Result<WasmApplied, JsError> {
+        let applied = self.inner.apply(Command::ReorderTier {
+            annotation: AnnotationId::from_u64(annotation_id),
+            tier: TierId::new(tier_id),
+            to_index,
         })?;
         Ok(applied.into())
     }
@@ -1267,7 +1474,14 @@ mod tests {
         let doc = engine
             .create_annotation(audio, 0.0, info.duration())
             .unwrap();
-        let tier = engine.add_interval_tier(doc, "phones".to_string()).unwrap();
+        let tier = engine
+            .add_interval_tier(
+                doc,
+                "phones".to_string(),
+                WasmTierRelation::Independent,
+                None,
+            )
+            .unwrap();
 
         let before = engine.state_hash();
         let boundary = engine
@@ -1321,7 +1535,14 @@ mod tests {
         let doc = engine
             .create_annotation(audio, 0.0, info.duration())
             .unwrap();
-        let tier = engine.add_interval_tier(doc, "phones".to_string()).unwrap();
+        let tier = engine
+            .add_interval_tier(
+                doc,
+                "phones".to_string(),
+                WasmTierRelation::Independent,
+                None,
+            )
+            .unwrap();
         engine
             .insert_boundary(doc, tier, info.duration() / 2.0)
             .unwrap();
@@ -1349,5 +1570,108 @@ mod tests {
         assert!(engine.undo().unwrap().is_none());
         assert!(engine.redo().unwrap().is_none());
         assert_eq!(engine.undo_depth(), 0);
+    }
+
+    #[wasm_bindgen_test]
+    fn point_insert_move_remove_round_trip_through_bindings() {
+        let mut engine = WasmEngine::new();
+        let audio = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let info = engine.audio_info(audio).unwrap();
+        let doc = engine
+            .create_annotation(audio, 0.0, info.duration())
+            .unwrap();
+        let tier = engine.add_point_tier(doc, "tones".to_string()).unwrap();
+
+        let empty = engine.state_hash();
+        let at = info.duration() / 2.0;
+        let point = engine.insert_point(doc, tier, at, "H".to_string()).unwrap();
+        let inserted = engine.state_hash();
+        assert_ne!(inserted, empty);
+
+        let points = engine
+            .points_in_range(doc, tier, 0.0, info.duration())
+            .unwrap();
+        assert_eq!(points.ids(), vec![point]);
+        assert_eq!(points.labels(), vec!["H".to_string()]);
+
+        let moved = engine
+            .move_point(doc, point, info.duration() / 3.0)
+            .unwrap();
+        assert_eq!(moved.kind(), "pointMoved");
+        assert_eq!(moved.point(), Some(point));
+
+        let removed = engine.remove_point(doc, point).unwrap();
+        assert_eq!(removed.kind(), "pointRemoved");
+        assert_eq!(engine.state_hash(), empty);
+
+        // Undo the removal, move, and insertion back to the empty tier, then
+        // redo the insertion and confirm the id and label return unchanged.
+        engine.undo().unwrap();
+        engine.undo().unwrap();
+        engine.undo().unwrap();
+        assert_eq!(engine.state_hash(), empty);
+        let restored = engine.redo().unwrap().unwrap();
+        assert_eq!(restored.kind(), "pointInserted");
+        assert_eq!(restored.point(), Some(point));
+        assert_eq!(engine.state_hash(), inserted);
+        let points = engine
+            .points_in_range(doc, tier, 0.0, info.duration())
+            .unwrap();
+        assert_eq!(points.ids(), vec![point]);
+        assert_eq!(points.labels(), vec!["H".to_string()]);
+    }
+
+    #[wasm_bindgen_test]
+    fn aligned_interval_tier_moves_both_tiers_and_reorders() {
+        let mut engine = WasmEngine::new();
+        let audio = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let info = engine.audio_info(audio).unwrap();
+        let doc = engine
+            .create_annotation(audio, 0.0, info.duration())
+            .unwrap();
+        let primary = engine
+            .add_interval_tier(
+                doc,
+                "phones".to_string(),
+                WasmTierRelation::Independent,
+                None,
+            )
+            .unwrap();
+        let aligned = engine
+            .add_interval_tier(
+                doc,
+                "words".to_string(),
+                WasmTierRelation::AlignedBoundaries,
+                Some(primary),
+            )
+            .unwrap();
+
+        // A boundary inserted on the primary tier propagates to the aligned peer.
+        let boundary = engine
+            .insert_boundary(doc, primary, info.duration() / 2.0)
+            .unwrap();
+        for tier in [primary, aligned] {
+            let intervals = engine
+                .intervals_in_range(doc, tier, 0.0, info.duration())
+                .unwrap();
+            assert_eq!(intervals.ids().len(), 2);
+        }
+
+        // Moving the shared boundary linked moves both tiers; one undo restores.
+        let before_move = engine.state_hash();
+        engine
+            .move_boundary(doc, boundary, info.duration() * 0.6, true)
+            .unwrap();
+        engine.undo().unwrap();
+        assert_eq!(engine.state_hash(), before_move);
+
+        // Reordering brings the aligned tier to the front; undo restores order.
+        let before_reorder = engine.state_hash();
+        let applied = engine.reorder_tier(doc, aligned, 0).unwrap();
+        assert_eq!(applied.kind(), "tierReordered");
+        assert_eq!(engine.annotation_tiers(doc).unwrap().ids()[0], aligned);
+        engine.undo().unwrap();
+        assert_eq!(engine.state_hash(), before_reorder);
+        assert_eq!(engine.annotation_tiers(doc).unwrap().ids()[0], primary);
     }
 }
