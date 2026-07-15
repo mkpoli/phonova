@@ -6,4 +6,5 @@ license.workspace = true
 description = "Pre-emphasis, Burg recursion, polynomial roots to frequency/bandwidth, Xia-Espy-Wilson DP tracking"
 
 [dependencies]
+phx-audio = { workspace = true }
 phx-dsp = { workspace = true }
