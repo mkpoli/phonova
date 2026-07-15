@@ -1,6 +1,6 @@
 # Test fixture manifest
 
-Total size: 19 MB (`du -sh tests/fixtures`). No NC/ND-licensed or LDC-sourced
+Total size: 20 MB (`du -sh tests/fixtures`). No NC/ND-licensed or LDC-sourced
 material is present.
 
 ## Audio — `tests/fixtures/audio/`
@@ -87,13 +87,17 @@ material is present.
 ## TextGrids — `tests/fixtures/textgrids/`
 
 Redistributable real-world TextGrid corpora with a clear license are not
-available. All three files below are hand-authored for this repository,
-following the file-format description in the Praat manual page "TextGrid
-file formats"
-(<https://www.fon.hum.uva.nl/praat/manual/TextGrid_file_formats.html>).
-Word and phone interval boundaries are placed by hand for format-testing
-purposes; they are not the output of acoustic alignment and should not be
-treated as a phonetic ground truth.
+available. Every text-format file below is hand-authored for this
+repository, following the file-format description in the Praat manual page
+"TextGrid file formats"
+(<https://www.fon.hum.uva.nl/praat/manual/TextGrid_file_formats.html>) and
+cross-checked by loading through `tools/oracle` (parselmouth/Praat); the
+binary-format files are Praat's own binary serialization of a TextGrid
+object, produced by `tools/oracle/generate_textgrid_binary_fixtures.py`
+since the manual publishes no grammar for that format. Interval and point
+boundaries are placed by hand (or synthesized) for format-testing purposes;
+they are not the output of acoustic alignment and should not be treated as
+phonetic ground truth.
 
 ### `arctic_bdl_a0001_long_utf8.TextGrid`
 
@@ -124,6 +128,147 @@ treated as a phonetic ground truth.
   labels (16 intervals each, including one empty interval for a
   mid-utterance pause).
 
+### `points_only_long_utf8.TextGrid`
+
+- Authored fixture; standalone (not tied to a specific fixture audio file),
+  domain `[0, 2]` s matching `synth_vowel_a.wav`'s duration.
+- License: original work, project license (MIT OR Apache-2.0).
+- Format: TextGrid long (full) text format, UTF-8 without byte-order mark.
+- Content: two point tiers only, no interval tier — `landmarks` (4 points,
+  one IPA-labeled) and `silence-marks` (0 points, the corpus's example of
+  an entirely empty tier).
+
+### `mixed_multitier_short_utf8.TextGrid`
+
+- Authored fixture; standalone, domain `[0, 5]` s matching
+  `synth_tone_sweep.wav`'s duration.
+- License: original work, project license (MIT OR Apache-2.0).
+- Format: TextGrid short text format, UTF-8 without byte-order mark.
+- Content: four tiers in interval/point/interval/point order — `bands`
+  (interval, 3), `cue-points` (point, 2), `notes` (interval, 3, including
+  two empty-text intervals), `flags` (point, 3).
+
+### `ipa_diacritics_long_utf8.TextGrid`
+
+- Authored fixture; standalone, domain `[0, 1.8]` s.
+- License: original work, project license (MIT OR Apache-2.0).
+- Format: TextGrid long (full) text format, UTF-8 without byte-order mark.
+- Content: `segments` interval tier (9 intervals) exercising aspiration
+  (`pʰ`), an ejective (`kʼ`), a click (`ǃ`), breathy voice (`bʱ`), creaky
+  voice (combining tilde below, `a̰`), nasalization (combining tilde, `ã`),
+  a syllabic consonant (combining vertical line below, `n̩`), a dental
+  diacritic (combining bridge below, `t̪`), and pharyngealization (`dˤ`);
+  `tones` interval tier (9 intervals, aligned to the same boundaries) using
+  Chao tone-letter contours (`˥`, `˧˥`, `˨˩˦`, `˥˩`, …). The final
+  `segments` interval's label additionally carries U+1F5E3 (an astral-plane
+  codepoint outside the Basic Multilingual Plane) to stress-test UTF-8
+  4-byte and UTF-16 surrogate-pair handling; that codepoint carries no
+  phonetic meaning.
+
+### `latin1_legacy.TextGrid`
+
+- Authored fixture; standalone, domain `[0, 2.4]` s.
+- License: original work, project license (MIT OR Apache-2.0).
+- Format: TextGrid long (full) text format, **ISO-8859-1 (Latin-1)**, no
+  byte-order mark (Latin-1 has none) — the legacy encoding the manual's
+  Unicode page says older Praat configurations wrote by default before
+  UTF-8 became standard. `file(1)` reports "ISO-8859 text"; verified via
+  hexdump that the diacritic bytes are single-byte Latin-1 code points
+  (`0xDC`=Ü, `0xDF`=ß, `0xE9`=é, `0xE7`=ç, `0xE4`=ä, `0xEF`=ï), not UTF-8
+  multi-byte sequences.
+- Content: single `words` interval tier (6 intervals), German/French
+  words chosen to cover the Latin-1 diacritic range: Über, Straße, Café,
+  garçon, Mädchen, naïve.
+
+### `single_interval_whole_domain_long_utf8.TextGrid`
+
+- Authored fixture; standalone, domain `[0, 4]` s.
+- License: original work, project license (MIT OR Apache-2.0).
+- Format: TextGrid long (full) text format, UTF-8 without byte-order mark.
+- Content: `utterance` interval tier with exactly one interval spanning the
+  entire domain (the degenerate single-interval-tier case); `half-marks`
+  interval tier with 2 intervals over the same domain, for contrast.
+
+### `adjacent_empty_intervals_long_utf8.TextGrid`
+
+- Authored fixture; standalone, domain `[0, 3]` s.
+- License: original work, project license (MIT OR Apache-2.0).
+- Format: TextGrid long (full) text format, UTF-8 without byte-order mark.
+- Content: `phones` interval tier (6 intervals): a labeled interval,
+  three consecutive empty-text intervals, another labeled interval, and a
+  trailing empty-text interval — stresses run handling of adjacent
+  unlabeled intervals at both an interior position and the domain edge.
+
+### `ipa_diacritics_binary.TextGrid`, `adjacent_empty_intervals_binary.TextGrid`
+
+- Generated by `tools/oracle/generate_textgrid_binary_fixtures.py`:
+  `parselmouth.Data.read()` loads the corresponding `*_long_utf8.TextGrid`
+  fixture above (Praat's own text reader parses it; only the resulting
+  in-memory object crosses into the script) and `TextGrid.save_as_binary_file()`
+  re-serializes it as Praat's binary TextGrid format. Same annotation
+  content as the source text fixture, in Praat's undocumented binary
+  encoding (`ooBinaryFile` magic header, confirmed via hexdump).
+- License: original work (derived from the fixtures above), project license
+  (MIT OR Apache-2.0).
+- Format: Praat binary TextGrid.
+- Round-trip verified by the generator script itself: the binary file is
+  read back with `parselmouth.Data.read()` and its Praat long-text dump is
+  diffed byte-for-byte against the source object's dump.
+
+### `synthetic_binary_complex.TextGrid`
+
+- Generated by `tools/oracle/generate_textgrid_binary_fixtures.py`, built
+  directly through parselmouth's `Create TextGrid...`/`Insert
+  boundary...`/`Insert point...` public commands (not derived from any text
+  fixture) and saved with `TextGrid.save_as_binary_file()`. Program output;
+  no hand-authored or third-party source material.
+- License: original work, project license (MIT OR Apache-2.0).
+- Format: Praat binary TextGrid.
+- Content: domain `[0, 3.14159265]` s; two interval tiers (`segments` with
+  non-round fractional boundaries at 0.333333333/1.618033989/2.71828 s and
+  an IPA label, `annotations`) and two point tiers (`cues` with 3 points at
+  non-round times, `markers` with 0 points) — covers binary encoding of
+  fractional times and an empty point tier that the binarized text fixtures
+  above do not exercise.
+- Round-trip verified the same way as the two binarized fixtures above.
+
+## Malformed TextGrids — `tests/fixtures/textgrids/malformed/`
+
+Deliberately corrupted variants for parser-robustness testing (the reader
+must error cleanly, never panic, on each). Each is a hand-edited copy of
+`arctic_bdl_a0001_long_utf8.TextGrid`; the single injected fault is noted
+below. Praat itself rejects all four (verified via `parselmouth.Data.read`),
+confirming each is malformed at the intended fault and not by accident
+elsewhere in the file.
+
+### `truncated_long_utf8.TextGrid`
+
+- The first 70 lines of `arctic_bdl_a0001_long_utf8.TextGrid`, file cut off
+  mid-declaration (partway through the `phones` tier's 4th interval, before
+  its `xmax`/`text` and the whole `events` point tier). Praat:
+  "Early end of text detected while looking for a real number".
+
+### `wrong_interval_count_long_utf8.TextGrid`
+
+- The `words` tier's `intervals: size = 9` changed to `10` with the
+  actual interval blocks left at 9 — a declared count that overruns the
+  data present. Praat: "Found a string while looking for a real number"
+  (it reads into the next tier's `class = "IntervalTier"` line looking for
+  a 10th interval's `xmin`).
+
+### `wrong_tier_count_long_utf8.TextGrid`
+
+- The top-level `size = 3` (tier count) changed to `4` with only 3 `item
+  []:` blocks present. Praat: "Early end of text detected while looking for
+  a string" (it runs off the end of the file looking for a 4th tier).
+
+### `unterminated_string_long_utf8.TextGrid`
+
+- The first interval's `text = "Author"` had its closing quote removed
+  (`text = "Author`). Praat: "Character o following quote. End of string or
+  undoubled quote?" (the parser resynchronizes on the next line's leading
+  `o` of `of` and misreads the quoting).
+
 ## Scripts — `tests/fixtures/scripts/`
 
 - `synth_vowel.py` — generates `synth_vowel_a.wav`. `uv run` script
@@ -137,3 +282,18 @@ treated as a phonetic ground truth.
 
 All three are executable (`uv run tests/fixtures/scripts/<name>.py`) and
 regenerate their output deterministically.
+
+## Generators — `tools/oracle/`
+
+- `generate_textgrid_binary_fixtures.py` — regenerates the three
+  `*_binary.TextGrid`/`synthetic_binary_complex.TextGrid` fixtures above via
+  parselmouth (Praat, GPLv3, out-of-process dev dependency only — never
+  linked into any Rust crate). Run with:
+
+  ```
+  uv run --project tools/oracle --extra parselmouth \
+      tools/oracle/generate_textgrid_binary_fixtures.py
+  ```
+
+  Each output is round-tripped in-process (read back and diffed against the
+  source object's Praat text dump) before the script reports success.
