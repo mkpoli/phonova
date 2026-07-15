@@ -646,6 +646,7 @@ dependencies = [
  "phx-annot",
  "phx-audio",
  "phx-dsp",
+ "phx-figure",
  "phx-formant",
  "phx-intensity",
  "phx-pitch",
@@ -745,6 +746,7 @@ dependencies = [
  "js-sys",
  "phx-engine",
  "phx-textgrid",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]

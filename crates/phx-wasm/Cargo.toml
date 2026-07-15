@@ -12,6 +12,7 @@ crate-type = ["cdylib", "rlib"]
 phx-engine = { workspace = true }
 phx-textgrid = { workspace = true }
 wasm-bindgen = { workspace = true }
+serde_json = { workspace = true }
 js-sys = "0.3"
 
 [dev-dependencies]

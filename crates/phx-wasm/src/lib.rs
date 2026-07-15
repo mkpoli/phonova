@@ -4,9 +4,10 @@
 use js_sys::{Float32Array, Float64Array, Uint8Array};
 use phx_engine::{
     AlignMode, Annotation, AnnotationId, Applied, AudioId, BoundaryId, Colormap as EngineColormap,
-    Command, DisplayMapping, Engine, FormantParams, IntensityParams, IntervalId, LabelPattern,
-    LabelQuery, LabelTarget, PitchParams, PointId, SpectrogramParams, Theme as EngineTheme, Tier,
-    TierId, TierRelation, TileRequest,
+    Command, DisplayMapping, Engine, ExportBundle, Figure, FigureFormat, FigureRequest,
+    FormantParams, IntensityParams, IntervalId, LabelPattern, LabelQuery, LabelTarget, PitchParams,
+    PointId, SpectrogramParams, Theme as EngineTheme, Tier, TierId, TierRelation, TileRequest,
+    export_figure as engine_export_figure, figure_to_svg,
 };
 use wasm_bindgen::prelude::*;
 
@@ -1390,6 +1391,149 @@ impl WasmEngine {
             .annotation(AnnotationId::from_u64(annotation_id))?;
         let bytes = phx_textgrid::write(annotation);
         Ok(Uint8Array::from(bytes.as_slice()))
+    }
+
+    /// Assembles a figure from live session state and returns it as JSON.
+    ///
+    /// `specJson` is a serialized [`phx_engine::FigureRequest`]: the audio and
+    /// optional annotation ids, the time and frequency window, the per-layer
+    /// toggles, the physical size and palette, and the analysis parameters. The
+    /// returned JSON is a self-contained [`phx_engine::Figure`] the preview and
+    /// every export backend consume — the dialog builds it once, then renders
+    /// and exports off the same bytes.
+    ///
+    /// # Errors
+    /// Rejects when `specJson` is not a valid request, when an id names no live
+    /// object, or when the window or an analysis parameter is unusable.
+    #[wasm_bindgen(js_name = buildFigure)]
+    pub fn build_figure(&self, spec_json: &str) -> Result<String, JsError> {
+        let request: FigureRequest = serde_json::from_str(spec_json)
+            .map_err(|err| JsError::new(&format!("invalid figure request: {err}")))?;
+        let figure = self.inner.build_figure(&request)?;
+        figure
+            .to_json()
+            .map_err(|err| JsError::new(&err.to_string()))
+    }
+}
+
+/// A figure export bundle crossing the boundary: the main document plus any
+/// sidecar files a text backend references.
+#[wasm_bindgen]
+pub struct WasmExportBundle {
+    main_name: String,
+    main_bytes: Vec<u8>,
+    mime: String,
+    is_text: bool,
+    sidecar_names: Vec<String>,
+    sidecar_bytes: Vec<Vec<u8>>,
+}
+
+#[wasm_bindgen]
+impl WasmExportBundle {
+    /// Suggested file name for the main document.
+    #[wasm_bindgen(getter, js_name = mainName)]
+    pub fn main_name(&self) -> String {
+        self.main_name.clone()
+    }
+
+    /// Main document bytes.
+    #[wasm_bindgen(getter, js_name = mainBytes)]
+    pub fn main_bytes(&self) -> Uint8Array {
+        Uint8Array::from(self.main_bytes.as_slice())
+    }
+
+    /// MIME type of the main document.
+    #[wasm_bindgen(getter)]
+    pub fn mime(&self) -> String {
+        self.mime.clone()
+    }
+
+    /// Whether the main document is UTF-8 text.
+    #[wasm_bindgen(getter, js_name = isText)]
+    pub fn is_text(&self) -> bool {
+        self.is_text
+    }
+
+    /// Sidecar file names, in bundle order.
+    #[wasm_bindgen(getter, js_name = sidecarNames)]
+    pub fn sidecar_names(&self) -> Vec<String> {
+        self.sidecar_names.clone()
+    }
+
+    /// Bytes of sidecar `index`, or an empty array when out of range.
+    #[wasm_bindgen(js_name = sidecarBytes)]
+    pub fn sidecar_bytes(&self, index: usize) -> Uint8Array {
+        match self.sidecar_bytes.get(index) {
+            Some(bytes) => Uint8Array::from(bytes.as_slice()),
+            None => Uint8Array::new_with_length(0),
+        }
+    }
+}
+
+impl From<ExportBundle> for WasmExportBundle {
+    fn from(bundle: ExportBundle) -> Self {
+        let mut sidecar_names = Vec::with_capacity(bundle.sidecars.len());
+        let mut sidecar_bytes = Vec::with_capacity(bundle.sidecars.len());
+        for sidecar in bundle.sidecars {
+            sidecar_names.push(sidecar.name);
+            sidecar_bytes.push(sidecar.bytes);
+        }
+        Self {
+            main_name: bundle.main_name,
+            main_bytes: bundle.main_bytes,
+            mime: bundle.mime,
+            is_text: bundle.is_text,
+            sidecar_names,
+            sidecar_bytes,
+        }
+    }
+}
+
+/// Renders a figure JSON string to its SVG scene graph.
+///
+/// This is the preview backend: the SVG it returns is byte-for-byte the SVG an
+/// SVG export writes, so a preview built from a figure equals that figure's
+/// export by construction.
+///
+/// # Errors
+/// Rejects when `figureJson` is not a figure this build can decode.
+#[wasm_bindgen(js_name = renderFigureSvg)]
+pub fn render_figure_svg(figure_json: &str) -> Result<String, JsError> {
+    let figure = Figure::from_json(figure_json).map_err(|err| JsError::new(&err.to_string()))?;
+    Ok(figure_to_svg(&figure))
+}
+
+/// Exports a figure JSON string to a downloadable bundle in `format`.
+///
+/// `format` is one of `svg`, `png`, `pdf`, `vega`, `tikz`, `typst`, `python`,
+/// `r`, `julia`, `graphml`. On the wasm build `png` and `pdf` are native-only
+/// and reject; the web app rasterizes the SVG preview for PNG instead.
+///
+/// # Errors
+/// Rejects when `figureJson` is undecodable, when `format` is unknown, or when a
+/// native-only format is requested on this build.
+#[wasm_bindgen(js_name = exportFigure)]
+pub fn export_figure(figure_json: &str, format: &str) -> Result<WasmExportBundle, JsError> {
+    let figure = Figure::from_json(figure_json).map_err(|err| JsError::new(&err.to_string()))?;
+    let format = parse_figure_format(format)?;
+    let bundle = engine_export_figure(&figure, format)?;
+    Ok(bundle.into())
+}
+
+/// Parses a figure format name into a [`FigureFormat`].
+fn parse_figure_format(name: &str) -> Result<FigureFormat, JsError> {
+    match name {
+        "svg" => Ok(FigureFormat::Svg),
+        "png" => Ok(FigureFormat::Png),
+        "pdf" => Ok(FigureFormat::Pdf),
+        "vega" => Ok(FigureFormat::Vega),
+        "tikz" => Ok(FigureFormat::Tikz),
+        "typst" => Ok(FigureFormat::Typst),
+        "python" => Ok(FigureFormat::Python),
+        "r" => Ok(FigureFormat::R),
+        "julia" => Ok(FigureFormat::Julia),
+        "graphml" => Ok(FigureFormat::Graphml),
+        other => Err(JsError::new(&format!("unknown figure format: {other}"))),
     }
 }
 
