@@ -177,6 +177,83 @@ export interface CoreClientLike extends AnnotationClientLike {
     smoothed: boolean
   ): Promise<FormantTrackData>;
   intensityTrack(id: AudioId, floorHz: number): Promise<IntensityTrackData>;
+  buildFigure(spec: FigureSpec): Promise<string>;
+  renderFigureSvg(figureJson: string): Promise<string>;
+  exportFigure(figureJson: string, format: FigureExportFormat): Promise<FigureExportResult>;
+}
+
+export type FigureLengthUnit = 'cm' | 'in' | 'pt';
+export type FigureThemeName = 'light' | 'dark';
+export type FigureColormapName = 'viridis' | 'magma' | 'grayscale';
+export type FigurePitchUnitName = 'hertz' | 'semitones';
+export type FigureExportFormat =
+  | 'svg'
+  | 'png'
+  | 'pdf'
+  | 'vega'
+  | 'tikz'
+  | 'typst'
+  | 'python'
+  | 'r'
+  | 'julia'
+  | 'graphml';
+
+/** Per-layer inclusion for a figure, mirroring the editor overlays. */
+export interface FigureLayerToggles {
+  waveform: boolean;
+  spectrogram: boolean;
+  pitch: boolean;
+  formant: boolean;
+  intensity: boolean;
+  tiers: boolean;
+}
+
+/**
+ * A figure build request. Field names match the engine's serde wire format, so
+ * this object serializes straight to the `buildFigure` argument. Ids are plain
+ * numbers here (the engine reads them as integers), not the bigint handles the
+ * annotation surface uses.
+ */
+export interface FigureSpec {
+  audio: number;
+  annotation: number | null;
+  t0: number;
+  t1: number;
+  f0: number;
+  f1: number;
+  layers: FigureLayerToggles;
+  width: number;
+  height: number;
+  unit: FigureLengthUnit;
+  theme: FigureThemeName;
+  colormap: FigureColormapName;
+  dynamic_range_db: number;
+  max_db: number | null;
+  spectrogram_width_px: number;
+  spectrogram_height_px: number;
+  window_length: number;
+  pitch_floor_hz: number;
+  pitch_ceiling_hz: number;
+  pitch_unit: FigurePitchUnitName;
+  formant_ceiling_hz: number;
+  formant_max: number;
+  formant_smoothed: boolean;
+  intensity_floor_hz: number;
+}
+
+/** A named file emitted alongside an export's main document. */
+export interface FigureSidecar {
+  name: string;
+  bytes: Uint8Array;
+}
+
+/** The result of a figure export: main document plus any sidecar files. */
+export interface FigureExportResult {
+  mainName: string;
+  mainBytes: Uint8Array;
+  mime: string;
+  isText: boolean;
+  sidecars: FigureSidecar[];
 }
 
 /** Per-track visibility and analysis parameters edited in the inspector. */

@@ -5,6 +5,9 @@ import type {
   AudioInfo,
   BoundaryId,
   CoreClient,
+  FigureExportFormat,
+  FigureExportResult,
+  FigureSpec,
   FormantTrackData,
   IntensityTrackData,
   IntervalData,
@@ -198,6 +201,18 @@ export class WasmCoreClient implements CoreClient {
 
   exportTextGrid(annotationId: AnnotationId): Promise<Uint8Array> {
     return this.#call({ method: 'exportTextGrid', annotationId });
+  }
+
+  buildFigure(spec: FigureSpec): Promise<string> {
+    return this.#call({ method: 'buildFigure', spec });
+  }
+
+  renderFigureSvg(figureJson: string): Promise<string> {
+    return this.#call({ method: 'renderFigureSvg', figureJson });
+  }
+
+  exportFigure(figureJson: string, format: FigureExportFormat): Promise<FigureExportResult> {
+    return this.#call({ method: 'exportFigure', figureJson, format });
   }
 
   destroy() {

@@ -1,5 +1,6 @@
 export { default as BoundaryHandle } from './BoundaryHandle.svelte';
 export { default as EditorView } from './EditorView.svelte';
+export { default as ExportDialog } from './ExportDialog.svelte';
 export { default as InspectorPanel } from './InspectorPanel.svelte';
 export { default as LabelEditor } from './LabelEditor.svelte';
 export { default as OverviewStrip } from './OverviewStrip.svelte';

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ExportDialog from './ExportDialog.svelte';
   import InspectorPanel from './InspectorPanel.svelte';
   import OverviewStrip from './OverviewStrip.svelte';
   import SpectrogramPane from './SpectrogramPane.svelte';
@@ -54,6 +55,7 @@
   let overlayParams = $state<OverlayParams>(defaultOverlayParams());
   let overlayStats = $state<OverlayStats>({ pitchMaxHz: 0, formantMaxHz: 0 });
   let inspectorOpen = $state(true);
+  let exportOpen = $state(false);
 
   $effect(() => {
     const duration = audio?.duration ?? 1;
@@ -127,6 +129,9 @@
     } else if (event.key.toLowerCase() === 'i') {
       event.preventDefault();
       inspectorOpen = !inspectorOpen;
+    } else if (event.key.toLowerCase() === 'e' && audio) {
+      event.preventDefault();
+      exportOpen = !exportOpen;
     }
   }
 </script>
@@ -192,6 +197,16 @@
       <button
         type="button"
         class="inspector-toggle"
+        data-testid="open-export"
+        disabled={!audio}
+        aria-pressed={exportOpen}
+        onclick={() => (exportOpen = !exportOpen)}
+      >
+        Export figure
+      </button>
+      <button
+        type="button"
+        class="inspector-toggle"
         data-testid="inspector-toggle"
         aria-pressed={inspectorOpen}
         onclick={() => (inspectorOpen = !inspectorOpen)}
@@ -200,6 +215,19 @@
       </button>
     </span>
   </footer>
+
+  {#if exportOpen && audio}
+    <ExportDialog
+      {client}
+      {audio}
+      {annotationId}
+      {viewport}
+      {overlayParams}
+      appTheme={theme}
+      {colormap}
+      onClose={() => (exportOpen = false)}
+    />
+  {/if}
 </div>
 
 <style>

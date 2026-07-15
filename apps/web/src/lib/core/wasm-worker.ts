@@ -2,12 +2,16 @@ import init, {
 	WasmColormap,
 	WasmEngine,
 	WasmTheme,
-	WasmTierRelation
+	WasmTierRelation,
+	exportFigure as wasmExportFigure,
+	renderFigureSvg as wasmRenderFigureSvg
 } from '../wasm/pkg/phx_wasm.js';
 import type {
   AnnotationId,
   AudioId,
   BoundaryId,
+  FigureExportFormat,
+  FigureSpec,
   IntervalId,
   PointId,
   SpectrogramTileRequest,
@@ -92,7 +96,10 @@ type RequestMessage =
     }
   | { id: number; method: 'searchLabels'; pattern: string; regex: boolean }
   | { id: number; method: 'importTextGrid'; audioId: AudioId; bytes: ArrayBuffer }
-  | { id: number; method: 'exportTextGrid'; annotationId: AnnotationId };
+  | { id: number; method: 'exportTextGrid'; annotationId: AnnotationId }
+  | { id: number; method: 'buildFigure'; spec: FigureSpec }
+  | { id: number; method: 'renderFigureSvg'; figureJson: string }
+  | { id: number; method: 'exportFigure'; figureJson: string; format: FigureExportFormat };
 
 type ResponseMessage =
   | { id: number; ok: true; result: unknown }
@@ -449,6 +456,39 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
           { id: message.id, ok: true, result: copy },
           { transfer: [copy.buffer] }
         );
+        return;
+      }
+      case 'buildFigure': {
+        const result = wasm.buildFigure(JSON.stringify(message.spec));
+        postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'renderFigureSvg': {
+        const result = wasmRenderFigureSvg(message.figureJson);
+        postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'exportFigure': {
+        const bundle = wasmExportFigure(message.figureJson, message.format);
+        const mainSource = bundle.mainBytes;
+        const mainBytes = new Uint8Array(mainSource.length);
+        mainBytes.set(mainSource);
+        const sidecarNames = bundle.sidecarNames;
+        const sidecars = sidecarNames.map((name, index) => {
+          const source = bundle.sidecarBytes(index);
+          const bytes = new Uint8Array(source.length);
+          bytes.set(source);
+          return { name, bytes };
+        });
+        const result = {
+          mainName: bundle.mainName,
+          mainBytes,
+          mime: bundle.mime,
+          isText: bundle.isText,
+          sidecars
+        };
+        const transfer = [mainBytes.buffer, ...sidecars.map((s) => s.bytes.buffer)];
+        postMessage({ id: message.id, ok: true, result }, { transfer });
         return;
       }
       default: {
