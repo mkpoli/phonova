@@ -7,5 +7,3 @@ description = "Hanning/Gaussian/Kaiser windows, real FFT wrappers, absolute-time
 
 [dependencies]
 realfft = { workspace = true }
-rustfft = { workspace = true }
-ndarray = { workspace = true }
