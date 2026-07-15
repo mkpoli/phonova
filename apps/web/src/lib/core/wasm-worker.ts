@@ -1,4 +1,9 @@
-import init, { WasmColormap, WasmEngine, WasmTheme } from '../wasm/pkg/phx_wasm.js';
+import init, {
+	WasmColormap,
+	WasmEngine,
+	WasmTheme,
+	WasmTierRelation
+} from '../wasm/pkg/phx_wasm.js';
 import type {
   AnnotationId,
   AudioId,
@@ -336,7 +341,12 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
         return;
       }
       case 'addIntervalTier': {
-        const result = wasm.addIntervalTier(message.annotationId, message.name);
+        const result = wasm.addIntervalTier(
+          message.annotationId,
+          message.name,
+          WasmTierRelation.Independent,
+          null
+        );
         postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
         return;
       }
