@@ -15,6 +15,7 @@ members = [
     "crates/phx-project",
     "crates/phx-engine",
     "crates/phx-wasm",
+    "tools/oracle-bridge",
 ]
 
 [workspace.package]
