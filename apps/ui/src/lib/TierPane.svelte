@@ -631,7 +631,7 @@
   .tier-rows {
     position: relative;
     overflow-y: auto;
-    min-height: 2.5rem;
+    min-height: 3rem;
   }
 
   .tier-row {

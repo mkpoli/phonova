@@ -182,7 +182,10 @@
 <style>
   .lane {
     position: relative;
-    height: 2.5rem;
+    /* Tall enough that the bottom-anchored label band clears the tier chip that
+       overlays the top-left corner; at 2.5rem the two touched and an early
+       label ghosted behind its chip. */
+    height: 3rem;
     border-bottom: 1px solid var(--chrome-strong);
     background: var(--panel);
     overflow: hidden;
