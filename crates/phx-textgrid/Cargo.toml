@@ -7,3 +7,6 @@ description = "Praat TextGrid read (long/short/binary text variants; UTF-8/UTF-1
 
 [dependencies]
 phx-annot = { workspace = true }
+
+[dev-dependencies]
+phx-annot = { workspace = true }
