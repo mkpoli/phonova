@@ -1,0 +1,32 @@
+File type = "ooTextFile"
+Object class = "TextGrid"
+
+xmin = 0
+xmax = 4
+tiers? <exists>
+size = 2
+item []:
+    item [1]:
+        class = "IntervalTier"
+        name = "utterance"
+        xmin = 0
+        xmax = 4
+        intervals: size = 1
+        intervals [1]:
+            xmin = 0
+            xmax = 4
+            text = "entire recording"
+    item [2]:
+        class = "IntervalTier"
+        name = "half-marks"
+        xmin = 0
+        xmax = 4
+        intervals: size = 2
+        intervals [1]:
+            xmin = 0
+            xmax = 2
+            text = "first-half"
+        intervals [2]:
+            xmin = 2
+            xmax = 4
+            text = "second-half"

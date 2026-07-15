@@ -17,6 +17,10 @@ def fixtures_audio_dir() -> Path:
     return repo_root() / "tests" / "fixtures" / "audio"
 
 
+def fixtures_textgrids_dir() -> Path:
+    return repo_root() / "tests" / "fixtures" / "textgrids"
+
+
 def oracle_dir() -> Path:
     return repo_root() / "tools" / "oracle"
 

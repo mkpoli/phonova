@@ -1,0 +1,104 @@
+File type = "ooTextFile"
+Object class = "TextGrid"
+
+xmin = 0
+xmax = 3.235063
+tiers? <exists>
+size = 4
+item []:
+    item [1]:
+        class = "IntervalTier"
+        name = "words"
+        xmin = 0
+        xmax = 3.235063
+        intervals: size = 9
+        intervals [1]:
+            xmin = 0
+            xmax = 0.35
+            text = "Author"
+        intervals [2]:
+            xmin = 0.35
+            xmax = 0.5
+            text = "of"
+        intervals [3]:
+            xmin = 0.5
+            xmax = 0.65
+            text = "the"
+        intervals [4]:
+            xmin = 0.65
+            xmax = 1.1
+            text = "danger"
+        intervals [5]:
+            xmin = 1.1
+            xmax = 1.55
+            text = "trail"
+        intervals [6]:
+            xmin = 1.55
+            xmax = 1.75
+            text = ""
+        intervals [7]:
+            xmin = 1.75
+            xmax = 2.3
+            text = "Philip"
+        intervals [8]:
+            xmin = 2.3
+            xmax = 2.85
+            text = "Steels"
+        intervals [9]:
+            xmin = 2.85
+            xmax = 3.235063
+            text = "etc."
+    item [2]:
+        class = "IntervalTier"
+        name = "phones"
+        xmin = 0
+        xmax = 3.235063
+        intervals: size = 9
+        intervals [1]:
+            xmin = 0
+            xmax = 0.35
+            text = "ˈɔːθɚ"
+        intervals [2]:
+            xmin = 0.35
+            xmax = 0.5
+            text = "ʌv"
+        intervals [3]:
+            xmin = 0.5
+            xmax = 0.65
+            text = "ðə"
+        intervals [4]:
+            xmin = 0.65
+            xmax = 1.1
+            text = "ˈdeɪndʒɚ"
+        intervals [5]:
+            xmin = 1.1
+            xmax = 1.55
+            text = "tɹeɪl"
+        intervals [6]:
+            xmin = 1.55
+            xmax = 1.75
+            text = ""
+        intervals [7]:
+            xmin = 1.75
+            xmax = 2.3
+            text = "ˈfɪlɪp"
+        intervals [8]:
+            xmin = 2.3
+            xmax = 2.85
+            text = "stiːlz"
+        intervals [9]:
+            xmin = 2.85
+            xmax = 3.235063
+            text = "ɛtˈsɛtɚɹə"
+    item [3]:
+        class = "TextTier"
+        name = "events"
+        xmin = 0
+        xmax = 3.235063
+        points: size = 2
+        points [1]:
+            number = 0.05
+            mark = "breath"
+        points [2]:
+            number = 3.2
+            mark = "click"
