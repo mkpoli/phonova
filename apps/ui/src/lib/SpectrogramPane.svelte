@@ -1,6 +1,15 @@
 <script lang="ts">
-  import type { AudioInfo, CoreClientLike, SpectrogramTileRequest, ViewportState, WasmColormapName } from './types';
+  import type {
+    AudioInfo,
+    CoreClientLike,
+    OverlayParams,
+    OverlayStats,
+    SpectrogramTileRequest,
+    ViewportState,
+    WasmColormapName
+  } from './types';
   import { cssVar, FrameTimeMonitor, hexToRgb01, makeProgram, resizeCanvas } from './rendering';
+  import TrackOverlay from './TrackOverlay.svelte';
 
   interface Props {
     client: CoreClientLike | null;
@@ -9,9 +18,12 @@
     cursorTime: number;
     theme: 'light' | 'dark';
     colormap: WasmColormapName;
+    overlayParams: OverlayParams;
+    onOverlayStats?: (stats: OverlayStats) => void;
   }
 
-  let { client, audio, viewport, cursorTime, theme, colormap }: Props = $props();
+  let { client, audio, viewport, cursorTime, theme, colormap, overlayParams, onOverlayStats }: Props =
+    $props();
   let canvas = $state<HTMLCanvasElement | null>(null);
   let notice = $state('');
   let usingCanvas2d = $state(false);
@@ -186,13 +198,14 @@
 </script>
 
 <section class="pane">
+  {#key usingCanvas2d}
+    <canvas bind:this={canvas} class="canvas" data-testid="spectrogram-canvas" data-render-token={renderToken}></canvas>
+  {/key}
+  <TrackOverlay {client} {audio} {viewport} {theme} params={overlayParams} onStats={onOverlayStats} />
   <div class="pane-label">Spectrogram</div>
   {#if notice}
     <div class="notice">{notice}</div>
   {/if}
-  {#key usingCanvas2d}
-    <canvas bind:this={canvas} class="canvas" data-testid="spectrogram-canvas" data-render-token={renderToken}></canvas>
-  {/key}
 </section>
 
 <style>
@@ -216,8 +229,12 @@
     z-index: 2;
     top: 0.4rem;
     font-size: 0.75rem;
-    color: var(--muted);
     pointer-events: none;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    background: var(--chip-bg);
+    color: var(--chip-fg);
+    box-shadow: 0 0 0 1px var(--chip-ring);
   }
 
   .pane-label {

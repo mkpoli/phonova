@@ -16,6 +16,11 @@
   --warn: #b45309;
   --canvas: #f8fafc;
   --grid: rgba(15, 23, 42, 0.12);
+  /* Overlay chrome (pane labels, fallback notice) sits over the spectrogram,
+     so it carries its own backing chip rather than relying on the pane behind. */
+  --chip-bg: rgba(248, 250, 252, 0.86);
+  --chip-fg: #1f2937;
+  --chip-ring: rgba(15, 23, 42, 0.18);
 }
 
 :root.dark {
@@ -31,6 +36,9 @@
   --warn: #fbbf24;
   --canvas: #0f172a;
   --grid: rgba(226, 232, 240, 0.16);
+  --chip-bg: rgba(9, 14, 26, 0.82);
+  --chip-fg: #e5edf8;
+  --chip-ring: rgba(148, 163, 184, 0.28);
 }
 
 html,

@@ -35,9 +35,64 @@ export interface SpectrogramTileRequest {
   theme: WasmThemeName;
 }
 
+/** A pitch contour: parallel arrays, `f0` holding `NaN` on unvoiced frames. */
+export interface PitchTrackData {
+  times: Float64Array;
+  f0: Float64Array;
+  maxHz: number;
+}
+
+/** Formant candidates as flat `[time, frequency, bandwidth]` triples. */
+export interface FormantTrackData {
+  points: Float64Array;
+  maxHz: number;
+}
+
+/** An intensity contour: parallel arrays of frame times and dB SPL levels. */
+export interface IntensityTrackData {
+  times: Float64Array;
+  db: Float64Array;
+}
+
 export interface CoreClientLike {
   waveformSlice(id: AudioId, t0: number, t1: number, px: number): Promise<MinMaxPyramidSlice>;
   spectrogramTile(id: AudioId, req: SpectrogramTileRequest): Promise<ImageBitmap>;
+  pitchTrack(id: AudioId, floorHz: number, ceilingHz: number): Promise<PitchTrackData>;
+  pitchTrackSpan(
+    id: AudioId,
+    floorHz: number,
+    ceilingHz: number,
+    t0: number,
+    t1: number
+  ): Promise<PitchTrackData>;
+  formantTrack(
+    id: AudioId,
+    ceilingHz: number,
+    maxFormants: number,
+    smoothed: boolean
+  ): Promise<FormantTrackData>;
+  intensityTrack(id: AudioId, floorHz: number): Promise<IntensityTrackData>;
+}
+
+/** Per-track visibility and analysis parameters edited in the inspector. */
+export interface OverlayParams {
+  pitch: { show: boolean; floorHz: number; ceilingHz: number };
+  formant: { show: boolean; ceilingHz: number; maxFormants: number; smoothed: boolean };
+  intensity: { show: boolean; floorHz: number };
+}
+
+/** Highest tracked value per track, for the inspector's clipping badges. */
+export interface OverlayStats {
+  pitchMaxHz: number;
+  formantMaxHz: number;
+}
+
+export function defaultOverlayParams(): OverlayParams {
+  return {
+    pitch: { show: true, floorHz: 75, ceilingHz: 600 },
+    formant: { show: true, ceilingHz: 5500, maxFormants: 5, smoothed: false },
+    intensity: { show: true, floorHz: 100 }
+  };
 }
 
 export interface ViewportState {

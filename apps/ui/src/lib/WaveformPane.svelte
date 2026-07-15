@@ -207,8 +207,12 @@
     z-index: 2;
     top: 0.4rem;
     font-size: 0.75rem;
-    color: var(--muted);
     pointer-events: none;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    background: var(--chip-bg);
+    color: var(--chip-fg);
+    box-shadow: 0 0 0 1px var(--chip-ring);
   }
 
   .pane-label {

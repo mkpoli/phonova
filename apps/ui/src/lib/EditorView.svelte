@@ -3,7 +3,17 @@
   import SpectrogramPane from './SpectrogramPane.svelte';
   import TransportBar from './TransportBar.svelte';
   import WaveformPane from './WaveformPane.svelte';
-  import { clampViewport, defaultViewport, formatTime, type AudioInfo, type CoreClientLike, type ViewportState, type WasmColormapName } from './types';
+  import {
+    clampViewport,
+    defaultOverlayParams,
+    defaultViewport,
+    formatTime,
+    type AudioInfo,
+    type CoreClientLike,
+    type OverlayParams,
+    type ViewportState,
+    type WasmColormapName
+  } from './types';
 
   interface Props {
     client: CoreClientLike | null;
@@ -34,6 +44,7 @@
   }: Props = $props();
 
   let viewport = $state<ViewportState>(defaultViewport());
+  let overlayParams = $state<OverlayParams>(defaultOverlayParams());
 
   $effect(() => {
     const duration = audio?.duration ?? 1;
@@ -129,11 +140,11 @@
     {onColormapChange}
   />
 
-  <OverviewStrip {client} {audio} {viewport} onViewportChange={setViewport} />
+  <OverviewStrip {client} {audio} {viewport} {theme} onViewportChange={setViewport} />
 
   <main class="timeline" data-testid="timeline" onwheel={handleWheel} onpointerdown={handlePointer} onpointermove={handlePointer}>
     <WaveformPane {client} {audio} {viewport} {cursorTime} {theme} />
-    <SpectrogramPane {client} {audio} {viewport} {cursorTime} {theme} {colormap} />
+    <SpectrogramPane {client} {audio} {viewport} {cursorTime} {theme} {colormap} {overlayParams} />
     <div class="tier-slot" aria-hidden="true"></div>
   </main>
 

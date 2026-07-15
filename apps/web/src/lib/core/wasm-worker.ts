@@ -7,7 +7,25 @@ type RequestMessage =
   | { id: number; method: 'spectrogramTile'; audioId: AudioId; req: SpectrogramTileRequest }
   | { id: number; method: 'apply'; cmd: unknown }
   | { id: number; method: 'undo' }
-  | { id: number; method: 'pitchTrack'; audioId: AudioId; params: Record<string, unknown> };
+  | { id: number; method: 'pitchTrack'; audioId: AudioId; floorHz: number; ceilingHz: number }
+  | {
+      id: number;
+      method: 'pitchTrackSpan';
+      audioId: AudioId;
+      floorHz: number;
+      ceilingHz: number;
+      t0: number;
+      t1: number;
+    }
+  | {
+      id: number;
+      method: 'formantTrack';
+      audioId: AudioId;
+      ceilingHz: number;
+      maxFormants: number;
+      smoothed: boolean;
+    }
+  | { id: number; method: 'intensityTrack'; audioId: AudioId; floorHz: number };
 
 type ResponseMessage =
   | { id: number; ok: true; result: unknown; transfer?: never }
@@ -120,7 +138,59 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
       postMessage({ id: message.id, ok: true, result: undefined } satisfies ResponseMessage);
       return;
     }
-    postMessage({ id: message.id, ok: true, result: { times: new Float64Array(), values: new Float64Array() } });
+    if (message.method === 'pitchTrack') {
+      const track = wasm.pitchTrack(message.audioId, message.floorHz, message.ceilingHz);
+      const times = new Float64Array(track.times);
+      const f0 = new Float64Array(track.f0);
+      postMessage(
+        { id: message.id, ok: true, result: { times, f0, maxHz: track.maxHz } },
+        { transfer: [times.buffer, f0.buffer] }
+      );
+      return;
+    }
+    if (message.method === 'pitchTrackSpan') {
+      const track = wasm.pitchTrackSpan(
+        message.audioId,
+        message.floorHz,
+        message.ceilingHz,
+        message.t0,
+        message.t1
+      );
+      const times = new Float64Array(track.times);
+      const f0 = new Float64Array(track.f0);
+      postMessage(
+        { id: message.id, ok: true, result: { times, f0, maxHz: track.maxHz } },
+        { transfer: [times.buffer, f0.buffer] }
+      );
+      return;
+    }
+    if (message.method === 'formantTrack') {
+      const track = wasm.formantTrack(
+        message.audioId,
+        message.ceilingHz,
+        message.maxFormants,
+        message.smoothed
+      );
+      const points = new Float64Array(track.points);
+      postMessage(
+        { id: message.id, ok: true, result: { points, maxHz: track.maxHz } },
+        { transfer: [points.buffer] }
+      );
+      return;
+    }
+    if (message.method === 'intensityTrack') {
+      const track = wasm.intensityTrack(message.audioId, message.floorHz);
+      const times = new Float64Array(track.times);
+      const db = new Float64Array(track.db);
+      postMessage(
+        { id: message.id, ok: true, result: { times, db } },
+        { transfer: [times.buffer, db.buffer] }
+      );
+      return;
+    }
+    const unexpected: never = message;
+    const unknownId = (unexpected as { id: number }).id;
+    postMessage({ id: unknownId, ok: false, error: 'unknown method' } satisfies ResponseMessage);
   } catch (error) {
     postMessage({ id: message.id, ok: false, error: error instanceof Error ? error.message : String(error) } satisfies ResponseMessage);
   }

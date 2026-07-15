@@ -3,8 +3,10 @@ import type {
   AudioId,
   AudioInfo,
   CoreClient,
+  FormantTrackData,
+  IntensityTrackData,
   MinMaxPyramidSlice,
-  PitchTrack,
+  PitchTrackData,
   SpectrogramTileRequest
 } from './types';
 
@@ -56,8 +58,31 @@ export class WasmCoreClient implements CoreClient {
     return createImageBitmap(image);
   }
 
-  pitchTrack(id: AudioId, params: Record<string, unknown>): Promise<PitchTrack> {
-    return this.#call({ method: 'pitchTrack', audioId: id, params });
+  pitchTrack(id: AudioId, floorHz: number, ceilingHz: number): Promise<PitchTrackData> {
+    return this.#call({ method: 'pitchTrack', audioId: id, floorHz, ceilingHz });
+  }
+
+  pitchTrackSpan(
+    id: AudioId,
+    floorHz: number,
+    ceilingHz: number,
+    t0: number,
+    t1: number
+  ): Promise<PitchTrackData> {
+    return this.#call({ method: 'pitchTrackSpan', audioId: id, floorHz, ceilingHz, t0, t1 });
+  }
+
+  formantTrack(
+    id: AudioId,
+    ceilingHz: number,
+    maxFormants: number,
+    smoothed: boolean
+  ): Promise<FormantTrackData> {
+    return this.#call({ method: 'formantTrack', audioId: id, ceilingHz, maxFormants, smoothed });
+  }
+
+  intensityTrack(id: AudioId, floorHz: number): Promise<IntensityTrackData> {
+    return this.#call({ method: 'intensityTrack', audioId: id, floorHz });
   }
 
   apply(cmd: unknown): Promise<Applied> {

@@ -7,10 +7,11 @@
     client: CoreClientLike | null;
     audio: AudioInfo | null;
     viewport: ViewportState;
+    theme: 'light' | 'dark';
     onViewportChange: (viewport: ViewportState) => void;
   }
 
-  let { client, audio, viewport, onViewportChange }: Props = $props();
+  let { client, audio, viewport, theme, onViewportChange }: Props = $props();
   let canvas = $state<HTMLCanvasElement | null>(null);
   let dragOffset = $state<number | null>(null);
 
@@ -28,6 +29,7 @@
     audio?.id;
     viewport.t0;
     viewport.t1;
+    theme;
     draw();
   });
 
