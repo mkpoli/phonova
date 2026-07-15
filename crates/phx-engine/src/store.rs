@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use phx_audio::Audio;
+use serde::{Deserialize, Serialize};
 
 use crate::error::EngineError;
 use crate::pyramid::Pyramid;
@@ -18,7 +19,7 @@ use crate::pyramid::Pyramid;
 /// outside identifying a store entry; [`AudioId::as_u64`] and
 /// [`AudioId::from_u64`] exist so a thin binding layer (`phx-wasm`) can pass
 /// the id across a boundary that only understands plain numbers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct AudioId(u64);
 
 impl AudioId {
@@ -100,6 +101,43 @@ impl AudioStore {
             .get(&id)
             .map(|entry| &entry.pyramid)
             .ok_or(EngineError::UnknownAudioId(id))
+    }
+
+    /// Reports whether `id` names a live store entry.
+    #[must_use]
+    pub fn contains(&self, id: AudioId) -> bool {
+        self.entries.contains_key(&id)
+    }
+
+    /// Removes the entry for `id`, returning its audio buffer when present.
+    ///
+    /// The id is never recycled: `next_id` keeps climbing so a later
+    /// [`AudioStore::insert`] can never collide with an id that undo may still
+    /// restore through [`AudioStore::restore`].
+    pub fn remove(&mut self, id: AudioId) -> Option<Audio> {
+        self.entries.remove(&id).map(|entry| entry.audio)
+    }
+
+    /// Reinserts a previously removed buffer under its original id, rebuilding
+    /// the waveform pyramid.
+    ///
+    /// This is the redo path for an undone import: the id is the one the
+    /// original [`AudioStore::insert`] issued, so it is below `next_id` and no
+    /// live entry holds it.
+    pub fn restore(&mut self, id: AudioId, audio: Audio) {
+        let pyramid = Pyramid::build(&audio);
+        self.entries.insert(id, Entry { audio, pyramid });
+    }
+
+    /// Returns every live id in ascending order.
+    ///
+    /// The order is deterministic so [`crate::Engine::state_hash`] folds the
+    /// store the same way regardless of insertion history.
+    #[must_use]
+    pub fn ids_sorted(&self) -> Vec<AudioId> {
+        let mut ids: Vec<AudioId> = self.entries.keys().copied().collect();
+        ids.sort_unstable();
+        ids
     }
 }
 

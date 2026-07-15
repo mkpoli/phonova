@@ -2,21 +2,41 @@
 //! explicit arguments, journaled unified undo, content-addressed analysis
 //! cache.
 //!
-//! This crate currently implements the walking-skeleton slice of that
-//! surface: an audio store keyed by [`AudioId`], a cached waveform
-//! min/max pyramid, and dB→RGBA spectrogram tiles. Undo journaling and the
-//! remaining analysis commands (pitch, formants, intensity, voice report)
-//! arrive with their crates in later tasks.
+//! The mutation surface is a single journaled command path: every change to
+//! session state — audio import, annotation attachment, tier lifecycle, and
+//! the boundary and label edits of the annotation loop — goes through
+//! [`Engine::apply`], which records an id-stable inverse so [`Engine::undo`]
+//! and [`Engine::redo`] restore state-hash-identical documents (design rule 5,
+//! `docs/plan/architecture.md`; invariant 5, `docs/plan/validation.md`). The
+//! journal is in memory; persisting a session's history to the project file
+//! arrives with `phx-project` in phase 4. Analyses (pitch, formants,
+//! intensity, spectrogram tiles) stay outside the journal — they are pure
+//! functions of `(audio, params)` and never mutate a document.
 #![warn(missing_docs)]
 
+mod commands;
+mod document;
 mod error;
+mod journal;
 mod pyramid;
 mod store;
+
+use std::hash::{Hash, Hasher};
 
 use phx_audio::Audio;
 use phx_dsp::Window;
 
+use document::DocumentStore;
+use journal::{Journal, JournalEntry, Reverse};
+
+pub use commands::{Applied, Command, EngineHit};
+pub use document::{AnnotationId, Document};
 pub use error::EngineError;
+pub use phx_annot::{
+    AlignMode, Annotation, AnnotationError, BoundaryId, BoundaryMove, Hit, IntegrityIssue,
+    Interval, IntervalId, IntervalTier, LabelPattern, LabelQuery, LabelTarget, MatchSpan, Merged,
+    Moved, Point, PointId, PointTier, Tier, TierId, TierKind, TierMerge, TierRelation, TierSlot,
+};
 pub use phx_formant::{FormantFrame, FormantParams, FormantPoint, FormantTrack};
 pub use phx_intensity::{IntensityParams, IntensityTrack};
 pub use phx_pitch::{PitchFrame, PitchParams, PitchTrack};
@@ -34,6 +54,8 @@ pub use store::{AudioId, AudioInfo, AudioStore};
 #[derive(Default)]
 pub struct Engine {
     store: AudioStore,
+    documents: DocumentStore,
+    journal: Journal,
 }
 
 impl Engine {
@@ -285,6 +307,467 @@ impl Engine {
         let audio = self.store.audio(id)?;
         let view = audio.slice_samples(0..audio.frames());
         Ok(phx_intensity::intensity_track(view, params))
+    }
+
+    /// Applies one command through the journal and reports what changed.
+    ///
+    /// This is the only path that mutates a document: it runs the command,
+    /// records an id-stable inverse for [`Engine::undo`], captures the id-stable
+    /// redo, and clears the redo stack so the new command cannot be contradicted
+    /// by pending redo history. On any error the state is left untouched — every
+    /// underlying mutator commits only a fully validated result.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::Audio`] for an undecodable import,
+    /// [`EngineError::UnknownAudioId`] / [`EngineError::UnknownAnnotationId`]
+    /// for a missing target, [`EngineError::InvalidAnnotation`] for an attached
+    /// document that fails validation, and [`EngineError::Annotation`] for a
+    /// rejected annotation mutation (an out-of-range boundary, a control
+    /// character in a label, a dangling relation left by a tier removal).
+    pub fn apply(&mut self, cmd: Command) -> Result<Applied, EngineError> {
+        let (applied, entry) = self.execute(cmd)?;
+        self.journal.record(entry);
+        Ok(applied)
+    }
+
+    /// Undoes the most recent command, restoring a state-hash-identical
+    /// document, and reports what changed. Returns `None` when nothing is left
+    /// to undo.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAnnotationId`] only if a document a stored
+    /// inverse names has gone missing, which the journal's own bookkeeping
+    /// prevents in practice.
+    pub fn undo(&mut self) -> Result<Option<Applied>, EngineError> {
+        let Some(entry) = self.journal.take_undo() else {
+            return Ok(None);
+        };
+        match entry.undo.apply(&mut self.store, &mut self.documents) {
+            Ok(applied) => {
+                self.journal.park_redo(entry);
+                Ok(Some(applied))
+            }
+            Err(err) => {
+                self.journal.park_undo(entry);
+                Err(err)
+            }
+        }
+    }
+
+    /// Redoes the most recently undone command and reports what changed.
+    /// Returns `None` when nothing is left to redo.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAnnotationId`] only if a document a stored
+    /// transition names has gone missing, which the journal's own bookkeeping
+    /// prevents in practice.
+    pub fn redo(&mut self) -> Result<Option<Applied>, EngineError> {
+        let Some(entry) = self.journal.take_redo() else {
+            return Ok(None);
+        };
+        match entry.redo.apply(&mut self.store, &mut self.documents) {
+            Ok(applied) => {
+                self.journal.park_undo(entry);
+                Ok(Some(applied))
+            }
+            Err(err) => {
+                self.journal.park_redo(entry);
+                Err(err)
+            }
+        }
+    }
+
+    /// Number of commands that can still be undone.
+    #[must_use]
+    pub fn undo_depth(&self) -> usize {
+        self.journal.undo_depth()
+    }
+
+    /// Number of commands that can still be redone.
+    #[must_use]
+    pub fn redo_depth(&self) -> usize {
+        self.journal.redo_depth()
+    }
+
+    /// Returns a hash of the whole document model — every stored audio buffer's
+    /// identity and every annotation document's content.
+    ///
+    /// Two engines whose document models are equal produce the same value, and
+    /// undoing a command restores the value it had before (invariant 5,
+    /// `docs/plan/validation.md`). The fold visits ids in ascending order so the
+    /// result never depends on hash-map iteration order. The value is stable
+    /// within a process run, which is all a consistency assertion needs; it is
+    /// not a persisted content address.
+    #[must_use]
+    pub fn state_hash(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        let audio_ids = self.store.ids_sorted();
+        (audio_ids.len() as u64).hash(&mut hasher);
+        for id in audio_ids {
+            id.as_u64().hash(&mut hasher);
+            if let Ok(audio) = self.store.audio(id) {
+                (audio.frames() as u64).hash(&mut hasher);
+                audio.sample_rate().to_bits().hash(&mut hasher);
+                (audio.channel_count() as u64).hash(&mut hasher);
+                audio.name().hash(&mut hasher);
+            }
+        }
+        let doc_ids = self.documents.ids_sorted();
+        (doc_ids.len() as u64).hash(&mut hasher);
+        for id in doc_ids {
+            id.as_u64().hash(&mut hasher);
+            if let Ok(document) = self.documents.get(id) {
+                document.audio.as_u64().hash(&mut hasher);
+                hash_annotation(&document.annotation, &mut hasher);
+            }
+        }
+        hasher.finish()
+    }
+
+    /// Searches interval and point labels across every attached document.
+    ///
+    /// Each hit is tagged with the document it was found in, so a cross-project
+    /// search can navigate to the right document and then to the span within it.
+    /// Documents are visited in ascending id order.
+    #[must_use]
+    pub fn search_labels(&self, query: &LabelQuery) -> Vec<EngineHit> {
+        let mut hits = Vec::new();
+        for id in self.documents.ids_sorted() {
+            let Ok(document) = self.documents.get(id) else {
+                continue;
+            };
+            for hit in document.annotation.search(query) {
+                hits.push(EngineHit {
+                    annotation: id,
+                    hit,
+                });
+            }
+        }
+        hits
+    }
+
+    /// Returns the annotation content of a document for read-only rendering.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAnnotationId`] when `id` names no live
+    /// document.
+    pub fn annotation(&self, id: AnnotationId) -> Result<&Annotation, EngineError> {
+        Ok(&self.documents.get(id)?.annotation)
+    }
+
+    /// Returns the audio a document annotates.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAnnotationId`] when `id` names no live
+    /// document.
+    pub fn annotation_audio(&self, id: AnnotationId) -> Result<AudioId, EngineError> {
+        Ok(self.documents.get(id)?.audio)
+    }
+
+    /// Returns every live annotation id in ascending order.
+    #[must_use]
+    pub fn annotation_ids(&self) -> Vec<AnnotationId> {
+        self.documents.ids_sorted()
+    }
+
+    /// Runs a command forward against live state, returning the report and the
+    /// journal entry that reverses and reproduces it.
+    fn execute(&mut self, cmd: Command) -> Result<(Applied, JournalEntry), EngineError> {
+        use phx_annot::InverseMutation;
+
+        match cmd {
+            Command::ImportAudio { bytes, name } => {
+                let audio = Audio::from_wav_bytes(&bytes)?.with_name(name);
+                let replay = audio.clone();
+                let id = self.store.insert(audio);
+                Ok((
+                    Applied::AudioImported { audio: id },
+                    JournalEntry {
+                        undo: Reverse::RemoveAudio { id },
+                        redo: Reverse::ImportAudio {
+                            id,
+                            audio: Box::new(replay),
+                        },
+                    },
+                ))
+            }
+            Command::AttachAnnotation { audio, annotation } => {
+                if !self.store.contains(audio) {
+                    return Err(EngineError::UnknownAudioId(audio));
+                }
+                let issues = annotation.validate();
+                if !issues.is_empty() {
+                    return Err(EngineError::InvalidAnnotation(issues));
+                }
+                let document = Document {
+                    audio,
+                    annotation: annotation.clone(),
+                };
+                let id = self.documents.attach(audio, annotation);
+                Ok((
+                    Applied::AnnotationAttached {
+                        annotation: id,
+                        audio,
+                    },
+                    JournalEntry {
+                        undo: Reverse::Detach { id },
+                        redo: Reverse::Attach {
+                            id,
+                            document: Box::new(document),
+                        },
+                    },
+                ))
+            }
+            Command::AddIntervalTier {
+                annotation,
+                name,
+                relation,
+            } => {
+                let document = self.documents.get_mut(annotation)?;
+                let tier = document.annotation.add_interval_tier(&name, relation)?;
+                let (index, slot) = captured_tier(&document.annotation, tier)?;
+                Ok((
+                    Applied::TierAdded { annotation, tier },
+                    JournalEntry {
+                        undo: Reverse::RemoveTier {
+                            doc: annotation,
+                            tier,
+                        },
+                        redo: Reverse::InsertTier {
+                            doc: annotation,
+                            index,
+                            slot: Box::new(slot),
+                        },
+                    },
+                ))
+            }
+            Command::AddPointTier {
+                annotation,
+                name,
+                points,
+                relation,
+            } => {
+                let document = self.documents.get_mut(annotation)?;
+                let tier = document
+                    .annotation
+                    .add_point_tier(&name, points, relation)?;
+                let (index, slot) = captured_tier(&document.annotation, tier)?;
+                Ok((
+                    Applied::TierAdded { annotation, tier },
+                    JournalEntry {
+                        undo: Reverse::RemoveTier {
+                            doc: annotation,
+                            tier,
+                        },
+                        redo: Reverse::InsertTier {
+                            doc: annotation,
+                            index,
+                            slot: Box::new(slot),
+                        },
+                    },
+                ))
+            }
+            Command::RemoveTier { annotation, tier } => {
+                let document = self.documents.get_mut(annotation)?;
+                let (index, slot) = captured_tier(&document.annotation, tier)?;
+                let reduced = journal::remove_tier(&document.annotation, tier)?;
+                document.annotation = reduced;
+                Ok((
+                    Applied::TierRemoved { annotation, tier },
+                    JournalEntry {
+                        undo: Reverse::InsertTier {
+                            doc: annotation,
+                            index,
+                            slot: Box::new(slot),
+                        },
+                        redo: Reverse::RemoveTier {
+                            doc: annotation,
+                            tier,
+                        },
+                    },
+                ))
+            }
+            Command::InsertBoundary {
+                annotation,
+                tier,
+                at,
+            } => {
+                let document = self.documents.get_mut(annotation)?;
+                let boundary = document.annotation.insert_boundary(tier, at)?;
+                // Capture the split as a restore-merge so redo re-creates the
+                // same boundary id rather than allocating a fresh one.
+                let mut probe = document.annotation.clone();
+                let merged = probe.remove_boundary(boundary)?;
+                Ok((
+                    Applied::BoundaryInserted {
+                        annotation,
+                        tier,
+                        boundary,
+                        at,
+                    },
+                    JournalEntry {
+                        undo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::RemoveBoundary { boundary },
+                        },
+                        redo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::RestoreMergedBoundary { merged },
+                        },
+                    },
+                ))
+            }
+            Command::MoveBoundary {
+                annotation,
+                boundary,
+                to,
+                mode,
+            } => {
+                let document = self.documents.get_mut(annotation)?;
+                let moved = document.annotation.move_boundary(boundary, to, mode)?;
+                let redo_moves = moved
+                    .moves
+                    .iter()
+                    .map(|m| BoundaryMove {
+                        tier: m.tier,
+                        boundary: m.boundary,
+                        from: m.to,
+                        to: m.from,
+                    })
+                    .collect();
+                Ok((
+                    Applied::BoundaryMoved {
+                        annotation,
+                        moves: moved.moves.clone(),
+                    },
+                    JournalEntry {
+                        undo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::MoveBoundaries { moves: moved.moves },
+                        },
+                        redo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::MoveBoundaries { moves: redo_moves },
+                        },
+                    },
+                ))
+            }
+            Command::RemoveBoundary {
+                annotation,
+                boundary,
+            } => {
+                let document = self.documents.get_mut(annotation)?;
+                let merged = document.annotation.remove_boundary(boundary)?;
+                Ok((
+                    Applied::BoundaryRemoved {
+                        annotation,
+                        boundary,
+                    },
+                    JournalEntry {
+                        undo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::RestoreMergedBoundary { merged },
+                        },
+                        redo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::RemoveBoundary { boundary },
+                        },
+                    },
+                ))
+            }
+            Command::SetLabel {
+                annotation,
+                target,
+                text,
+            } => {
+                let document = self.documents.get_mut(annotation)?;
+                let change = document.annotation.set_label(target, &text)?;
+                Ok((
+                    Applied::LabelSet {
+                        annotation,
+                        target,
+                        text: change.new_text.clone(),
+                    },
+                    JournalEntry {
+                        undo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::SetLabel {
+                                target,
+                                text: change.old_text,
+                            },
+                        },
+                        redo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::SetLabel {
+                                target,
+                                text: change.new_text,
+                            },
+                        },
+                    },
+                ))
+            }
+        }
+    }
+}
+
+/// Captures a tier's document position and full slot for the journal, so undo
+/// or redo can reinstate it with every stable id intact.
+fn captured_tier(annotation: &Annotation, tier: TierId) -> Result<(usize, TierSlot), EngineError> {
+    let index = journal::tier_index(annotation, tier).ok_or(EngineError::Annotation(
+        AnnotationError::UnknownTier { tier },
+    ))?;
+    let slot = annotation.tiers()[index].clone();
+    Ok((index, slot))
+}
+
+/// Folds an annotation's content into `hasher` in document order.
+///
+/// Every field that distinguishes two documents contributes: the time domain,
+/// tier order, relations, and each interval's or point's stable ids, times, and
+/// label. Floats are hashed by bit pattern so the fold matches
+/// [`phx_annot::Annotation`]'s own bitwise equality.
+fn hash_annotation<H: Hasher>(annotation: &Annotation, hasher: &mut H) {
+    annotation.xmin().to_bits().hash(hasher);
+    annotation.xmax().to_bits().hash(hasher);
+    (annotation.tiers().len() as u64).hash(hasher);
+    for slot in annotation.tiers() {
+        slot.id.get().hash(hasher);
+        match slot.relation {
+            TierRelation::Independent => 0u8.hash(hasher),
+            TierRelation::AlignedBoundaries { with } => {
+                1u8.hash(hasher);
+                with.get().hash(hasher);
+            }
+            TierRelation::ChildOf { parent } => {
+                2u8.hash(hasher);
+                parent.get().hash(hasher);
+            }
+        }
+        match &slot.tier {
+            Tier::Interval(tier) => {
+                0u8.hash(hasher);
+                tier.name.hash(hasher);
+                (tier.intervals.len() as u64).hash(hasher);
+                for interval in &tier.intervals {
+                    interval.id.get().hash(hasher);
+                    interval.start_boundary.get().hash(hasher);
+                    interval.end_boundary.get().hash(hasher);
+                    interval.xmin.to_bits().hash(hasher);
+                    interval.xmax.to_bits().hash(hasher);
+                    interval.label.hash(hasher);
+                }
+            }
+            Tier::Point(tier) => {
+                1u8.hash(hasher);
+                tier.name.hash(hasher);
+                (tier.points.len() as u64).hash(hasher);
+                for point in &tier.points {
+                    point.id.get().hash(hasher);
+                    point.time.to_bits().hash(hasher);
+                    point.label.hash(hasher);
+                }
+            }
+        }
     }
 }
 
@@ -726,5 +1209,460 @@ mod tests {
             ),
             Err(EngineError::InvalidRequest { .. })
         ));
+    }
+
+    // --- Journal and annotation surface ---
+
+    /// Small deterministic xorshift generator; the property test needs a
+    /// reproducible command stream without pulling in an rng dependency.
+    struct Rng(u64);
+
+    impl Rng {
+        fn new(seed: u64) -> Self {
+            Self(seed | 1)
+        }
+
+        fn next_u64(&mut self) -> u64 {
+            let mut x = self.0;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            self.0 = x;
+            x
+        }
+
+        fn below(&mut self, n: usize) -> usize {
+            (self.next_u64() % n as u64) as usize
+        }
+
+        fn frac(&mut self) -> f64 {
+            (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
+        }
+    }
+
+    fn annotation_with_tier(xmax: f64) -> Annotation {
+        let mut annotation = Annotation::new(0.0, xmax).unwrap();
+        annotation
+            .add_interval_tier("phones", TierRelation::Independent)
+            .unwrap();
+        annotation
+    }
+
+    fn base_engine() -> (Engine, AudioId, AnnotationId) {
+        let mut engine = Engine::new();
+        let bytes = sine_wav_bytes(8_000, 2.0, 220.0);
+        let audio = match engine
+            .apply(Command::ImportAudio {
+                bytes,
+                name: "base".to_string(),
+            })
+            .unwrap()
+        {
+            Applied::AudioImported { audio } => audio,
+            other => panic!("expected AudioImported, got {other:?}"),
+        };
+        let annotation = annotation_with_tier(2.0);
+        let doc = match engine
+            .apply(Command::AttachAnnotation { audio, annotation })
+            .unwrap()
+        {
+            Applied::AnnotationAttached { annotation, .. } => annotation,
+            other => panic!("expected AnnotationAttached, got {other:?}"),
+        };
+        (engine, audio, doc)
+    }
+
+    fn interval_tiers(annotation: &Annotation) -> Vec<(TierId, Vec<Interval>)> {
+        annotation
+            .tiers()
+            .iter()
+            .filter_map(|slot| match &slot.tier {
+                Tier::Interval(tier) => Some((slot.id, tier.intervals.clone())),
+                Tier::Point(_) => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn attach_reports_incremental_changes_and_reads_back() {
+        let (mut engine, audio, doc) = base_engine();
+        let (tier, intervals) = {
+            let annotation = engine.annotation(doc).unwrap();
+            interval_tiers(annotation).remove(0)
+        };
+        assert_eq!(intervals.len(), 1);
+        assert_eq!(engine.annotation_audio(doc).unwrap(), audio);
+
+        let at = 1.0;
+        let boundary = match engine
+            .apply(Command::InsertBoundary {
+                annotation: doc,
+                tier,
+                at,
+            })
+            .unwrap()
+        {
+            Applied::BoundaryInserted { boundary, .. } => boundary,
+            other => panic!("expected BoundaryInserted, got {other:?}"),
+        };
+        let intervals = interval_tiers(engine.annotation(doc).unwrap()).remove(0).1;
+        assert_eq!(intervals.len(), 2);
+
+        let applied = engine
+            .apply(Command::SetLabel {
+                annotation: doc,
+                target: LabelTarget::Interval {
+                    tier,
+                    interval: intervals[0].id,
+                },
+                text: "aː".to_string(),
+            })
+            .unwrap();
+        assert!(matches!(applied, Applied::LabelSet { .. }));
+        let _ = boundary;
+    }
+
+    #[test]
+    fn undo_redo_restores_state_hash_against_untouched_engine() {
+        let (mut engine, _audio, doc) = base_engine();
+        let (mut untouched, _, _) = base_engine();
+        let baseline = engine.state_hash();
+        assert_eq!(baseline, untouched.state_hash());
+        // Both engines are independent constructions; the "untouched" one is
+        // the never-mutated reference the invariant compares against.
+        assert!(untouched.undo().unwrap().is_some());
+        assert!(untouched.redo().unwrap().is_some());
+        assert_eq!(untouched.state_hash(), baseline);
+
+        let (tier, intervals) = {
+            let annotation = engine.annotation(doc).unwrap();
+            interval_tiers(annotation).remove(0)
+        };
+        engine
+            .apply(Command::InsertBoundary {
+                annotation: doc,
+                tier,
+                at: 0.5,
+            })
+            .unwrap();
+        engine
+            .apply(Command::InsertBoundary {
+                annotation: doc,
+                tier,
+                at: 1.5,
+            })
+            .unwrap();
+        engine
+            .apply(Command::SetLabel {
+                annotation: doc,
+                target: LabelTarget::Interval {
+                    tier,
+                    interval: intervals[0].id,
+                },
+                text: "x".to_string(),
+            })
+            .unwrap();
+        let final_hash = engine.state_hash();
+        assert_ne!(final_hash, baseline);
+
+        for _ in 0..3 {
+            assert!(engine.undo().unwrap().is_some());
+        }
+        assert_eq!(engine.state_hash(), baseline);
+        assert_eq!(engine.state_hash(), untouched.state_hash());
+
+        for _ in 0..3 {
+            assert!(engine.redo().unwrap().is_some());
+        }
+        assert_eq!(engine.state_hash(), final_hash);
+    }
+
+    #[test]
+    fn redo_stack_clears_on_new_command() {
+        let (mut engine, _audio, doc) = base_engine();
+        let tier = interval_tiers(engine.annotation(doc).unwrap()).remove(0).0;
+        engine
+            .apply(Command::InsertBoundary {
+                annotation: doc,
+                tier,
+                at: 1.0,
+            })
+            .unwrap();
+        engine.undo().unwrap();
+        assert_eq!(engine.redo_depth(), 1);
+        // A fresh command discards the pending redo.
+        engine
+            .apply(Command::AddIntervalTier {
+                annotation: doc,
+                name: "words".to_string(),
+                relation: TierRelation::Independent,
+            })
+            .unwrap();
+        assert_eq!(engine.redo_depth(), 0);
+        assert!(engine.redo().unwrap().is_none());
+    }
+
+    #[test]
+    fn tier_lifecycle_undo_restores_ids() {
+        let (mut engine, _audio, doc) = base_engine();
+        let before = engine.state_hash();
+        let tier = match engine
+            .apply(Command::AddPointTier {
+                annotation: doc,
+                name: "tones".to_string(),
+                points: vec![(0.5, "H".to_string()), (1.5, "L".to_string())],
+                relation: TierRelation::Independent,
+            })
+            .unwrap()
+        {
+            Applied::TierAdded { tier, .. } => tier,
+            other => panic!("expected TierAdded, got {other:?}"),
+        };
+        let added = engine.state_hash();
+        engine
+            .apply(Command::RemoveTier {
+                annotation: doc,
+                tier,
+            })
+            .unwrap();
+        assert_eq!(engine.state_hash(), before);
+        engine.undo().unwrap(); // undo the removal
+        assert_eq!(engine.state_hash(), added);
+        engine.undo().unwrap(); // undo the addition
+        assert_eq!(engine.state_hash(), before);
+    }
+
+    #[test]
+    fn search_labels_spans_all_documents() {
+        let (mut engine, audio, first) = base_engine();
+        let tier = interval_tiers(engine.annotation(first).unwrap())
+            .remove(0)
+            .0;
+        let interval = interval_tiers(engine.annotation(first).unwrap())
+            .remove(0)
+            .1[0]
+            .id;
+        engine
+            .apply(Command::SetLabel {
+                annotation: first,
+                target: LabelTarget::Interval { tier, interval },
+                text: "vowel".to_string(),
+            })
+            .unwrap();
+
+        let second_annotation = {
+            let mut a = annotation_with_tier(2.0);
+            let (tier_id, intervals) = interval_tiers(&a).remove(0);
+            a.set_label(
+                LabelTarget::Interval {
+                    tier: tier_id,
+                    interval: intervals[0].id,
+                },
+                "vowel space",
+            )
+            .unwrap();
+            a
+        };
+        let second = match engine
+            .apply(Command::AttachAnnotation {
+                audio,
+                annotation: second_annotation,
+            })
+            .unwrap()
+        {
+            Applied::AnnotationAttached { annotation, .. } => annotation,
+            other => panic!("expected AnnotationAttached, got {other:?}"),
+        };
+
+        let hits = engine.search_labels(&LabelQuery::substring("vowel"));
+        assert_eq!(hits.len(), 2);
+        let docs: Vec<AnnotationId> = hits.iter().map(|hit| hit.annotation).collect();
+        assert!(docs.contains(&first));
+        assert!(docs.contains(&second));
+    }
+
+    /// Roadmap phase-3 gate: a random 50-command mix undone in full returns to
+    /// the initial state hash, and redone in full returns to the final one.
+    #[test]
+    fn random_fifty_command_undo_stack_is_hash_stable() {
+        let (mut engine, audio, doc) = base_engine();
+        let initial = engine.state_hash();
+
+        let mut rng = Rng::new(0x9E37_79B9_7F4A_7C15);
+        let mut name_counter = 0_u32;
+        let mut applied_hashes = Vec::new();
+        let mut guard = 0;
+
+        while applied_hashes.len() < 50 {
+            guard += 1;
+            assert!(guard < 20_000, "generator failed to reach 50 commands");
+            let Some(cmd) = gen_command(&engine, audio, doc, &mut rng, &mut name_counter) else {
+                continue;
+            };
+            if engine.apply(cmd).is_ok() {
+                applied_hashes.push(engine.state_hash());
+            }
+        }
+
+        let final_hash = engine.state_hash();
+        assert_eq!(engine.undo_depth(), 52); // 50 + import + attach
+
+        // Undo the 50 generated commands; each step matches the hash recorded
+        // just before it was applied.
+        for expected in applied_hashes.iter().rev().skip(1) {
+            engine.undo().unwrap();
+            assert_eq!(engine.state_hash(), *expected);
+        }
+        engine.undo().unwrap();
+        assert_eq!(engine.state_hash(), initial);
+
+        // Redo the 50 commands; each step reproduces its recorded hash.
+        for expected in &applied_hashes {
+            engine.redo().unwrap();
+            assert_eq!(engine.state_hash(), *expected);
+        }
+        assert_eq!(engine.state_hash(), final_hash);
+    }
+
+    /// Chooses a state-valid command from the current engine, or `None` when
+    /// the roll cannot be satisfied (the caller retries). Content targets are
+    /// read from live state so the generated command almost always applies.
+    fn gen_command(
+        engine: &Engine,
+        audio: AudioId,
+        doc: AnnotationId,
+        rng: &mut Rng,
+        name_counter: &mut u32,
+    ) -> Option<Command> {
+        let annotation = engine.annotation(doc).ok()?;
+        let tiers = interval_tiers(annotation);
+        let roll = rng.below(100);
+
+        match roll {
+            0..=44 => {
+                // Set a label on a random interval.
+                if tiers.is_empty() {
+                    return None;
+                }
+                let (tier, intervals) = &tiers[rng.below(tiers.len())];
+                let interval = &intervals[rng.below(intervals.len())];
+                let text = format!("l{}", rng.below(1000));
+                Some(Command::SetLabel {
+                    annotation: doc,
+                    target: LabelTarget::Interval {
+                        tier: *tier,
+                        interval: interval.id,
+                    },
+                    text,
+                })
+            }
+            45..=64 => {
+                // Split a wide interval at an interior fraction.
+                let wide: Vec<&(TierId, Vec<Interval>)> = tiers
+                    .iter()
+                    .filter(|(_, ivs)| ivs.iter().any(|iv| iv.xmax - iv.xmin > 1.0e-3))
+                    .collect();
+                if wide.is_empty() {
+                    return None;
+                }
+                let (tier, intervals) = wide[rng.below(wide.len())];
+                let candidates: Vec<&Interval> = intervals
+                    .iter()
+                    .filter(|iv| iv.xmax - iv.xmin > 1.0e-3)
+                    .collect();
+                let interval = candidates[rng.below(candidates.len())];
+                let frac = 0.2 + 0.6 * rng.frac();
+                let at = interval.xmin + frac * (interval.xmax - interval.xmin);
+                if at.to_bits() == interval.xmin.to_bits()
+                    || at.to_bits() == interval.xmax.to_bits()
+                {
+                    return None;
+                }
+                Some(Command::InsertBoundary {
+                    annotation: doc,
+                    tier: *tier,
+                    at,
+                })
+            }
+            65..=77 => {
+                // Move an interior boundary within its neighbours.
+                let (_tier, intervals) = pick_multi_interval(&tiers, rng)?;
+                let i = rng.below(intervals.len() - 1);
+                let lo = intervals[i].xmin;
+                let hi = intervals[i + 1].xmax;
+                let frac = 0.2 + 0.6 * rng.frac();
+                let at = lo + frac * (hi - lo);
+                if at.to_bits() == intervals[i].xmax.to_bits() {
+                    return None;
+                }
+                Some(Command::MoveBoundary {
+                    annotation: doc,
+                    boundary: intervals[i].end_boundary,
+                    to: at,
+                    mode: AlignMode::Linked,
+                })
+            }
+            78..=85 => {
+                // Remove an interior boundary.
+                let (_tier, intervals) = pick_multi_interval(&tiers, rng)?;
+                let i = rng.below(intervals.len() - 1);
+                Some(Command::RemoveBoundary {
+                    annotation: doc,
+                    boundary: intervals[i].end_boundary,
+                })
+            }
+            86..=90 => {
+                *name_counter += 1;
+                Some(Command::AddIntervalTier {
+                    annotation: doc,
+                    name: format!("tier{name_counter}"),
+                    relation: TierRelation::Independent,
+                })
+            }
+            91..=93 => {
+                // Remove a tier other than the primary one, when one exists.
+                if annotation.tiers().len() < 2 {
+                    return None;
+                }
+                let slot = &annotation.tiers()[1 + rng.below(annotation.tiers().len() - 1)];
+                Some(Command::RemoveTier {
+                    annotation: doc,
+                    tier: slot.id,
+                })
+            }
+            94..=96 => {
+                *name_counter += 1;
+                Some(Command::AddPointTier {
+                    annotation: doc,
+                    name: format!("pts{name_counter}"),
+                    points: vec![(0.4, "a".to_string()), (1.2, "b".to_string())],
+                    relation: TierRelation::Independent,
+                })
+            }
+            97 => Some(Command::AttachAnnotation {
+                audio,
+                annotation: annotation_with_tier(2.0),
+            }),
+            _ => {
+                let bytes = sine_wav_bytes(8_000, 0.2, 300.0);
+                Some(Command::ImportAudio {
+                    bytes,
+                    name: format!("clip{name_counter}"),
+                })
+            }
+        }
+    }
+
+    fn pick_multi_interval<'a>(
+        tiers: &'a [(TierId, Vec<Interval>)],
+        rng: &mut Rng,
+    ) -> Option<(TierId, &'a Vec<Interval>)> {
+        let multi: Vec<&(TierId, Vec<Interval>)> =
+            tiers.iter().filter(|(_, ivs)| ivs.len() >= 2).collect();
+        if multi.is_empty() {
+            return None;
+        }
+        let (tier, intervals) = multi[rng.below(multi.len())];
+        Some((*tier, intervals))
     }
 }
