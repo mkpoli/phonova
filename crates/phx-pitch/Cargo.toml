@@ -6,4 +6,5 @@ license.workspace = true
 description = "Window-corrected autocorrelation candidates + Viterbi path finder (Boersma 1993); full parameter surface with Praat-documented defaults"
 
 [dependencies]
+phx-audio = { workspace = true }
 phx-dsp = { workspace = true }
