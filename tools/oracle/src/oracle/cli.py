@@ -133,16 +133,16 @@ def _cmd_diff_all(args: argparse.Namespace) -> int:
 
     overall_pass = True
     for ref_path in ref_files:
+        reference = jsonio.read_json(ref_path)
+        if reference.get("measure") == "spectrogram":
+            print(f"[SKIP] {ref_path.name}: spectrogram is not oracle-diffed (see validation.md)")
+            continue
         measured_path = measured_dir / ref_path.name
         if not measured_path.is_file():
             print(f"[MISSING] no measured file for {ref_path.name} (expected {measured_path})")
             overall_pass = False
             continue
-        reference = jsonio.read_json(ref_path)
         measured = jsonio.read_json(measured_path)
-        if reference.get("measure") == "spectrogram":
-            print(f"[SKIP] {ref_path.name}: spectrogram is not oracle-diffed (see validation.md)")
-            continue
         try:
             report = diff(reference, measured)
         except DiffError as exc:
