@@ -1,0 +1,15 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "description": "Deliberately invalid Vega-Lite spec for figcheck's vega backend self-test: the mark is a number instead of a mark type/definition, so schema validation must fail.",
+  "data": {
+    "values": [
+      { "x": 0, "y": 0 },
+      { "x": 1, "y": 1 }
+    ]
+  },
+  "mark": 42,
+  "encoding": {
+    "x": { "field": "x", "type": "quantitative" },
+    "y": { "field": "y", "type": "quantitative" }
+  }
+}
