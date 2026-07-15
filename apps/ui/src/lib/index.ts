@@ -1,4 +1,5 @@
 export { default as EditorView } from './EditorView.svelte';
+export { default as InspectorPanel } from './InspectorPanel.svelte';
 export { default as OverviewStrip } from './OverviewStrip.svelte';
 export { default as SpectrogramPane } from './SpectrogramPane.svelte';
 export { default as TrackOverlay } from './TrackOverlay.svelte';

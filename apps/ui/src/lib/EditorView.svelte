@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InspectorPanel from './InspectorPanel.svelte';
   import OverviewStrip from './OverviewStrip.svelte';
   import SpectrogramPane from './SpectrogramPane.svelte';
   import TransportBar from './TransportBar.svelte';
@@ -11,6 +12,7 @@
     type AudioInfo,
     type CoreClientLike,
     type OverlayParams,
+    type OverlayStats,
     type ViewportState,
     type WasmColormapName
   } from './types';
@@ -45,6 +47,8 @@
 
   let viewport = $state<ViewportState>(defaultViewport());
   let overlayParams = $state<OverlayParams>(defaultOverlayParams());
+  let overlayStats = $state<OverlayStats>({ pitchMaxHz: 0, formantMaxHz: 0 });
+  let inspectorOpen = $state(true);
 
   $effect(() => {
     const duration = audio?.duration ?? 1;
@@ -115,6 +119,9 @@
     } else if (event.key === '0' || event.key.toLowerCase() === 'f') {
       event.preventDefault();
       fitFile();
+    } else if (event.key.toLowerCase() === 'i') {
+      event.preventDefault();
+      inspectorOpen = !inspectorOpen;
     }
   }
 </script>
@@ -142,15 +149,41 @@
 
   <OverviewStrip {client} {audio} {viewport} {theme} onViewportChange={setViewport} />
 
-  <main class="timeline" data-testid="timeline" onwheel={handleWheel} onpointerdown={handlePointer} onpointermove={handlePointer}>
-    <WaveformPane {client} {audio} {viewport} {cursorTime} {theme} />
-    <SpectrogramPane {client} {audio} {viewport} {cursorTime} {theme} {colormap} {overlayParams} />
-    <div class="tier-slot" aria-hidden="true"></div>
-  </main>
+  <div class="workspace">
+    <main class="timeline" data-testid="timeline" onwheel={handleWheel} onpointerdown={handlePointer} onpointermove={handlePointer}>
+      <WaveformPane {client} {audio} {viewport} {cursorTime} {theme} />
+      <SpectrogramPane
+        {client}
+        {audio}
+        {viewport}
+        {cursorTime}
+        {theme}
+        {colormap}
+        {overlayParams}
+        onOverlayStats={(stats) => (overlayStats = stats)}
+      />
+      <div class="tier-slot" aria-hidden="true"></div>
+    </main>
+
+    {#if inspectorOpen}
+      <InspectorPanel params={overlayParams} stats={overlayStats} onClose={() => (inspectorOpen = false)} />
+    {/if}
+  </div>
 
   <footer class="status">
     <span>t {formatTime(cursorTime)}</span>
-    <span>{audio ? `${audio.sampleRate.toFixed(0)} Hz / ${audio.channels} ch` : 'No audio'}</span>
+    <span class="status-right">
+      <span>{audio ? `${audio.sampleRate.toFixed(0)} Hz / ${audio.channels} ch` : 'No audio'}</span>
+      <button
+        type="button"
+        class="inspector-toggle"
+        data-testid="inspector-toggle"
+        aria-pressed={inspectorOpen}
+        onclick={() => (inspectorOpen = !inspectorOpen)}
+      >
+        Inspector {inspectorOpen ? '▸' : '◂'}
+      </button>
+    </span>
   </footer>
 </div>
 
@@ -161,6 +194,12 @@
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     background: var(--chrome);
     color: var(--text);
+  }
+
+  .workspace {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .timeline {
@@ -187,5 +226,20 @@
     background: var(--panel);
     font-size: 0.82rem;
     font-variant-numeric: tabular-nums;
+  }
+
+  .status-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .inspector-toggle {
+    border: 1px solid var(--chrome-strong);
+    border-radius: 5px;
+    background: var(--panel-soft);
+    color: var(--text);
+    padding: 0.15rem 0.5rem;
+    font-size: 0.78rem;
   }
 </style>
