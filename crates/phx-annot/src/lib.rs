@@ -1,5 +1,6 @@
 //! Annotation documents with interval tiers, point tiers, typed tier relations,
-//! integrity validation, and invertible label and boundary mutations.
+//! integrity validation, and invertible label, boundary, point, and tier-order
+//! mutations.
 #![warn(missing_docs)]
 
 use regex::Regex;
@@ -401,6 +402,87 @@ impl Annotation {
         })
     }
 
+    /// Inserts a point into a point tier at its time-sorted position.
+    pub fn insert_point(
+        &mut self,
+        tier: TierId,
+        time: f64,
+        label: &str,
+    ) -> Result<PointInsertion, AnnotationError> {
+        if !time.is_finite() {
+            return Err(AnnotationError::NonFiniteTime {
+                value: time,
+                context: TimeRole::Point,
+            });
+        }
+        reject_control_label(label)?;
+        let mut candidate = self.clone();
+        let id = candidate.alloc_point_id();
+        let point = candidate.insert_point_into_tier(
+            tier,
+            Point {
+                id,
+                time,
+                label: label.to_owned(),
+            },
+        )?;
+        candidate.commit_if_valid()?;
+        *self = candidate;
+        Ok(PointInsertion { tier, point })
+    }
+
+    /// Moves a point to `to` seconds, keeping its stable identifier.
+    pub fn move_point(&mut self, id: PointId, to: f64) -> Result<PointMoved, AnnotationError> {
+        if !to.is_finite() {
+            return Err(AnnotationError::NonFiniteTime {
+                value: to,
+                context: TimeRole::Point,
+            });
+        }
+        let mut candidate = self.clone();
+        let (tier, from) = candidate.move_point_time(id, to)?;
+        candidate.commit_if_valid()?;
+        *self = candidate;
+        Ok(PointMoved {
+            tier,
+            point: id,
+            from,
+            to,
+        })
+    }
+
+    /// Removes a point by stable identifier.
+    pub fn remove_point(&mut self, id: PointId) -> Result<PointRemoval, AnnotationError> {
+        let mut candidate = self.clone();
+        let (tier, point) = candidate.remove_point_by_id(id)?;
+        candidate.commit_if_valid()?;
+        *self = candidate;
+        Ok(PointRemoval { tier, point })
+    }
+
+    /// Moves a tier to `to_index` in document order, keeping every stable id.
+    ///
+    /// `to_index` is clamped to the last position. Tier relations reference
+    /// stable ids, not positions, so reordering never changes document validity.
+    pub fn reorder_tier(
+        &mut self,
+        tier: TierId,
+        to_index: usize,
+    ) -> Result<TierReorder, AnnotationError> {
+        let from_index = self.tier_index(tier)?;
+        let to_index = to_index.min(self.tiers.len() - 1);
+        let mut candidate = self.clone();
+        let slot = candidate.tiers.remove(from_index);
+        candidate.tiers.insert(to_index, slot);
+        candidate.commit_if_valid()?;
+        *self = candidate;
+        Ok(TierReorder {
+            tier,
+            from_index,
+            to_index,
+        })
+    }
+
     /// Searches interval and point labels and returns byte spans for every match.
     pub fn search(&self, query: &LabelQuery) -> Vec<Hit> {
         let matcher = match query.matcher() {
@@ -484,6 +566,22 @@ impl Annotation {
             }
             InverseMutation::SetLabel { target, text } => {
                 self.set_label(*target, text)?;
+            }
+            InverseMutation::RemovePoint { point } => {
+                self.remove_point(*point)?;
+            }
+            InverseMutation::RestorePoint { tier, point } => {
+                let mut candidate = self.clone();
+                candidate.insert_point_into_tier(*tier, point.clone())?;
+                candidate.reseed_ids();
+                candidate.commit_if_valid()?;
+                *self = candidate;
+            }
+            InverseMutation::MovePoint { point, to } => {
+                self.move_point(*point, *to)?;
+            }
+            InverseMutation::ReorderTier { tier, to_index } => {
+                self.reorder_tier(*tier, *to_index)?;
             }
         }
         Ok(())
@@ -1067,6 +1165,51 @@ impl Annotation {
             }
         }
     }
+
+    fn insert_point_into_tier(
+        &mut self,
+        tier: TierId,
+        point: Point,
+    ) -> Result<Point, AnnotationError> {
+        let index = self.tier_index(tier)?;
+        let tier_id = self.tiers[index].id;
+        let Tier::Point(tier_data) = &mut self.tiers[index].tier else {
+            return Err(AnnotationError::InvalidTierKind {
+                tier: tier_id,
+                expected: TierKind::Point,
+            });
+        };
+        let position = tier_data
+            .points
+            .partition_point(|existing| existing.time < point.time);
+        tier_data.points.insert(position, point.clone());
+        Ok(point)
+    }
+
+    fn move_point_time(&mut self, id: PointId, to: f64) -> Result<(TierId, f64), AnnotationError> {
+        for slot in &mut self.tiers {
+            if let Tier::Point(tier_data) = &mut slot.tier
+                && let Some(point) = tier_data.points.iter_mut().find(|point| point.id == id)
+            {
+                let from = point.time;
+                point.time = to;
+                return Ok((slot.id, from));
+            }
+        }
+        Err(AnnotationError::UnknownPoint { point: id })
+    }
+
+    fn remove_point_by_id(&mut self, id: PointId) -> Result<(TierId, Point), AnnotationError> {
+        for slot in &mut self.tiers {
+            if let Tier::Point(tier_data) = &mut slot.tier
+                && let Some(position) = tier_data.points.iter().position(|point| point.id == id)
+            {
+                let removed = tier_data.points.remove(position);
+                return Ok((slot.id, removed));
+            }
+        }
+        Err(AnnotationError::UnknownPoint { point: id })
+    }
 }
 
 /// Ordered tier entry carrying the tier identifier and relation.
@@ -1393,6 +1536,95 @@ impl LabelChange {
     }
 }
 
+/// Successful point insertion payload.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PointInsertion {
+    /// Tier that received the point.
+    pub tier: TierId,
+    /// Inserted point, carrying its allocated identifier.
+    pub point: Point,
+}
+
+impl PointInsertion {
+    /// Builds the inverse operation for a successful `Annotation::insert_point` call.
+    ///
+    /// Applying the inverse removes the inserted point by its allocated id.
+    pub fn inverse(&self) -> InverseMutation {
+        InverseMutation::RemovePoint {
+            point: self.point.id,
+        }
+    }
+}
+
+/// Successful point movement payload.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PointMoved {
+    /// Tier containing the point.
+    pub tier: TierId,
+    /// Point that moved.
+    pub point: PointId,
+    /// Previous point time in seconds.
+    pub from: f64,
+    /// New point time in seconds.
+    pub to: f64,
+}
+
+impl PointMoved {
+    /// Builds the inverse operation for a successful `Annotation::move_point` call.
+    ///
+    /// Applying the inverse returns the point to its previous time.
+    pub fn inverse(&self) -> InverseMutation {
+        InverseMutation::MovePoint {
+            point: self.point,
+            to: self.from,
+        }
+    }
+}
+
+/// Successful point removal payload.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PointRemoval {
+    /// Tier that held the point.
+    pub tier: TierId,
+    /// Removed point, carrying its identifier, time, and label.
+    pub point: Point,
+}
+
+impl PointRemoval {
+    /// Builds the inverse operation for a successful `Annotation::remove_point` call.
+    ///
+    /// Applying the inverse restores the exact point at its time-sorted position.
+    pub fn inverse(&self) -> InverseMutation {
+        InverseMutation::RestorePoint {
+            tier: self.tier,
+            point: self.point.clone(),
+        }
+    }
+}
+
+/// Successful tier reorder payload.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TierReorder {
+    /// Tier that moved.
+    pub tier: TierId,
+    /// Index the tier occupied before the move.
+    pub from_index: usize,
+    /// Index the tier occupies after the move.
+    pub to_index: usize,
+}
+
+impl TierReorder {
+    /// Builds the inverse operation for a successful `Annotation::reorder_tier` call.
+    ///
+    /// Applying the inverse moves the tier back to the index it left.
+    pub fn inverse(&self) -> InverseMutation {
+        InverseMutation::ReorderTier {
+            tier: self.tier,
+            to_index: self.from_index,
+        }
+    }
+}
+
 /// Stored inverse mutation that can undo a successful mutator call.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum InverseMutation {
@@ -1417,6 +1649,32 @@ pub enum InverseMutation {
         target: LabelTarget,
         /// Label text to restore.
         text: String,
+    },
+    /// Undo a point insertion by removing the inserted point.
+    RemovePoint {
+        /// Point returned by `Annotation::insert_point`.
+        point: PointId,
+    },
+    /// Undo a point removal by restoring the exact point at its sorted position.
+    RestorePoint {
+        /// Tier that held the point.
+        tier: TierId,
+        /// Point to restore, with its original identifier, time, and label.
+        point: Point,
+    },
+    /// Undo a point movement by returning the point to its previous time.
+    MovePoint {
+        /// Point to move.
+        point: PointId,
+        /// Time to restore.
+        to: f64,
+    },
+    /// Undo a tier reorder by moving the tier back to its previous index.
+    ReorderTier {
+        /// Tier to move.
+        tier: TierId,
+        /// Index to restore.
+        to_index: usize,
     },
 }
 
@@ -2397,12 +2655,16 @@ mod tests {
             let steps = 20 + (next() % 80) as usize;
 
             for _ in 0..steps {
-                let operation = next() % 4;
+                let operation = next() % 8;
                 let inverse = match operation {
                     0 => random_insert(&mut doc, &mut next),
                     1 => random_move(&mut doc, &mut next),
                     2 => random_remove(&mut doc, &mut next),
-                    _ => random_label(&mut doc, &mut next),
+                    3 => random_label(&mut doc, &mut next),
+                    4 => random_insert_point(&mut doc, &mut next),
+                    5 => random_move_point(&mut doc, &mut next),
+                    6 => random_remove_point(&mut doc, &mut next),
+                    _ => random_reorder(&mut doc, &mut next),
                 };
                 if let Some(inverse) = inverse {
                     assert_eq!(doc.validate(), Vec::new());
@@ -2534,6 +2796,119 @@ mod tests {
         doc.set_label(target, &text)
             .ok()
             .map(|change| change.inverse())
+    }
+
+    fn random_insert_point<F>(doc: &mut Annotation, next: &mut F) -> Option<InverseMutation>
+    where
+        F: FnMut() -> u64,
+    {
+        let tiers = point_tiers(doc);
+        if tiers.is_empty() {
+            return None;
+        }
+        let (tier, points) = tiers[(next() as usize) % tiers.len()].clone();
+        let times = point_insert_times(doc, &points);
+        if times.is_empty() {
+            return None;
+        }
+        let at = times[(next() as usize) % times.len()];
+        let label = format!("p{}", next() % 17);
+        doc.insert_point(tier, at, &label)
+            .ok()
+            .map(|insertion| insertion.inverse())
+    }
+
+    fn random_move_point<F>(doc: &mut Annotation, next: &mut F) -> Option<InverseMutation>
+    where
+        F: FnMut() -> u64,
+    {
+        let movable = movable_points(doc);
+        if movable.is_empty() {
+            return None;
+        }
+        let (point, lower, upper) = movable[(next() as usize) % movable.len()];
+        let numerator = 1 + (next() % 8);
+        let to = lower + (upper - lower) * numerator as f64 / 9.0;
+        if to.to_bits() == lower.to_bits() || to.to_bits() == upper.to_bits() {
+            return None;
+        }
+        doc.move_point(point, to).ok().map(|moved| moved.inverse())
+    }
+
+    fn random_remove_point<F>(doc: &mut Annotation, next: &mut F) -> Option<InverseMutation>
+    where
+        F: FnMut() -> u64,
+    {
+        let ids: Vec<PointId> = point_tiers(doc)
+            .into_iter()
+            .flat_map(|(_tier, points)| points.into_iter().map(|point| point.id))
+            .collect();
+        if ids.is_empty() {
+            return None;
+        }
+        let id = ids[(next() as usize) % ids.len()];
+        doc.remove_point(id).ok().map(|removal| removal.inverse())
+    }
+
+    fn random_reorder<F>(doc: &mut Annotation, next: &mut F) -> Option<InverseMutation>
+    where
+        F: FnMut() -> u64,
+    {
+        let count = doc.tiers().len();
+        if count < 2 {
+            return None;
+        }
+        let tier = doc.tiers()[(next() as usize) % count].id;
+        let to_index = (next() as usize) % count;
+        doc.reorder_tier(tier, to_index)
+            .ok()
+            .map(|reorder| reorder.inverse())
+    }
+
+    fn point_tiers(doc: &Annotation) -> Vec<(TierId, Vec<Point>)> {
+        doc.tiers()
+            .iter()
+            .filter_map(|slot| match &slot.tier {
+                Tier::Point(tier) => Some((slot.id, tier.points.clone())),
+                Tier::Interval(_) => None,
+            })
+            .collect()
+    }
+
+    fn point_insert_times(doc: &Annotation, points: &[Point]) -> Vec<f64> {
+        let mut fence = vec![doc.xmin()];
+        fence.extend(points.iter().map(|point| point.time));
+        fence.push(doc.xmax());
+        fence
+            .windows(2)
+            .filter_map(|pair| {
+                let mid = (pair[0] + pair[1]) / 2.0;
+                (mid.to_bits() != pair[0].to_bits() && mid.to_bits() != pair[1].to_bits())
+                    .then_some(mid)
+            })
+            .collect()
+    }
+
+    fn movable_points(doc: &Annotation) -> Vec<(PointId, f64, f64)> {
+        let mut out = Vec::new();
+        for (_tier, points) in point_tiers(doc) {
+            for (index, point) in points.iter().enumerate() {
+                let lower = if index > 0 {
+                    points[index - 1].time
+                } else {
+                    doc.xmin()
+                };
+                let upper = if index + 1 < points.len() {
+                    points[index + 1].time
+                } else {
+                    doc.xmax()
+                };
+                if upper > lower {
+                    out.push((point.id, lower, upper));
+                }
+            }
+        }
+        out
     }
 
     fn candidate_insert_times(doc: &Annotation, tier: TierId) -> Vec<f64> {
