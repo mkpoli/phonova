@@ -6,4 +6,5 @@ license.workspace = true
 description = "Squared signal convolved with Gaussian window (3.2/pitchFloor), dB SPL re 2x10^-5 Pa"
 
 [dependencies]
+phx-audio = { workspace = true }
 phx-dsp = { workspace = true }
