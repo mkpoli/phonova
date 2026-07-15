@@ -12,7 +12,7 @@
 //!
 //! Case -> phx crate mapping (`docs/plan/tasks/phase-2.md` T2.1-T2.3):
 //!   - `pitch-defaults`     -> `phx_pitch::pitch_track`
-//!   - `formant-defaults`   -> `phx_formant::{formant_track, track_smoothed}`
+//!   - `formant-defaults`   -> `phx_formant::formant_track`
 //!   - `intensity-defaults` -> `phx_intensity::intensity_track`
 //!
 //! Frames are emitted exactly as each crate's own [`phx_dsp::FrameGrid`]
@@ -34,7 +34,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use phx_audio::{Audio, AudioView};
-use phx_formant::{FormantParams, TrackingRefs, formant_track, track_smoothed};
+use phx_formant::{FormantParams, formant_track};
 use phx_intensity::{IntensityParams, intensity_track};
 use phx_pitch::{PitchParams, pitch_track};
 
@@ -231,26 +231,25 @@ fn pitch_params_json(params: &PitchParams) -> Json {
 
 /// Runs `phx_formant::formant_track` with `FormantParams::default()` -- the
 /// same defaults `oracle.params.FormantParams()` declares (both mirror
-/// Praat's "Sound: To Formant (burg)..." documented defaults) -- then
-/// `track_smoothed` with `TrackingRefs::default()` to assign candidates to
-/// formant slots, and builds the `formant-defaults` measured payload.
+/// Praat's "Sound: To Formant (burg)..." documented defaults) -- and builds
+/// the `formant-defaults` measured payload from the raw per-frame Burg
+/// candidates.
 ///
-/// `oracle.measures.formant_frames` reads parselmouth's own per-slot tracked
-/// value (`Formant.get_value_at_time(slot, t)` for `slot` in `1..=max_formants`).
-/// `phx_formant`'s public [`phx_formant::FormantFrame`] does the analogous
-/// Xia-Espy-Wilson-style DP slot assignment in `track_smoothed`, but its
-/// output type stores only the *present* slots for a frame, in ascending
-/// order, without each candidate's original slot index. This bridge numbers
-/// formants positionally (`1..=formants.len()`), which is exact whenever a
-/// frame has no internal gap (every lower slot filled before a higher one)
-/// and only approximate when a frame has a gap -- a limitation of
-/// `phx_formant`'s current public surface, not something worked around here.
+/// `oracle.measures.formant_frames` reads parselmouth's `to_formant_burg`
+/// output (`Formant.get_value_at_time(slot, t)` for `slot` in
+/// `1..=max_formants`), which is Praat's raw per-frame Burg result -- Praat
+/// numbers the formants within each frame by ascending frequency and applies
+/// trajectory tracking only through the separate `Formant: Track...` command,
+/// which this case does not invoke. The Rust side matches it with the raw
+/// `formant_track` output, whose `FormantFrame::formants` are likewise the
+/// frequency-gated Burg roots sorted ascending. Numbering them positionally
+/// (`1..=formants.len()`) therefore reproduces Praat's ascending 1-based slot
+/// numbering exactly, with no tracking layer on either side.
 fn formant_payload(view: AudioView<'_>, audio_filename: &str) -> Json {
     let params = FormantParams::default();
     let raw = formant_track(view, &params);
-    let tracked = track_smoothed(&raw, &TrackingRefs::default());
 
-    let frames = tracked
+    let frames = raw
         .frames
         .iter()
         .map(|frame| {
