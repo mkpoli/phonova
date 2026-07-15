@@ -1,13 +1,22 @@
 import type {
-  Applied,
+  AnnotationId,
+  AppliedChange,
   AudioId,
   AudioInfo,
+  BoundaryId,
   CoreClient,
   FormantTrackData,
   IntensityTrackData,
+  IntervalData,
+  IntervalId,
+  LabelHit,
   MinMaxPyramidSlice,
   PitchTrackData,
-  SpectrogramTileRequest
+  PointData,
+  PointId,
+  SpectrogramTileRequest,
+  TierId,
+  TierInfo
 } from './types';
 
 type Pending = {
@@ -85,12 +94,110 @@ export class WasmCoreClient implements CoreClient {
     return this.#call({ method: 'intensityTrack', audioId: id, floorHz });
   }
 
-  apply(cmd: unknown): Promise<Applied> {
-    return this.#call({ method: 'apply', cmd });
+  createAnnotation(audioId: AudioId, xmin: number, xmax: number): Promise<AnnotationId> {
+    return this.#call({ method: 'createAnnotation', audioId, xmin, xmax });
   }
 
-  undo(): Promise<void> {
+  addIntervalTier(annotationId: AnnotationId, name: string): Promise<TierId> {
+    return this.#call({ method: 'addIntervalTier', annotationId, name });
+  }
+
+  addPointTier(annotationId: AnnotationId, name: string): Promise<TierId> {
+    return this.#call({ method: 'addPointTier', annotationId, name });
+  }
+
+  removeTier(annotationId: AnnotationId, tierId: TierId): Promise<AppliedChange> {
+    return this.#call({ method: 'removeTier', annotationId, tierId });
+  }
+
+  insertBoundary(annotationId: AnnotationId, tierId: TierId, at: number): Promise<BoundaryId> {
+    return this.#call({ method: 'insertBoundary', annotationId, tierId, at });
+  }
+
+  moveBoundary(
+    annotationId: AnnotationId,
+    boundaryId: BoundaryId,
+    to: number,
+    linked: boolean
+  ): Promise<AppliedChange> {
+    return this.#call({ method: 'moveBoundary', annotationId, boundaryId, to, linked });
+  }
+
+  removeBoundary(annotationId: AnnotationId, boundaryId: BoundaryId): Promise<AppliedChange> {
+    return this.#call({ method: 'removeBoundary', annotationId, boundaryId });
+  }
+
+  setIntervalLabel(
+    annotationId: AnnotationId,
+    tierId: TierId,
+    intervalId: IntervalId,
+    text: string
+  ): Promise<AppliedChange> {
+    return this.#call({ method: 'setIntervalLabel', annotationId, tierId, intervalId, text });
+  }
+
+  setPointLabel(
+    annotationId: AnnotationId,
+    tierId: TierId,
+    pointId: PointId,
+    text: string
+  ): Promise<AppliedChange> {
+    return this.#call({ method: 'setPointLabel', annotationId, tierId, pointId, text });
+  }
+
+  undo(): Promise<AppliedChange | null> {
     return this.#call({ method: 'undo' });
+  }
+
+  redo(): Promise<AppliedChange | null> {
+    return this.#call({ method: 'redo' });
+  }
+
+  undoDepth(): Promise<number> {
+    return this.#call({ method: 'undoDepth' });
+  }
+
+  redoDepth(): Promise<number> {
+    return this.#call({ method: 'redoDepth' });
+  }
+
+  stateHash(): Promise<bigint> {
+    return this.#call({ method: 'stateHash' });
+  }
+
+  annotationTiers(annotationId: AnnotationId): Promise<TierInfo[]> {
+    return this.#call({ method: 'annotationTiers', annotationId });
+  }
+
+  intervalsInRange(
+    annotationId: AnnotationId,
+    tierId: TierId,
+    t0: number,
+    t1: number
+  ): Promise<IntervalData[]> {
+    return this.#call({ method: 'intervalsInRange', annotationId, tierId, t0, t1 });
+  }
+
+  pointsInRange(
+    annotationId: AnnotationId,
+    tierId: TierId,
+    t0: number,
+    t1: number
+  ): Promise<PointData[]> {
+    return this.#call({ method: 'pointsInRange', annotationId, tierId, t0, t1 });
+  }
+
+  searchLabels(pattern: string, regex: boolean): Promise<LabelHit[]> {
+    return this.#call({ method: 'searchLabels', pattern, regex });
+  }
+
+  importTextGrid(audioId: AudioId, bytes: Uint8Array): Promise<AnnotationId> {
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    return this.#call({ method: 'importTextGrid', audioId, bytes: buffer }, [buffer]);
+  }
+
+  exportTextGrid(annotationId: AnnotationId): Promise<Uint8Array> {
+    return this.#call({ method: 'exportTextGrid', annotationId });
   }
 
   destroy() {

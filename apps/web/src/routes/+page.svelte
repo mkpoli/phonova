@@ -7,6 +7,7 @@
   let client = $state<WasmCoreClient | null>(null);
   let playback = $state<WebAudioPlayback | null>(null);
   let audio = $state<AudioInfo | null>(null);
+  let annotationId = $state<bigint | null>(null);
   let cursorTime = $state(0);
   let isPlaying = $state(false);
   let theme = $state<'light' | 'dark'>('light');
@@ -51,6 +52,7 @@
       await playback.load(file);
       const info = await client.importAudio(file);
       audio = info;
+      annotationId = await client.createAnnotation(info.id, 0, info.duration);
       cursorTime = 0;
       playback.seek(0);
     } catch (caught) {
@@ -82,6 +84,7 @@
 <EditorView
   {client}
   {audio}
+  {annotationId}
   {cursorTime}
   {isPlaying}
   {theme}
@@ -91,6 +94,7 @@
   onThemeChange={handleThemeChange}
   onColormapChange={(next) => (colormap = next)}
   onCursorChange={handleCursorChange}
+  onAnnotationChange={(id) => (annotationId = id)}
 />
 
 {#if error}
