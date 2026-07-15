@@ -197,6 +197,26 @@ fn applied_for_content(doc: AnnotationId, mutation: &InverseMutation) -> Applied
             target: *target,
             text: text.clone(),
         },
+        InverseMutation::RemovePoint { point } => Applied::PointRemoved {
+            annotation: doc,
+            point: *point,
+        },
+        InverseMutation::RestorePoint { tier, point } => Applied::PointInserted {
+            annotation: doc,
+            tier: *tier,
+            point: point.id,
+            at: point.time,
+        },
+        InverseMutation::MovePoint { point, to } => Applied::PointMoved {
+            annotation: doc,
+            point: *point,
+            to: *to,
+        },
+        InverseMutation::ReorderTier { tier, to_index } => Applied::TierReordered {
+            annotation: doc,
+            tier: *tier,
+            to_index: *to_index,
+        },
     }
 }
 

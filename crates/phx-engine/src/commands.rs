@@ -12,7 +12,7 @@
 //! of reloading the whole document.
 
 use phx_annot::{
-    AlignMode, Annotation, BoundaryId, BoundaryMove, Hit, LabelTarget, TierId, TierMerge,
+    AlignMode, Annotation, BoundaryId, BoundaryMove, Hit, LabelTarget, PointId, TierId, TierMerge,
     TierRelation,
 };
 use serde::{Deserialize, Serialize};
@@ -103,6 +103,42 @@ pub enum Command {
         /// New label text.
         text: String,
     },
+    /// Insert a point into a point tier at its time-sorted position.
+    InsertPoint {
+        /// Target document.
+        annotation: AnnotationId,
+        /// Point tier to receive the point.
+        tier: TierId,
+        /// Point time in seconds.
+        time: f64,
+        /// Point label text.
+        label: String,
+    },
+    /// Move a point to `to` seconds.
+    MovePoint {
+        /// Target document.
+        annotation: AnnotationId,
+        /// Point to move.
+        point: PointId,
+        /// New point time in seconds.
+        to: f64,
+    },
+    /// Remove a point from a point tier.
+    RemovePoint {
+        /// Target document.
+        annotation: AnnotationId,
+        /// Point to remove.
+        point: PointId,
+    },
+    /// Move a tier to a new index in document order.
+    ReorderTier {
+        /// Target document.
+        annotation: AnnotationId,
+        /// Tier to move.
+        tier: TierId,
+        /// Destination index in document order.
+        to_index: usize,
+    },
 }
 
 /// What a successful [`Command`], `undo`, or `redo` changed.
@@ -188,6 +224,42 @@ pub enum Applied {
         target: LabelTarget,
         /// Label text now in place.
         text: String,
+    },
+    /// A point entered a point tier (also the inverse of [`Applied::PointRemoved`]).
+    PointInserted {
+        /// Owning document.
+        annotation: AnnotationId,
+        /// Tier the point entered.
+        tier: TierId,
+        /// New or restored point id.
+        point: PointId,
+        /// Point time in seconds.
+        at: f64,
+    },
+    /// A point moved to a new time.
+    PointMoved {
+        /// Owning document.
+        annotation: AnnotationId,
+        /// Point that moved.
+        point: PointId,
+        /// New point time in seconds.
+        to: f64,
+    },
+    /// A point left a point tier.
+    PointRemoved {
+        /// Owning document.
+        annotation: AnnotationId,
+        /// Point id that was removed.
+        point: PointId,
+    },
+    /// A tier moved to a new index in document order.
+    TierReordered {
+        /// Owning document.
+        annotation: AnnotationId,
+        /// Tier that moved.
+        tier: TierId,
+        /// Index the tier now occupies.
+        to_index: usize,
     },
 }
 

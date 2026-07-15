@@ -706,6 +706,118 @@ impl Engine {
                     },
                 ))
             }
+            Command::InsertPoint {
+                annotation,
+                tier,
+                time,
+                label,
+            } => {
+                let document = self.documents.get_mut(annotation)?;
+                let insertion = document.annotation.insert_point(tier, time, &label)?;
+                let point = insertion.point.clone();
+                Ok((
+                    Applied::PointInserted {
+                        annotation,
+                        tier,
+                        point: point.id,
+                        at: point.time,
+                    },
+                    JournalEntry {
+                        undo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::RemovePoint { point: point.id },
+                        },
+                        // Redo restores the exact point id rather than allocating
+                        // a fresh one, keeping undo/redo state-hash-identical.
+                        redo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::RestorePoint { tier, point },
+                        },
+                    },
+                ))
+            }
+            Command::MovePoint {
+                annotation,
+                point,
+                to,
+            } => {
+                let document = self.documents.get_mut(annotation)?;
+                let moved = document.annotation.move_point(point, to)?;
+                Ok((
+                    Applied::PointMoved {
+                        annotation,
+                        point,
+                        to: moved.to,
+                    },
+                    JournalEntry {
+                        undo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::MovePoint {
+                                point,
+                                to: moved.from,
+                            },
+                        },
+                        redo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::MovePoint {
+                                point,
+                                to: moved.to,
+                            },
+                        },
+                    },
+                ))
+            }
+            Command::RemovePoint { annotation, point } => {
+                let document = self.documents.get_mut(annotation)?;
+                let removal = document.annotation.remove_point(point)?;
+                Ok((
+                    Applied::PointRemoved { annotation, point },
+                    JournalEntry {
+                        undo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::RestorePoint {
+                                tier: removal.tier,
+                                point: removal.point,
+                            },
+                        },
+                        redo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::RemovePoint { point },
+                        },
+                    },
+                ))
+            }
+            Command::ReorderTier {
+                annotation,
+                tier,
+                to_index,
+            } => {
+                let document = self.documents.get_mut(annotation)?;
+                let reorder = document.annotation.reorder_tier(tier, to_index)?;
+                Ok((
+                    Applied::TierReordered {
+                        annotation,
+                        tier,
+                        to_index: reorder.to_index,
+                    },
+                    JournalEntry {
+                        undo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::ReorderTier {
+                                tier,
+                                to_index: reorder.from_index,
+                            },
+                        },
+                        redo: Reverse::Content {
+                            doc: annotation,
+                            mutation: InverseMutation::ReorderTier {
+                                tier,
+                                to_index: reorder.to_index,
+                            },
+                        },
+                    },
+                ))
+            }
         }
     }
 }
@@ -1539,7 +1651,7 @@ mod tests {
         let roll = rng.below(100);
 
         match roll {
-            0..=44 => {
+            0..=39 => {
                 // Set a label on a random interval.
                 if tiers.is_empty() {
                     return None;
@@ -1556,7 +1668,7 @@ mod tests {
                     text,
                 })
             }
-            45..=64 => {
+            40..=57 => {
                 // Split a wide interval at an interior fraction.
                 let wide: Vec<&(TierId, Vec<Interval>)> = tiers
                     .iter()
@@ -1584,7 +1696,7 @@ mod tests {
                     at,
                 })
             }
-            65..=77 => {
+            58..=69 => {
                 // Move an interior boundary within its neighbours.
                 let (_tier, intervals) = pick_multi_interval(&tiers, rng)?;
                 let i = rng.below(intervals.len() - 1);
@@ -1602,7 +1714,7 @@ mod tests {
                     mode: AlignMode::Linked,
                 })
             }
-            78..=85 => {
+            70..=77 => {
                 // Remove an interior boundary.
                 let (_tier, intervals) = pick_multi_interval(&tiers, rng)?;
                 let i = rng.below(intervals.len() - 1);
@@ -1611,7 +1723,7 @@ mod tests {
                     boundary: intervals[i].end_boundary,
                 })
             }
-            86..=90 => {
+            78..=82 => {
                 *name_counter += 1;
                 Some(Command::AddIntervalTier {
                     annotation: doc,
@@ -1619,7 +1731,7 @@ mod tests {
                     relation: TierRelation::Independent,
                 })
             }
-            91..=93 => {
+            83..=85 => {
                 // Remove a tier other than the primary one, when one exists.
                 if annotation.tiers().len() < 2 {
                     return None;
@@ -1630,7 +1742,7 @@ mod tests {
                     tier: slot.id,
                 })
             }
-            94..=96 => {
+            86..=88 => {
                 *name_counter += 1;
                 Some(Command::AddPointTier {
                     annotation: doc,
@@ -1639,7 +1751,80 @@ mod tests {
                     relation: TierRelation::Independent,
                 })
             }
-            97 => Some(Command::AttachAnnotation {
+            89..=91 => {
+                // Insert a point in a free slot of a random point tier.
+                let point_tiers = point_tiers(annotation);
+                if point_tiers.is_empty() {
+                    return None;
+                }
+                let (tier, points) = &point_tiers[rng.below(point_tiers.len())];
+                let mut fence = vec![annotation.xmin()];
+                fence.extend(points.iter().map(|point| point.time));
+                fence.push(annotation.xmax());
+                let mids: Vec<f64> = fence
+                    .windows(2)
+                    .filter_map(|pair| {
+                        let mid = (pair[0] + pair[1]) / 2.0;
+                        (mid.to_bits() != pair[0].to_bits() && mid.to_bits() != pair[1].to_bits())
+                            .then_some(mid)
+                    })
+                    .collect();
+                if mids.is_empty() {
+                    return None;
+                }
+                Some(Command::InsertPoint {
+                    annotation: doc,
+                    tier: *tier,
+                    time: mids[rng.below(mids.len())],
+                    label: format!("p{}", rng.below(1000)),
+                })
+            }
+            92..=93 => {
+                // Move a point within its immediate neighbours.
+                let movable = movable_points(annotation);
+                if movable.is_empty() {
+                    return None;
+                }
+                let (point, lower, upper) = movable[rng.below(movable.len())];
+                let frac = 0.2 + 0.6 * rng.frac();
+                let to = lower + frac * (upper - lower);
+                if to.to_bits() == lower.to_bits() || to.to_bits() == upper.to_bits() {
+                    return None;
+                }
+                Some(Command::MovePoint {
+                    annotation: doc,
+                    point,
+                    to,
+                })
+            }
+            94..=95 => {
+                // Remove a random point.
+                let ids: Vec<PointId> = point_tiers(annotation)
+                    .into_iter()
+                    .flat_map(|(_tier, points)| points.into_iter().map(|point| point.id))
+                    .collect();
+                if ids.is_empty() {
+                    return None;
+                }
+                Some(Command::RemovePoint {
+                    annotation: doc,
+                    point: ids[rng.below(ids.len())],
+                })
+            }
+            96..=97 => {
+                // Move a tier to a random index.
+                let count = annotation.tiers().len();
+                if count < 2 {
+                    return None;
+                }
+                let tier = annotation.tiers()[rng.below(count)].id;
+                Some(Command::ReorderTier {
+                    annotation: doc,
+                    tier,
+                    to_index: rng.below(count),
+                })
+            }
+            98 => Some(Command::AttachAnnotation {
                 audio,
                 annotation: annotation_with_tier(2.0),
             }),
@@ -1664,5 +1849,232 @@ mod tests {
         }
         let (tier, intervals) = multi[rng.below(multi.len())];
         Some((*tier, intervals))
+    }
+
+    fn point_tiers(annotation: &Annotation) -> Vec<(TierId, Vec<Point>)> {
+        annotation
+            .tiers()
+            .iter()
+            .filter_map(|slot| match &slot.tier {
+                Tier::Point(tier) => Some((slot.id, tier.points.clone())),
+                Tier::Interval(_) => None,
+            })
+            .collect()
+    }
+
+    fn movable_points(annotation: &Annotation) -> Vec<(PointId, f64, f64)> {
+        let mut out = Vec::new();
+        for (_tier, points) in point_tiers(annotation) {
+            for (index, point) in points.iter().enumerate() {
+                let lower = if index > 0 {
+                    points[index - 1].time
+                } else {
+                    annotation.xmin()
+                };
+                let upper = if index + 1 < points.len() {
+                    points[index + 1].time
+                } else {
+                    annotation.xmax()
+                };
+                if upper > lower {
+                    out.push((point.id, lower, upper));
+                }
+            }
+        }
+        out
+    }
+
+    /// A shared boundary on an aligned tier pair moves both tiers atomically as
+    /// one journal entry, and a single undo restores both.
+    #[test]
+    fn aligned_tier_pair_moves_and_undoes_as_one_entry() {
+        let (mut engine, _audio, doc) = base_engine();
+        let primary = interval_tiers(engine.annotation(doc).unwrap()).remove(0).0;
+
+        let aligned = match engine
+            .apply(Command::AddIntervalTier {
+                annotation: doc,
+                name: "words".to_string(),
+                relation: TierRelation::AlignedBoundaries { with: primary },
+            })
+            .unwrap()
+        {
+            Applied::TierAdded { tier, .. } => tier,
+            other => panic!("expected TierAdded, got {other:?}"),
+        };
+
+        // Undo the tier add cleanly, then redo it back.
+        let with_pair = engine.state_hash();
+        engine.undo().unwrap();
+        assert!(engine.annotation(doc).unwrap().tier(aligned).is_none());
+        engine.redo().unwrap();
+        assert_eq!(engine.state_hash(), with_pair);
+
+        // Insert a boundary on the primary tier; it propagates to the aligned
+        // peer, and the whole propagation is one undoable entry.
+        let depth_before = engine.undo_depth();
+        let boundary = match engine
+            .apply(Command::InsertBoundary {
+                annotation: doc,
+                tier: primary,
+                at: 1.0,
+            })
+            .unwrap()
+        {
+            Applied::BoundaryInserted { boundary, .. } => boundary,
+            other => panic!("expected BoundaryInserted, got {other:?}"),
+        };
+        assert_eq!(engine.undo_depth(), depth_before + 1);
+        for (_id, intervals) in interval_tiers(engine.annotation(doc).unwrap()) {
+            assert_eq!(intervals.len(), 2, "both tiers gained the boundary");
+        }
+
+        // Move the shared boundary linked; both tiers move in one entry.
+        let before_move = engine.state_hash();
+        let moves = match engine
+            .apply(Command::MoveBoundary {
+                annotation: doc,
+                boundary,
+                to: 1.3,
+                mode: AlignMode::Linked,
+            })
+            .unwrap()
+        {
+            Applied::BoundaryMoved { moves, .. } => moves,
+            other => panic!("expected BoundaryMoved, got {other:?}"),
+        };
+        assert_eq!(moves.len(), 2, "both aligned tiers moved");
+        for (_id, intervals) in interval_tiers(engine.annotation(doc).unwrap()) {
+            assert_eq!(intervals[0].xmax.to_bits(), 1.3_f64.to_bits());
+        }
+
+        // A single undo restores both tiers to the shared boundary at 1.0.
+        engine.undo().unwrap();
+        assert_eq!(engine.state_hash(), before_move);
+        for (_id, intervals) in interval_tiers(engine.annotation(doc).unwrap()) {
+            assert_eq!(intervals[0].xmax.to_bits(), 1.0_f64.to_bits());
+        }
+    }
+
+    /// A point round-trip through the journal: insert, move, remove, then undo
+    /// each back to the initial hash and redo to the final one.
+    #[test]
+    fn point_commands_undo_redo_are_hash_stable() {
+        let (mut engine, _audio, doc) = base_engine();
+        let tier = match engine
+            .apply(Command::AddPointTier {
+                annotation: doc,
+                name: "tones".to_string(),
+                points: Vec::new(),
+                relation: TierRelation::Independent,
+            })
+            .unwrap()
+        {
+            Applied::TierAdded { tier, .. } => tier,
+            other => panic!("expected TierAdded, got {other:?}"),
+        };
+        let empty = engine.state_hash();
+
+        let point = match engine
+            .apply(Command::InsertPoint {
+                annotation: doc,
+                tier,
+                time: 1.0,
+                label: "H".to_string(),
+            })
+            .unwrap()
+        {
+            Applied::PointInserted { point, .. } => point,
+            other => panic!("expected PointInserted, got {other:?}"),
+        };
+        let inserted = engine.state_hash();
+
+        engine
+            .apply(Command::MovePoint {
+                annotation: doc,
+                point,
+                to: 1.4,
+            })
+            .unwrap();
+        let moved = engine.state_hash();
+        assert_ne!(moved, inserted);
+
+        engine
+            .apply(Command::RemovePoint {
+                annotation: doc,
+                point,
+            })
+            .unwrap();
+        assert_eq!(
+            engine.state_hash(),
+            empty,
+            "removal returns to the empty tier"
+        );
+
+        // Undo removal, move, insertion.
+        engine.undo().unwrap();
+        assert_eq!(engine.state_hash(), moved);
+        engine.undo().unwrap();
+        assert_eq!(engine.state_hash(), inserted);
+        engine.undo().unwrap();
+        assert_eq!(engine.state_hash(), empty);
+
+        // Redo insertion, move, removal back to the empty tier.
+        engine.redo().unwrap();
+        assert_eq!(engine.state_hash(), inserted);
+        engine.redo().unwrap();
+        assert_eq!(engine.state_hash(), moved);
+        engine.redo().unwrap();
+        assert_eq!(engine.state_hash(), empty);
+    }
+
+    /// Reordering a tier is invertible and hash-stable through the journal.
+    #[test]
+    fn reorder_tier_undo_restores_order() {
+        let (mut engine, _audio, doc) = base_engine();
+        engine
+            .apply(Command::AddIntervalTier {
+                annotation: doc,
+                name: "words".to_string(),
+                relation: TierRelation::Independent,
+            })
+            .unwrap();
+        let order_before: Vec<TierId> = engine
+            .annotation(doc)
+            .unwrap()
+            .tiers()
+            .iter()
+            .map(|slot| slot.id)
+            .collect();
+        let hash_before = engine.state_hash();
+
+        let last = *order_before.last().unwrap();
+        engine
+            .apply(Command::ReorderTier {
+                annotation: doc,
+                tier: last,
+                to_index: 0,
+            })
+            .unwrap();
+        let reordered: Vec<TierId> = engine
+            .annotation(doc)
+            .unwrap()
+            .tiers()
+            .iter()
+            .map(|slot| slot.id)
+            .collect();
+        assert_eq!(reordered[0], last);
+        assert_ne!(engine.state_hash(), hash_before);
+
+        engine.undo().unwrap();
+        assert_eq!(engine.state_hash(), hash_before);
+        let restored: Vec<TierId> = engine
+            .annotation(doc)
+            .unwrap()
+            .tiers()
+            .iter()
+            .map(|slot| slot.id)
+            .collect();
+        assert_eq!(restored, order_before);
     }
 }
