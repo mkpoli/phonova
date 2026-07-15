@@ -1,0 +1,2014 @@
+{
+  "audio": "tests/fixtures/audio/arctic_slt_a0001.wav",
+  "case": "pitch-defaults",
+  "frames": [
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.0225,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.0325,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.0425,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.0525,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.0625,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.0725,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.0825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.0925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.1025,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.1125,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.1225,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.1325,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.1425,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.1525,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.1625,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.1725,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.1825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.1925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.2025,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.2125,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.2225,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.2325,
+      "voiced": false
+    },
+    {
+      "f0_hz": 234.714311,
+      "strength": 0.891106,
+      "time": 0.2425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 230.068607,
+      "strength": 0.935592,
+      "time": 0.2525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 222.351902,
+      "strength": 0.92791,
+      "time": 0.2625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 217.917003,
+      "strength": 0.975105,
+      "time": 0.2725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 215.955776,
+      "strength": 0.983512,
+      "time": 0.2825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 214.384423,
+      "strength": 0.987036,
+      "time": 0.2925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 214.310145,
+      "strength": 0.985466,
+      "time": 0.3025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 215.872727,
+      "strength": 0.978144,
+      "time": 0.3125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 218.154827,
+      "strength": 0.971578,
+      "time": 0.3225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 219.667783,
+      "strength": 0.975916,
+      "time": 0.3325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 222.071996,
+      "strength": 0.966585,
+      "time": 0.3425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 224.429471,
+      "strength": 0.965641,
+      "time": 0.3525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 222.851954,
+      "strength": 0.919157,
+      "time": 0.3625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 217.454017,
+      "strength": 0.757316,
+      "time": 0.3725,
+      "voiced": true
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.3825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.3925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.4025,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.4125,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.4225,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.4325,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.4425,
+      "voiced": false
+    },
+    {
+      "f0_hz": 310.143908,
+      "strength": 0.6102,
+      "time": 0.4525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 274.493598,
+      "strength": 0.544854,
+      "time": 0.4625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 262.817889,
+      "strength": 0.718437,
+      "time": 0.4725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 246.06273,
+      "strength": 0.897441,
+      "time": 0.4825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 242.166678,
+      "strength": 0.995846,
+      "time": 0.4925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 242.947236,
+      "strength": 0.996009,
+      "time": 0.5025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 244.597095,
+      "strength": 0.995172,
+      "time": 0.5125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 246.374538,
+      "strength": 0.99625,
+      "time": 0.5225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 248.108586,
+      "strength": 0.996698,
+      "time": 0.5325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 249.481998,
+      "strength": 0.997705,
+      "time": 0.5425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 249.690084,
+      "strength": 0.998709,
+      "time": 0.5525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 249.095267,
+      "strength": 0.99739,
+      "time": 0.5625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 247.535616,
+      "strength": 0.996586,
+      "time": 0.5725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 246.358112,
+      "strength": 0.998117,
+      "time": 0.5825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 245.075711,
+      "strength": 0.995175,
+      "time": 0.5925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 242.634432,
+      "strength": 0.984697,
+      "time": 0.6025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 238.321149,
+      "strength": 0.978886,
+      "time": 0.6125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 234.079731,
+      "strength": 0.978985,
+      "time": 0.6225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 230.922072,
+      "strength": 0.986801,
+      "time": 0.6325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 228.129284,
+      "strength": 0.985424,
+      "time": 0.6425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 225.311729,
+      "strength": 0.985786,
+      "time": 0.6525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 222.54573,
+      "strength": 0.972182,
+      "time": 0.6625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 218.308076,
+      "strength": 0.918345,
+      "time": 0.6725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 205.641547,
+      "strength": 0.951562,
+      "time": 0.6825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 197.857311,
+      "strength": 0.978871,
+      "time": 0.6925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 190.158037,
+      "strength": 0.98695,
+      "time": 0.7025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 187.283519,
+      "strength": 0.990544,
+      "time": 0.7125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 186.396467,
+      "strength": 0.977528,
+      "time": 0.7225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 182.672774,
+      "strength": 0.964008,
+      "time": 0.7325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 179.79411,
+      "strength": 0.944005,
+      "time": 0.7425,
+      "voiced": true
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.7525,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.7625,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.7725,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.7825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 0.7925,
+      "voiced": false
+    },
+    {
+      "f0_hz": 210.842504,
+      "strength": 0.646736,
+      "time": 0.8025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 233.244757,
+      "strength": 0.893922,
+      "time": 0.8125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 226.937793,
+      "strength": 0.85423,
+      "time": 0.8225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 205.061435,
+      "strength": 0.878048,
+      "time": 0.8325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 196.62357,
+      "strength": 0.971225,
+      "time": 0.8425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 192.471289,
+      "strength": 0.926787,
+      "time": 0.8525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 182.196978,
+      "strength": 0.87362,
+      "time": 0.8625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 169.326067,
+      "strength": 0.973732,
+      "time": 0.8725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 162.254211,
+      "strength": 0.977384,
+      "time": 0.8825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 155.749731,
+      "strength": 0.981778,
+      "time": 0.8925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 153.237369,
+      "strength": 0.974532,
+      "time": 0.9025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 153.809086,
+      "strength": 0.822536,
+      "time": 0.9125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 216.906793,
+      "strength": 0.474047,
+      "time": 0.9225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 228.589257,
+      "strength": 0.810589,
+      "time": 0.9325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 211.052861,
+      "strength": 0.747651,
+      "time": 0.9425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 194.043034,
+      "strength": 0.878264,
+      "time": 0.9525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 190.60963,
+      "strength": 0.982509,
+      "time": 0.9625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 190.254387,
+      "strength": 0.982252,
+      "time": 0.9725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 191.522889,
+      "strength": 0.978425,
+      "time": 0.9825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 194.522632,
+      "strength": 0.967328,
+      "time": 0.9925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 197.420248,
+      "strength": 0.978977,
+      "time": 1.0025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 200.933397,
+      "strength": 0.984959,
+      "time": 1.0125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 204.285999,
+      "strength": 0.981964,
+      "time": 1.0225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 208.912501,
+      "strength": 0.985439,
+      "time": 1.0325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 212.49731,
+      "strength": 0.987622,
+      "time": 1.0425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 215.293748,
+      "strength": 0.995258,
+      "time": 1.0525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 216.342937,
+      "strength": 0.987373,
+      "time": 1.0625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 219.921443,
+      "strength": 0.984785,
+      "time": 1.0725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 221.231989,
+      "strength": 0.998535,
+      "time": 1.0825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 223.326376,
+      "strength": 0.997151,
+      "time": 1.0925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 224.466912,
+      "strength": 0.992233,
+      "time": 1.1025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 221.670302,
+      "strength": 0.970409,
+      "time": 1.1125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 212.943053,
+      "strength": 0.905112,
+      "time": 1.1225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 208.367772,
+      "strength": 0.562646,
+      "time": 1.1325,
+      "voiced": true
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.1425,
+      "voiced": false
+    },
+    {
+      "f0_hz": 232.379857,
+      "strength": 0.763728,
+      "time": 1.1525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 226.927077,
+      "strength": 0.86579,
+      "time": 1.1625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 213.905151,
+      "strength": 0.93388,
+      "time": 1.1725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 207.234914,
+      "strength": 0.98964,
+      "time": 1.1825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 203.863936,
+      "strength": 0.988982,
+      "time": 1.1925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 200.377453,
+      "strength": 0.99102,
+      "time": 1.2025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 198.667461,
+      "strength": 0.985507,
+      "time": 1.2125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 195.730467,
+      "strength": 0.956199,
+      "time": 1.2225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 190.00094,
+      "strength": 0.891241,
+      "time": 1.2325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.146737,
+      "strength": 0.703215,
+      "time": 1.2425,
+      "voiced": true
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.2525,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.2625,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.2725,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.2825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.2925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.3025,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.3125,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.3225,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.3325,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.3425,
+      "voiced": false
+    },
+    {
+      "f0_hz": 225.859128,
+      "strength": 0.560075,
+      "time": 1.3525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 192.890284,
+      "strength": 0.669205,
+      "time": 1.3625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 184.543583,
+      "strength": 0.942123,
+      "time": 1.3725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 183.40297,
+      "strength": 0.979244,
+      "time": 1.3825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.97482,
+      "strength": 0.978615,
+      "time": 1.3925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 180.75722,
+      "strength": 0.992706,
+      "time": 1.4025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 180.860998,
+      "strength": 0.992747,
+      "time": 1.4125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.531263,
+      "strength": 0.989596,
+      "time": 1.4225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.979037,
+      "strength": 0.991556,
+      "time": 1.4325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 182.132668,
+      "strength": 0.98992,
+      "time": 1.4425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.86771,
+      "strength": 0.978771,
+      "time": 1.4525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.489598,
+      "strength": 0.981488,
+      "time": 1.4625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 180.63712,
+      "strength": 0.990417,
+      "time": 1.4725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 180.351942,
+      "strength": 0.98884,
+      "time": 1.4825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 180.255917,
+      "strength": 0.994092,
+      "time": 1.4925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 180.642142,
+      "strength": 0.99347,
+      "time": 1.5025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.022509,
+      "strength": 0.99068,
+      "time": 1.5125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.526784,
+      "strength": 0.99187,
+      "time": 1.5225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.845923,
+      "strength": 0.990887,
+      "time": 1.5325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 182.42324,
+      "strength": 0.994362,
+      "time": 1.5425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 182.669043,
+      "strength": 0.994138,
+      "time": 1.5525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 182.930026,
+      "strength": 0.993203,
+      "time": 1.5625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 183.290165,
+      "strength": 0.993497,
+      "time": 1.5725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 183.677214,
+      "strength": 0.993679,
+      "time": 1.5825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 184.230416,
+      "strength": 0.990835,
+      "time": 1.5925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 185.241627,
+      "strength": 0.986888,
+      "time": 1.6025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 186.281148,
+      "strength": 0.986276,
+      "time": 1.6125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 185.989817,
+      "strength": 0.981957,
+      "time": 1.6225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 183.450142,
+      "strength": 0.981526,
+      "time": 1.6325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 184.356367,
+      "strength": 0.977618,
+      "time": 1.6425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 184.134479,
+      "strength": 0.966718,
+      "time": 1.6525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 184.165799,
+      "strength": 0.942089,
+      "time": 1.6625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 187.71725,
+      "strength": 0.901887,
+      "time": 1.6725,
+      "voiced": true
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.6825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.6925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.7025,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.7125,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.7225,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.7325,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.7425,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.7525,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.7625,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.7725,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.7825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.7925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.8025,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 1.8125,
+      "voiced": false
+    },
+    {
+      "f0_hz": 227.45738,
+      "strength": 0.508742,
+      "time": 1.8225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 208.185248,
+      "strength": 0.547194,
+      "time": 1.8325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 198.656796,
+      "strength": 0.858974,
+      "time": 1.8425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 196.367135,
+      "strength": 0.97862,
+      "time": 1.8525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 195.190046,
+      "strength": 0.987776,
+      "time": 1.8625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 194.811863,
+      "strength": 0.990852,
+      "time": 1.8725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 194.690257,
+      "strength": 0.993892,
+      "time": 1.8825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 195.746028,
+      "strength": 0.996649,
+      "time": 1.8925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 198.461604,
+      "strength": 0.992322,
+      "time": 1.9025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 202.420919,
+      "strength": 0.980419,
+      "time": 1.9125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 206.146251,
+      "strength": 0.983758,
+      "time": 1.9225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 208.324111,
+      "strength": 0.989533,
+      "time": 1.9325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 210.053611,
+      "strength": 0.992202,
+      "time": 1.9425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 210.480191,
+      "strength": 0.974146,
+      "time": 1.9525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 207.197481,
+      "strength": 0.915265,
+      "time": 1.9625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 204.733446,
+      "strength": 0.857869,
+      "time": 1.9725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 206.89615,
+      "strength": 0.550943,
+      "time": 1.9825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 254.443494,
+      "strength": 0.838974,
+      "time": 1.9925,
+      "voiced": true
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.0025,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.0125,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.0225,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.0325,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.0425,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.0525,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.0625,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.0725,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.0825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.0925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.1025,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.1125,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.1225,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.1325,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.1425,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.1525,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.1625,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.1725,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.1825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.1925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.2025,
+      "voiced": false
+    },
+    {
+      "f0_hz": 192.982876,
+      "strength": 0.904017,
+      "time": 2.2125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 188.905007,
+      "strength": 0.98346,
+      "time": 2.2225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 187.391177,
+      "strength": 0.995761,
+      "time": 2.2325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 186.786307,
+      "strength": 0.99477,
+      "time": 2.2425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 186.605801,
+      "strength": 0.994577,
+      "time": 2.2525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 186.764426,
+      "strength": 0.992661,
+      "time": 2.2625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 187.509332,
+      "strength": 0.988807,
+      "time": 2.2725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 187.515716,
+      "strength": 0.971148,
+      "time": 2.2825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 187.924439,
+      "strength": 0.937734,
+      "time": 2.2925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 186.286214,
+      "strength": 0.908377,
+      "time": 2.3025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 182.648442,
+      "strength": 0.952872,
+      "time": 2.3125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.871504,
+      "strength": 0.980457,
+      "time": 2.3225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.651138,
+      "strength": 0.983759,
+      "time": 2.3325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.481571,
+      "strength": 0.979749,
+      "time": 2.3425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 182.595257,
+      "strength": 0.986168,
+      "time": 2.3525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 183.260352,
+      "strength": 0.995347,
+      "time": 2.3625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 183.607556,
+      "strength": 0.99287,
+      "time": 2.3725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 184.74799,
+      "strength": 0.989665,
+      "time": 2.3825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 185.70972,
+      "strength": 0.994722,
+      "time": 2.3925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 185.996155,
+      "strength": 0.995311,
+      "time": 2.4025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 187.21833,
+      "strength": 0.98381,
+      "time": 2.4125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 188.952466,
+      "strength": 0.974432,
+      "time": 2.4225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 189.071207,
+      "strength": 0.985637,
+      "time": 2.4325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 188.975488,
+      "strength": 0.983971,
+      "time": 2.4425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 188.931285,
+      "strength": 0.983159,
+      "time": 2.4525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 186.721664,
+      "strength": 0.982164,
+      "time": 2.4625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 183.217583,
+      "strength": 0.965525,
+      "time": 2.4725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 184.031007,
+      "strength": 0.828637,
+      "time": 2.4825,
+      "voiced": true
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.4925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.5025,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.5125,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.5225,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.5325,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.5425,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.5525,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.5625,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.5725,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.5825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.5925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.6025,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.6125,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.6225,
+      "voiced": false
+    },
+    {
+      "f0_hz": 213.365163,
+      "strength": 0.669924,
+      "time": 2.6325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 211.623929,
+      "strength": 0.830348,
+      "time": 2.6425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 201.73545,
+      "strength": 0.846869,
+      "time": 2.6525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 184.824344,
+      "strength": 0.844835,
+      "time": 2.6625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 170.892269,
+      "strength": 0.753495,
+      "time": 2.6725,
+      "voiced": true
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.6825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.6925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.7025,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.7125,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.7225,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.7325,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.7425,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.7525,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.7625,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.7725,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.7825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.7925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 2.8025,
+      "voiced": false
+    },
+    {
+      "f0_hz": 194.542024,
+      "strength": 0.76709,
+      "time": 2.8125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 189.874125,
+      "strength": 0.871828,
+      "time": 2.8225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 184.354109,
+      "strength": 0.963541,
+      "time": 2.8325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 183.304496,
+      "strength": 0.989101,
+      "time": 2.8425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 182.758997,
+      "strength": 0.991165,
+      "time": 2.8525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.935945,
+      "strength": 0.991909,
+      "time": 2.8625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 180.700757,
+      "strength": 0.944763,
+      "time": 2.8725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 178.284584,
+      "strength": 0.787486,
+      "time": 2.8825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 158.692395,
+      "strength": 0.663393,
+      "time": 2.8925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 159.143203,
+      "strength": 0.941314,
+      "time": 2.9025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 176.807581,
+      "strength": 0.837996,
+      "time": 2.9125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 181.186404,
+      "strength": 0.91506,
+      "time": 2.9225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 179.617752,
+      "strength": 0.948391,
+      "time": 2.9325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 177.762817,
+      "strength": 0.96885,
+      "time": 2.9425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 175.955198,
+      "strength": 0.982075,
+      "time": 2.9525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 175.289798,
+      "strength": 0.988052,
+      "time": 2.9625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 174.302377,
+      "strength": 0.991104,
+      "time": 2.9725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 173.723781,
+      "strength": 0.993501,
+      "time": 2.9825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 173.183856,
+      "strength": 0.994513,
+      "time": 2.9925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 172.830055,
+      "strength": 0.996,
+      "time": 3.0025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 172.091213,
+      "strength": 0.995696,
+      "time": 3.0125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 170.791974,
+      "strength": 0.983461,
+      "time": 3.0225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 168.929026,
+      "strength": 0.984415,
+      "time": 3.0325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 167.608087,
+      "strength": 0.984714,
+      "time": 3.0425,
+      "voiced": true
+    },
+    {
+      "f0_hz": 167.483381,
+      "strength": 0.98017,
+      "time": 3.0525,
+      "voiced": true
+    },
+    {
+      "f0_hz": 169.538909,
+      "strength": 0.954662,
+      "time": 3.0625,
+      "voiced": true
+    },
+    {
+      "f0_hz": 171.927838,
+      "strength": 0.970194,
+      "time": 3.0725,
+      "voiced": true
+    },
+    {
+      "f0_hz": 174.295134,
+      "strength": 0.981096,
+      "time": 3.0825,
+      "voiced": true
+    },
+    {
+      "f0_hz": 174.234781,
+      "strength": 0.972804,
+      "time": 3.0925,
+      "voiced": true
+    },
+    {
+      "f0_hz": 172.24523,
+      "strength": 0.965117,
+      "time": 3.1025,
+      "voiced": true
+    },
+    {
+      "f0_hz": 172.865598,
+      "strength": 0.946774,
+      "time": 3.1125,
+      "voiced": true
+    },
+    {
+      "f0_hz": 172.991895,
+      "strength": 0.908384,
+      "time": 3.1225,
+      "voiced": true
+    },
+    {
+      "f0_hz": 168.964937,
+      "strength": 0.822652,
+      "time": 3.1325,
+      "voiced": true
+    },
+    {
+      "f0_hz": 161.237036,
+      "strength": 0.638515,
+      "time": 3.1425,
+      "voiced": true
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.1525,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.1625,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.1725,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.1825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.1925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.2025,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.2125,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.2225,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.2325,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.2425,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.2525,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.2625,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.2725,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.2825,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.2925,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.3025,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.3125,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.3225,
+      "voiced": false
+    },
+    {
+      "f0_hz": null,
+      "strength": 0.0,
+      "time": 3.3325,
+      "voiced": false
+    }
+  ],
+  "measure": "pitch",
+  "params": {
+    "ceiling_hz": 600.0,
+    "floor_hz": 75.0,
+    "max_candidates": 15,
+    "octave_cost": 0.01,
+    "octave_jump_cost": 0.35,
+    "silence_threshold": 0.03,
+    "time_step": null,
+    "very_accurate": false,
+    "voiced_unvoiced_cost": 0.14,
+    "voicing_threshold": 0.45
+  },
+  "parselmouth_version": "0.4.7",
+  "praat_version": "6.1.38",
+  "praat_version_date": "2 January 2021"
+}
