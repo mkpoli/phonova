@@ -6,3 +6,5 @@ license.workspace = true
 description = "Tiers (interval/point), typed hierarchy (parent/child spans on the ELAN model), validation of cross-tier integrity"
 
 [dependencies]
+regex = "1"
+serde = { workspace = true }
