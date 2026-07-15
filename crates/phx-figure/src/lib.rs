@@ -24,6 +24,10 @@ pub mod model;
 pub mod style;
 
 pub use backends::to_svg;
+pub use backends::{
+    CodeExport, CodeLang, SidecarFile, TextExport, figure_tiers, to_code, to_graphml, to_tikz,
+    to_typst, to_vega,
+};
 #[cfg(feature = "pdf")]
 pub use backends::{PdfError, to_pdf};
 #[cfg(feature = "raster")]

@@ -9,6 +9,24 @@
 pub mod svg;
 pub use svg::to_svg;
 
+pub mod bundle;
+pub use bundle::{CodeExport, CodeLang, SidecarFile, TextExport};
+
+pub mod tikz;
+pub use tikz::to_tikz;
+
+pub mod typst;
+pub use typst::to_typst;
+
+pub mod vega;
+pub use vega::to_vega;
+
+pub mod code;
+pub use code::to_code;
+
+pub mod graphml;
+pub use graphml::{figure_tiers, to_graphml};
+
 #[cfg(feature = "raster")]
 pub mod png;
 #[cfg(feature = "raster")]
