@@ -105,3 +105,26 @@ jobs:
           rm -rf /tmp/oracle-fresh
           uv run oracle generate --out-dir /tmp/oracle-fresh
           uv run oracle diff-all --measured-dir /tmp/oracle-fresh
+
+  figcheck:
+    name: figcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build figcheck toolchain container
+        id: build
+        continue-on-error: true
+        run: docker build -t figcheck:ci tools/figcheck
+      - name: Report container unavailable
+        if: steps.build.outcome != 'success'
+        run: echo "::warning::figcheck container did not build on this runner -- figcheck job skipped, not failed"
+      - name: Run figcheck self-test (tiny known-good/known-bad fixtures)
+        if: steps.build.outcome == 'success'
+        run: docker run --rm -v "${{ github.workspace }}:/work" -w /work figcheck:ci tools/figcheck/selftest.sh
+      - name: Check for committed figure exports
+        if: steps.build.outcome == 'success'
+        run: |
+          count=$(find crates/phx-figure -type f \( -name '*.typ' -o -name '*.tex' -o -name '*.vega.json' \) 2>/dev/null | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "::notice::no committed figure exports under crates/phx-figure -- figcheck ran the harness self-test only"
+          fi
