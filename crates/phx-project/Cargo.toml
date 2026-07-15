@@ -9,3 +9,6 @@ description = "Project file (versioned, self-describing), media references, anal
 phx-audio = { workspace = true }
 phx-annot = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+zip = { workspace = true }
+blake3 = { workspace = true }
