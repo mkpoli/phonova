@@ -12,6 +12,15 @@ use std::fmt;
 pub struct TierId(u64);
 
 impl TierId {
+    /// Wraps a raw value as a tier identifier for importer-built documents.
+    ///
+    /// Importers that assemble a document with [`Annotation::from_raw`] mint the
+    /// identifiers their tiers reference. [`Annotation::validate`] reports any
+    /// duplicate or dangling identifier introduced through this constructor.
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
     /// Returns the numeric value carried by this stable identifier.
     pub fn get(self) -> u64 {
         self.0
@@ -23,6 +32,16 @@ impl TierId {
 pub struct BoundaryId(u64);
 
 impl BoundaryId {
+    /// Wraps a raw value as a boundary identifier for importer-built documents.
+    ///
+    /// Adjacent intervals in a tier share one boundary identifier; importers
+    /// building a document with [`Annotation::from_raw`] assign the same value to
+    /// the end of one interval and the start of the next. [`Annotation::validate`]
+    /// reports a continuity mismatch when they differ.
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
     /// Returns the numeric value carried by this stable identifier.
     pub fn get(self) -> u64 {
         self.0
@@ -43,6 +62,15 @@ impl BoundaryId {
 pub struct IntervalId(u64);
 
 impl IntervalId {
+    /// Wraps a raw value as an interval identifier for importer-built documents.
+    ///
+    /// Importers that assemble a document with [`Annotation::from_raw`] mint the
+    /// identifiers their intervals carry. [`Annotation::validate`] reports any
+    /// duplicate identifier introduced through this constructor.
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
     /// Returns the numeric value carried by this stable identifier.
     pub fn get(self) -> u64 {
         self.0
@@ -54,6 +82,15 @@ impl IntervalId {
 pub struct PointId(u64);
 
 impl PointId {
+    /// Wraps a raw value as a point identifier for importer-built documents.
+    ///
+    /// Importers that assemble a document with [`Annotation::from_raw`] mint the
+    /// identifiers their points carry. [`Annotation::validate`] reports any
+    /// duplicate identifier introduced through this constructor.
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
     /// Returns the numeric value carried by this stable identifier.
     pub fn get(self) -> u64 {
         self.0
