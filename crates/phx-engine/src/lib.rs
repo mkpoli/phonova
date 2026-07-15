@@ -17,6 +17,9 @@ use phx_audio::Audio;
 use phx_dsp::Window;
 
 pub use error::EngineError;
+pub use phx_formant::{FormantFrame, FormantParams, FormantPoint, FormantTrack};
+pub use phx_intensity::{IntensityParams, IntensityTrack};
+pub use phx_pitch::{PitchFrame, PitchParams, PitchTrack};
 pub use phx_render::{Colormap, DisplayMapping, Theme};
 pub use phx_spectrogram::{SpectrogramParams, Tile, TileRequest};
 pub use pyramid::MinMax;
@@ -149,6 +152,171 @@ impl Engine {
             theme,
         ))
     }
+
+    /// Computes the autocorrelation pitch track of `id` over its whole signal.
+    ///
+    /// The track sits on a frame grid derived from the audio duration alone,
+    /// so a value queried at time *t* is the same at any zoom or scroll
+    /// (rule 2, `docs/plan/architecture.md`). `phx_pitch::pitch_track` returns
+    /// an empty track for parameters it cannot analyse rather than panicking,
+    /// so this method never surfaces a parameter error of its own.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` does not name a live
+    /// store entry.
+    pub fn pitch_track(
+        &self,
+        id: AudioId,
+        params: &PitchParams,
+    ) -> Result<PitchTrack, EngineError> {
+        let audio = self.store.audio(id)?;
+        let view = audio.slice_samples(0..audio.frames());
+        Ok(phx_pitch::pitch_track(view, params))
+    }
+
+    /// Computes pitch over just the samples spanning `[t0, t1)` seconds,
+    /// returning the track together with the absolute start time of the
+    /// analysed slice.
+    ///
+    /// This is the fast preview a live parameter edit renders first: pitch is
+    /// the one contour whose whole-signal cost grows with duration, so the
+    /// visible window is analysed on its own before the full-signal
+    /// [`Engine::pitch_track`] result (the authoritative, zoom-independent one)
+    /// replaces it. Frame times are relative to the slice; add the returned
+    /// start time to place them on the absolute timeline. Because the Viterbi
+    /// path here sees only the windowed frames, the preview can differ from the
+    /// full track near the window edges — the whole-signal result is the one
+    /// callers keep.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` does not name a live
+    /// store entry, and [`EngineError::InvalidRequest`] when `t0`/`t1` are not
+    /// finite.
+    pub fn pitch_track_span(
+        &self,
+        id: AudioId,
+        params: &PitchParams,
+        t0: f64,
+        t1: f64,
+    ) -> Result<(PitchTrack, f64), EngineError> {
+        if !t0.is_finite() || !t1.is_finite() {
+            return Err(EngineError::InvalidRequest {
+                reason: "pitch_track_span t0/t1 must be finite".to_string(),
+            });
+        }
+        let audio = self.store.audio(id)?;
+        let sample_rate = audio.sample_rate();
+        let frames = audio.frames();
+        let duration = audio.duration();
+        let lo = t0.min(t1).clamp(0.0, duration);
+        let hi = t0.max(t1).clamp(0.0, duration);
+        let start = ((lo * sample_rate).floor() as usize).min(frames);
+        let end = ((hi * sample_rate).ceil() as usize).clamp(start, frames);
+        let view = audio.slice_samples(start..end);
+        let track = phx_pitch::pitch_track(view, params);
+        Ok((track, start as f64 / sample_rate))
+    }
+
+    /// Computes the raw Burg formant candidates of `id` over its whole signal.
+    ///
+    /// These are the frequency-gated LPC roots per frame, before any tracking
+    /// reassigns them to formant slots — the display default while the
+    /// tracking weights remain provisional (`docs/plan/tasks/phase-4.md`).
+    /// Call [`Engine::formant_track_smoothed`] for the Viterbi-tracked view.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` does not name a live
+    /// store entry, and [`EngineError::InvalidRequest`] when a formant
+    /// parameter is outside the range `phx_formant` accepts (its analysis
+    /// entry point asserts these, so the engine boundary checks them first).
+    pub fn formant_track(
+        &self,
+        id: AudioId,
+        params: &FormantParams,
+    ) -> Result<FormantTrack, EngineError> {
+        validate_formant_params(params)?;
+        let audio = self.store.audio(id)?;
+        let view = audio.slice_samples(0..audio.frames());
+        Ok(phx_formant::formant_track(view, params))
+    }
+
+    /// Computes Xia–Espy-Wilson smoothed formants of `id` over its whole
+    /// signal, using the crate's default neutral references and cost weights.
+    ///
+    /// Those weights are documented as provisional
+    /// (`docs/plan/tasks/phase-4.md`); the UI surfaces this track only behind
+    /// an explicit toggle and marks it as such.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` does not name a live
+    /// store entry, and [`EngineError::InvalidRequest`] when a formant
+    /// parameter is outside the range `phx_formant` accepts.
+    pub fn formant_track_smoothed(
+        &self,
+        id: AudioId,
+        params: &FormantParams,
+    ) -> Result<FormantTrack, EngineError> {
+        let raw = self.formant_track(id, params)?;
+        Ok(phx_formant::track_smoothed(
+            &raw,
+            &phx_formant::TrackingRefs::default(),
+        ))
+    }
+
+    /// Computes the intensity contour of `id` over its whole signal.
+    ///
+    /// The contour sits on a frame grid derived from the audio duration
+    /// alone (rule 2, `docs/plan/architecture.md`).
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` does not name a live
+    /// store entry, and [`EngineError::InvalidRequest`] when the pitch floor
+    /// is not finite and positive.
+    pub fn intensity_track(
+        &self,
+        id: AudioId,
+        params: &IntensityParams,
+    ) -> Result<IntensityTrack, EngineError> {
+        if !(params.pitch_floor_hz.is_finite() && params.pitch_floor_hz > 0.0) {
+            return Err(EngineError::InvalidRequest {
+                reason: "intensity pitch_floor_hz must be finite and positive".to_string(),
+            });
+        }
+        let audio = self.store.audio(id)?;
+        let view = audio.slice_samples(0..audio.frames());
+        Ok(phx_intensity::intensity_track(view, params))
+    }
+}
+
+/// Validates a [`FormantParams`] before it reaches `phx_formant`.
+///
+/// `phx_formant::formant_track` asserts these same properties and panics on
+/// violation. The engine is the boundary untrusted callers reach, so it
+/// re-checks them here and turns a would-be panic into a typed error.
+fn validate_formant_params(params: &FormantParams) -> Result<(), EngineError> {
+    let invalid = |reason: &str| {
+        Err(EngineError::InvalidRequest {
+            reason: reason.to_string(),
+        })
+    };
+    if !(params.ceiling_hz.is_finite() && params.ceiling_hz > 100.0) {
+        return invalid("params.ceiling_hz must be finite and greater than 100 Hz");
+    }
+    if params.max_formants == 0 {
+        return invalid("params.max_formants must be positive");
+    }
+    if !(params.window_length.is_finite() && params.window_length > 0.0) {
+        return invalid("params.window_length must be finite and positive");
+    }
+    if let Some(step) = params.time_step
+        && !(step.is_finite() && step > 0.0)
+    {
+        return invalid("params.time_step must be finite and positive when set");
+    }
+    if !params.preemphasis_from_hz.is_finite() {
+        return invalid("params.preemphasis_from_hz must be finite");
+    }
+    Ok(())
 }
 
 /// Validates a [`TileRequest`] before it reaches `phx_spectrogram`.
@@ -409,6 +577,129 @@ mod tests {
             .unwrap();
         assert_eq!(first.len(), 40 * 30 * 4);
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn pitch_track_on_fixture_is_voiced_in_the_male_speech_band() {
+        let mut engine = Engine::new();
+        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let track = engine.pitch_track(id, &PitchParams::default()).unwrap();
+        let voiced: Vec<f64> = track.frames().iter().filter_map(|frame| frame.f0).collect();
+        assert!(!voiced.is_empty(), "male speech fixture should be voiced");
+        // bdl is an adult male speaker; every voiced frame stays inside the
+        // analysis band, and the median must sit in the 70-300 Hz range Praat
+        // reports for this corpus. Individual frames can reach the ceiling on
+        // octave slips, so the band claim rests on the median, not each frame.
+        for f0 in &voiced {
+            assert!(
+                *f0 > 50.0 && *f0 <= PitchParams::default().ceiling_hz,
+                "F0 {f0} Hz outside the analysis band"
+            );
+        }
+        let mut sorted = voiced.clone();
+        sorted.sort_by(f64::total_cmp);
+        let median = sorted[sorted.len() / 2];
+        assert!(
+            (70.0..=300.0).contains(&median),
+            "median F0 {median} Hz outside male band"
+        );
+    }
+
+    #[test]
+    fn pitch_track_span_places_frames_on_the_absolute_timeline() {
+        let mut engine = Engine::new();
+        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let info = engine.audio_info(id).unwrap();
+        let t0 = info.duration * 0.3;
+        let t1 = info.duration * 0.6;
+        let (track, start_time) = engine
+            .pitch_track_span(id, &PitchParams::default(), t0, t1)
+            .unwrap();
+        assert!(!track.frames().is_empty());
+        assert!(start_time >= t0 - 1.0e-3 && start_time <= t1);
+        // Every frame, shifted onto the absolute timeline, lands inside the
+        // requested window (allowing the leading half-window margin).
+        for frame in track.frames() {
+            let abs = start_time + frame.time;
+            assert!(
+                abs >= t0 - 1.0e-3 && abs <= t1 + 1.0e-3,
+                "abs {abs} out of span"
+            );
+        }
+    }
+
+    #[test]
+    fn formant_track_raw_and_smoothed_share_the_frame_grid() {
+        let mut engine = Engine::new();
+        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let params = FormantParams::default();
+        let raw = engine.formant_track(id, &params).unwrap();
+        let smoothed = engine.formant_track_smoothed(id, &params).unwrap();
+        assert!(!raw.frames.is_empty());
+        assert_eq!(raw.frames.len(), smoothed.frames.len());
+        assert_eq!(raw.frame_grid, smoothed.frame_grid);
+        let has_formants = raw.frames.iter().any(|frame| !frame.formants.is_empty());
+        assert!(
+            has_formants,
+            "speech fixture should yield formant candidates"
+        );
+    }
+
+    #[test]
+    fn bad_formant_ceiling_is_a_typed_error_not_a_panic() {
+        let mut engine = Engine::new();
+        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let params = FormantParams {
+            ceiling_hz: 10.0,
+            ..FormantParams::default()
+        };
+        assert!(matches!(
+            engine.formant_track(id, &params),
+            Err(EngineError::InvalidRequest { .. })
+        ));
+    }
+
+    #[test]
+    fn intensity_track_on_fixture_is_non_empty_and_finite() {
+        let mut engine = Engine::new();
+        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let track = engine
+            .intensity_track(id, &IntensityParams::default())
+            .unwrap();
+        assert!(!track.is_empty());
+        assert!(track.values().iter().all(|db| db.is_finite()));
+    }
+
+    #[test]
+    fn bad_intensity_floor_is_a_typed_error_not_a_panic() {
+        let mut engine = Engine::new();
+        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let params = IntensityParams {
+            pitch_floor_hz: 0.0,
+            ..IntensityParams::default()
+        };
+        assert!(matches!(
+            engine.intensity_track(id, &params),
+            Err(EngineError::InvalidRequest { .. })
+        ));
+    }
+
+    #[test]
+    fn analysis_on_unknown_id_is_a_typed_error() {
+        let engine = Engine::new();
+        let bogus = AudioId::from_u64(4242);
+        assert!(matches!(
+            engine.pitch_track(bogus, &PitchParams::default()),
+            Err(EngineError::UnknownAudioId(_))
+        ));
+        assert!(matches!(
+            engine.formant_track(bogus, &FormantParams::default()),
+            Err(EngineError::UnknownAudioId(_))
+        ));
+        assert!(matches!(
+            engine.intensity_track(bogus, &IntensityParams::default()),
+            Err(EngineError::UnknownAudioId(_))
+        ));
     }
 
     #[test]

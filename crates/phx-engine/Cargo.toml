@@ -9,6 +9,9 @@ description = "The one API both frontends and future bindings consume: commands 
 phx-audio = { workspace = true }
 phx-dsp = { workspace = true }
 phx-spectrogram = { workspace = true }
+phx-pitch = { workspace = true }
+phx-formant = { workspace = true }
+phx-intensity = { workspace = true }
 phx-render = { workspace = true }
 
 [dev-dependencies]

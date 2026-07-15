@@ -126,7 +126,7 @@ mod tests {
         let store = AudioStore::new();
         let bogus = AudioId::from_u64(42);
         assert_eq!(store.audio(bogus), Err(EngineError::UnknownAudioId(bogus)));
-        assert_eq!(store.pyramid(bogus).is_err(), true);
+        assert!(store.pyramid(bogus).is_err());
     }
 
     #[test]
