@@ -22,10 +22,9 @@ Pure Rust, part of each crate's test suite:
 ## Praat oracle (`tools/oracle/`, out of process)
 
 A uv-managed Python project running praat-parselmouth (GPL-3.0) strictly as
-an external process: it is a dev tool, never a dependency of any crate, and
-its output is regenerated at test time rather than committed as fixtures
-(licensing reasoning in `../research/algorithms-and-validation.md` §7.1 —
-noted there as analysis, re-confirm before shipping any Praat-derived data).
+an external process: it is a dev tool, never a dependency of any crate.
+Licensing reasoning for invoking parselmouth out-of-process is in
+`../research/algorithms-and-validation.md` §7.1.
 
 Mechanics:
 
@@ -38,6 +37,27 @@ Mechanics:
 3. CI job `oracle` installs parselmouth via uv; when the wheel is
    unavailable for the runner, the job reports "skipped", never silently
    passes.
+
+### Committed references
+
+`tools/oracle/references/` holds one deterministic JSON file per (case,
+audio) pair, named `<case>__<audio-stem>.json` (for example
+`pitch-defaults__synth_vowel_a.json`). Each file carries the analysis
+parameters mirrored from the Rust `*Params` struct, the frame-level
+measurements, and the `parselmouth_version`, `praat_version`, and
+`praat_version_date` that produced them, so a disagreement can always be
+traced to a specific Praat build. `oracle generate` regenerates the full set
+from the fixture audio in `tests/fixtures/audio/`; `oracle run --case …
+--audio … --out …` regenerates a single file. `oracle diff-all
+--measured-dir …` compares every committed reference against a directory of
+same-named Rust dumps in one pass, skipping the spectrogram case (validated
+separately against scipy, not oracle-diffed — see the tolerance table
+below).
+
+Committing these files carries no GPL obligation: they hold Praat's program
+output — measured floating-point numbers — not Praat's or parselmouth's
+source code, so redistributing them does not inherit the GPL-3.0 that covers
+the tool producing them.
 
 ## Tolerance bands
 
