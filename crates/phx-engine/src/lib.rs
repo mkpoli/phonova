@@ -17,6 +17,7 @@
 mod commands;
 mod document;
 mod error;
+mod figure;
 mod journal;
 mod pyramid;
 mod store;
@@ -32,11 +33,16 @@ use journal::{Journal, JournalEntry, Reverse};
 pub use commands::{Applied, Command, EngineHit};
 pub use document::{AnnotationId, Document};
 pub use error::EngineError;
+pub use figure::{
+    ExportBundle, FigureColormap, FigureFormat, FigurePitchUnit, FigureRequest, FigureTheme,
+    FigureUnit, LayerToggles, default_figure_request, export_figure, figure_to_svg,
+};
 pub use phx_annot::{
     AlignMode, Annotation, AnnotationError, BoundaryId, BoundaryMove, Hit, IntegrityIssue,
     Interval, IntervalId, IntervalTier, LabelPattern, LabelQuery, LabelTarget, MatchSpan, Merged,
     Moved, Point, PointId, PointTier, Tier, TierId, TierKind, TierMerge, TierRelation, TierSlot,
 };
+pub use phx_figure::Figure;
 pub use phx_formant::{FormantFrame, FormantParams, FormantPoint, FormantTrack};
 pub use phx_intensity::{IntensityParams, IntensityTrack};
 pub use phx_pitch::{PitchFrame, PitchParams, PitchTrack};

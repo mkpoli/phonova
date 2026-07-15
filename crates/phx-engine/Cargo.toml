@@ -14,7 +14,16 @@ phx-formant = { workspace = true }
 phx-intensity = { workspace = true }
 phx-annot = { workspace = true }
 phx-render = { workspace = true }
+phx-figure = { workspace = true }
 serde = { workspace = true }
+
+[features]
+default = []
+# Native-only figure exports. The PNG and PDF backends pull resvg / svg2pdf,
+# which do not build for wasm; a native frontend enables these, the wasm build
+# leaves them off and the web app rasterizes the SVG preview for PNG instead.
+figure-raster = ["phx-figure/raster"]
+figure-pdf = ["phx-figure/pdf"]
 
 [dev-dependencies]
 hound = { workspace = true }
