@@ -6,4 +6,5 @@ license.workspace = true
 description = "Gaussian-window STFT power spectral density; viewport-independent tile computation in dB"
 
 [dependencies]
+phx-audio = { workspace = true }
 phx-dsp = { workspace = true }
