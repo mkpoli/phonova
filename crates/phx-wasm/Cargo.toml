@@ -8,3 +8,7 @@ description = "wasm-bindgen bindings over phx-engine"
 [dependencies]
 phx-engine = { workspace = true }
 wasm-bindgen = { workspace = true }
+js-sys = "0.3"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
