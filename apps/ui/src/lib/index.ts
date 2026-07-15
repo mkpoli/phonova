@@ -1,7 +1,12 @@
+export { default as BoundaryHandle } from './BoundaryHandle.svelte';
 export { default as EditorView } from './EditorView.svelte';
 export { default as InspectorPanel } from './InspectorPanel.svelte';
+export { default as LabelEditor } from './LabelEditor.svelte';
 export { default as OverviewStrip } from './OverviewStrip.svelte';
+export { default as SearchBar } from './SearchBar.svelte';
 export { default as SpectrogramPane } from './SpectrogramPane.svelte';
+export { default as TierLane } from './TierLane.svelte';
+export { default as TierPane } from './TierPane.svelte';
 export { default as TrackOverlay } from './TrackOverlay.svelte';
 export { default as TransportBar } from './TransportBar.svelte';
 export { default as WaveformPane } from './WaveformPane.svelte';

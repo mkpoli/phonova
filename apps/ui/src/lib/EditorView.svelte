@@ -2,6 +2,7 @@
   import InspectorPanel from './InspectorPanel.svelte';
   import OverviewStrip from './OverviewStrip.svelte';
   import SpectrogramPane from './SpectrogramPane.svelte';
+  import TierPane from './TierPane.svelte';
   import TransportBar from './TransportBar.svelte';
   import WaveformPane from './WaveformPane.svelte';
   import {
@@ -20,6 +21,7 @@
   interface Props {
     client: CoreClientLike | null;
     audio: AudioInfo | null;
+    annotationId: bigint | null;
     cursorTime: number;
     isPlaying: boolean;
     theme: 'light' | 'dark';
@@ -29,11 +31,13 @@
     onThemeChange: (theme: 'light' | 'dark') => void;
     onColormapChange: (colormap: WasmColormapName) => void;
     onCursorChange?: (time: number) => void;
+    onAnnotationChange?: (id: bigint) => void;
   }
 
   let {
     client,
     audio,
+    annotationId,
     cursorTime,
     isPlaying,
     theme,
@@ -42,7 +46,8 @@
     onPlayToggle,
     onThemeChange,
     onColormapChange,
-    onCursorChange
+    onCursorChange,
+    onAnnotationChange
   }: Props = $props();
 
   let viewport = $state<ViewportState>(defaultViewport());
@@ -162,7 +167,17 @@
         {overlayParams}
         onOverlayStats={(stats) => (overlayStats = stats)}
       />
-      <div class="tier-slot" aria-hidden="true"></div>
+      <TierPane
+        {client}
+        audioId={audio?.id ?? null}
+        {annotationId}
+        audioDuration={audio?.duration ?? 0}
+        sampleRate={audio?.sampleRate ?? 0}
+        {viewport}
+        {cursorTime}
+        onSeek={(time) => onCursorChange?.(time)}
+        {onAnnotationChange}
+      />
     </main>
 
     {#if inspectorOpen}
@@ -205,14 +220,9 @@
   .timeline {
     min-height: 0;
     display: grid;
-    grid-template-rows: minmax(11rem, 30vh) minmax(16rem, 1fr) 2.5rem;
+    grid-template-rows: minmax(9rem, 22vh) minmax(12rem, 1fr) minmax(7rem, 32vh);
     overflow: hidden;
     touch-action: none;
-  }
-
-  .tier-slot {
-    border-bottom: 1px solid var(--chrome-strong);
-    background: var(--panel);
   }
 
   .status {

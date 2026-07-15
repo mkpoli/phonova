@@ -54,7 +54,112 @@ export interface IntensityTrackData {
   db: Float64Array;
 }
 
-export interface CoreClientLike {
+/** Stable annotation-document handle. */
+export type AnnotationId = bigint;
+/** Stable tier handle within a document. */
+export type TierId = bigint;
+/** Stable boundary handle within a document. */
+export type BoundaryId = bigint;
+/** Stable interval handle within a tier. */
+export type IntervalId = bigint;
+/** Stable point handle within a tier. */
+export type PointId = bigint;
+
+export type TierKind = 'interval' | 'point';
+
+/** One tier's identity and kind, in document order. */
+export interface TierInfo {
+  id: TierId;
+  name: string;
+  kind: TierKind;
+}
+
+/** A labeled interval bounded by two stable boundary ids. */
+export interface IntervalData {
+  id: IntervalId;
+  startBoundary: BoundaryId;
+  endBoundary: BoundaryId;
+  xmin: number;
+  xmax: number;
+  label: string;
+}
+
+/** A labeled point at a time. */
+export interface PointData {
+  id: PointId;
+  time: number;
+  label: string;
+}
+
+/** A cross-document label search hit. */
+export interface LabelHit {
+  annotation: AnnotationId;
+  tier: TierId;
+  kind: TierKind;
+  target: bigint;
+  start: number;
+  end: number;
+}
+
+/** What a command, undo, or redo changed, for incremental UI patching. */
+export interface AppliedChange {
+  kind: string;
+  annotation?: AnnotationId;
+  audio?: AudioId;
+  tier?: TierId;
+  boundary?: BoundaryId;
+}
+
+/** The journaled annotation surface: every mutator routes through the engine. */
+export interface AnnotationClientLike {
+  createAnnotation(audioId: AudioId, xmin: number, xmax: number): Promise<AnnotationId>;
+  addIntervalTier(annotationId: AnnotationId, name: string): Promise<TierId>;
+  addPointTier(annotationId: AnnotationId, name: string): Promise<TierId>;
+  removeTier(annotationId: AnnotationId, tierId: TierId): Promise<AppliedChange>;
+  insertBoundary(annotationId: AnnotationId, tierId: TierId, at: number): Promise<BoundaryId>;
+  moveBoundary(
+    annotationId: AnnotationId,
+    boundaryId: BoundaryId,
+    to: number,
+    linked: boolean
+  ): Promise<AppliedChange>;
+  removeBoundary(annotationId: AnnotationId, boundaryId: BoundaryId): Promise<AppliedChange>;
+  setIntervalLabel(
+    annotationId: AnnotationId,
+    tierId: TierId,
+    intervalId: IntervalId,
+    text: string
+  ): Promise<AppliedChange>;
+  setPointLabel(
+    annotationId: AnnotationId,
+    tierId: TierId,
+    pointId: PointId,
+    text: string
+  ): Promise<AppliedChange>;
+  undo(): Promise<AppliedChange | null>;
+  redo(): Promise<AppliedChange | null>;
+  undoDepth(): Promise<number>;
+  redoDepth(): Promise<number>;
+  stateHash(): Promise<bigint>;
+  annotationTiers(annotationId: AnnotationId): Promise<TierInfo[]>;
+  intervalsInRange(
+    annotationId: AnnotationId,
+    tierId: TierId,
+    t0: number,
+    t1: number
+  ): Promise<IntervalData[]>;
+  pointsInRange(
+    annotationId: AnnotationId,
+    tierId: TierId,
+    t0: number,
+    t1: number
+  ): Promise<PointData[]>;
+  searchLabels(pattern: string, regex: boolean): Promise<LabelHit[]>;
+  importTextGrid(audioId: AudioId, bytes: Uint8Array): Promise<AnnotationId>;
+  exportTextGrid(annotationId: AnnotationId): Promise<Uint8Array>;
+}
+
+export interface CoreClientLike extends AnnotationClientLike {
   waveformSlice(id: AudioId, t0: number, t1: number, px: number): Promise<MinMaxPyramidSlice>;
   spectrogramTile(id: AudioId, req: SpectrogramTileRequest): Promise<ImageBitmap>;
   pitchTrack(id: AudioId, floorHz: number, ceilingHz: number): Promise<PitchTrackData>;
