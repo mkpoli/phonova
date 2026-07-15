@@ -1,0 +1,31 @@
+{
+  "name": "@phonix/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:wasm": "RUSTFLAGS=\"-C target-feature=+simd128\" wasm-pack build ../../crates/phx-wasm --target web --out-dir ../../apps/web/src/lib/wasm/pkg",
+    "predev": "bun run build:wasm",
+    "prebuild": "bun run build:wasm",
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@phonix/ui": "workspace:*",
+    "@sveltejs/adapter-static": "^3.0.8",
+    "@sveltejs/kit": "^2.16.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "svelte": "^5.0.0",
+    "tailwindcss": "^4.0.0",
+    "vite": "^6.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2",
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "svelte-check": "^4.1.0",
+    "typescript": "^5.7.2"
+  }
+}

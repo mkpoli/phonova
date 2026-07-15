@@ -8,6 +8,10 @@ node_modules/
 /build/
 /dist/
 /package
+apps/*/build/
+apps/*/test-results/
+apps/*/playwright-report/
+apps/web/src/lib/wasm/pkg/
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 

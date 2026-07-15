@@ -1,0 +1,14 @@
+{
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "bun run --cwd apps/web build",
+    "test:e2e": "bun run --cwd apps/web test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2"
+  }
+}
