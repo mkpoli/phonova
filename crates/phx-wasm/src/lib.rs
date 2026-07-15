@@ -1145,6 +1145,45 @@ impl WasmEngine {
         }
         out
     }
+
+    /// Reads a Praat TextGrid (long or short text format; UTF-8/UTF-16/Latin-1)
+    /// and attaches the parsed annotation to `audioId`, returning the new
+    /// annotation id.
+    ///
+    /// The attachment is journaled like any other command, so undo detaches the
+    /// imported document. Tier relations are not carried by the TextGrid format;
+    /// every imported tier is independent.
+    ///
+    /// # Errors
+    /// Rejects when the bytes are not a TextGrid this crate can read, when the
+    /// parsed document fails validation, or when `audioId` names no live buffer.
+    #[wasm_bindgen(js_name = importTextGrid)]
+    pub fn import_text_grid(&mut self, audio_id: u64, bytes: &[u8]) -> Result<u64, JsError> {
+        let (annotation, _source) =
+            phx_textgrid::read(bytes).map_err(|err| JsError::new(&err.to_string()))?;
+        let applied = self.inner.apply(Command::AttachAnnotation {
+            audio: AudioId::from_u64(audio_id),
+            annotation,
+        })?;
+        match applied {
+            Applied::AnnotationAttached { annotation, .. } => Ok(annotation.as_u64()),
+            _ => Err(JsError::new("attach did not report an annotation id")),
+        }
+    }
+
+    /// Serializes a document to a Praat TextGrid: long text format, UTF-8, `LF`
+    /// line endings, no byte-order mark.
+    ///
+    /// # Errors
+    /// Rejects when `annotationId` names no live document.
+    #[wasm_bindgen(js_name = exportTextGrid)]
+    pub fn export_text_grid(&self, annotation_id: u64) -> Result<Uint8Array, JsError> {
+        let annotation = self
+            .inner
+            .annotation(AnnotationId::from_u64(annotation_id))?;
+        let bytes = phx_textgrid::write(annotation);
+        Ok(Uint8Array::from(bytes.as_slice()))
+    }
 }
 
 /// Pulls the tier id out of a [`Applied::TierAdded`] report.
@@ -1271,6 +1310,37 @@ mod tests {
 
         let tiers = engine.annotation_tiers(doc).unwrap();
         assert_eq!(tiers.ids(), vec![tier]);
+    }
+
+    #[wasm_bindgen_test]
+    fn textgrid_export_then_import_round_trips_labels() {
+        let mut engine = WasmEngine::new();
+        let audio = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let info = engine.audio_info(audio).unwrap();
+
+        let doc = engine
+            .create_annotation(audio, 0.0, info.duration())
+            .unwrap();
+        let tier = engine.add_interval_tier(doc, "phones".to_string()).unwrap();
+        engine
+            .insert_boundary(doc, tier, info.duration() / 2.0)
+            .unwrap();
+        let intervals = engine
+            .intervals_in_range(doc, tier, 0.0, info.duration())
+            .unwrap();
+        let first = intervals.ids()[0];
+        engine
+            .set_interval_label(doc, tier, first, "aː".to_string())
+            .unwrap();
+
+        let bytes = engine.export_text_grid(doc).unwrap().to_vec();
+        let reimported = engine.import_text_grid(audio, &bytes).unwrap();
+        let tiers = engine.annotation_tiers(reimported).unwrap();
+        assert_eq!(tiers.names(), vec!["phones".to_string()]);
+        let reintervals = engine
+            .intervals_in_range(reimported, tiers.ids()[0], 0.0, info.duration())
+            .unwrap();
+        assert_eq!(reintervals.labels()[0], "aː");
     }
 
     #[wasm_bindgen_test]
