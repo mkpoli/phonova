@@ -18,10 +18,16 @@
 //! export backend reuses as its input.
 #![warn(missing_docs)]
 
+pub mod backends;
 pub mod builder;
 pub mod model;
 pub mod style;
 
+pub use backends::to_svg;
+#[cfg(feature = "pdf")]
+pub use backends::{PdfError, to_pdf};
+#[cfg(feature = "raster")]
+pub use backends::{PngError, to_png};
 pub use builder::{
     FigureBuilder, formant_layer, intensity_layer, pitch_layer, reference_figure,
     spectral_slice_layer, spectrogram_layer, tier_data, tiers_layer, waveform_layer,
