@@ -59,14 +59,17 @@ fn main() -> ExitCode {
         Err(message) => {
             eprintln!("error: {message}");
             eprintln!(
-                "usage: oracle-bridge --out-dir <DIR> [--case <NAME>]... [--audio <FILENAME>]..."
+                "usage: oracle-bridge --out-dir <DIR> [--fixtures-dir <DIR>] [--case <NAME>]... [--audio <FILENAME>]..."
             );
             return ExitCode::from(2);
         }
     };
 
     let repo_root = repo_root();
-    let fixtures_dir = repo_root.join("tests/fixtures/audio");
+    let fixtures_dir = args
+        .fixtures_dir
+        .clone()
+        .unwrap_or_else(|| repo_root.join("tests/fixtures/audio"));
     let references_dir = repo_root.join("tools/oracle/references");
 
     if let Err(err) = std::fs::create_dir_all(&args.out_dir) {
@@ -346,6 +349,14 @@ struct Args {
     cases: Vec<String>,
     /// Fixture WAV filenames to run; empty means all of [`AUDIO_CORPUS`].
     audio: Vec<String>,
+    /// Override for the directory the fixture WAVs are read from.
+    ///
+    /// Defaults to `tests/fixtures/audio`. A diagnostic override that lets a
+    /// stage-isolation experiment feed pre-processed WAVs (e.g. an oracle
+    /// resample of a fixture) into the same analysis path without touching the
+    /// committed fixtures. Reference lookup still uses the fixture stem, so the
+    /// measured output diffs against the same committed reference.
+    fixtures_dir: Option<PathBuf>,
 }
 
 impl Args {
@@ -354,6 +365,7 @@ impl Args {
         let mut out_dir = None;
         let mut cases = Vec::new();
         let mut audio = Vec::new();
+        let mut fixtures_dir = None;
 
         while let Some(arg) = args.next() {
             let arg = to_utf8(arg)?;
@@ -361,6 +373,10 @@ impl Args {
                 "--out-dir" => {
                     let value = args.next().ok_or("--out-dir needs a value")?;
                     out_dir = Some(PathBuf::from(value));
+                }
+                "--fixtures-dir" => {
+                    let value = args.next().ok_or("--fixtures-dir needs a value")?;
+                    fixtures_dir = Some(PathBuf::from(value));
                 }
                 "--case" => {
                     let value = to_utf8(args.next().ok_or("--case needs a value")?)?;
@@ -383,6 +399,7 @@ impl Args {
             out_dir: out_dir.ok_or("--out-dir is required")?,
             cases,
             audio,
+            fixtures_dir,
         })
     }
 }
