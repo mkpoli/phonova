@@ -385,9 +385,17 @@ impl BitDepth {
 pub enum ResampleQuality {
     /// Offline windowed-sinc resampling with a Blackman-Harris window.
     ///
-    /// This uses rubato's documented high-quality sinc defaults:
-    /// `sinc_len = 256`, automatic cutoff, `oversampling_factor = 128`,
-    /// and cubic interpolation.
+    /// `sinc_len = 256`, `oversampling_factor = 128`, cubic interpolation, and
+    /// an anti-alias cutoff at the destination Nyquist (`f_cutoff = 1.0`, the
+    /// fraction of the lower of the source and destination Nyquist frequencies).
+    ///
+    /// The cutoff is placed at the destination Nyquist so the anti-alias filter
+    /// keeps the full band below it and removes only content above it, the
+    /// textbook anti-aliasing rule (Oppenheim & Schafer, multirate chapter).
+    /// rubato's automatic cutoff instead backs off below that Nyquist to widen
+    /// the window's stopband margin, discarding a band of valid signal just
+    /// under the destination Nyquist; for spectral analysis that band is
+    /// wanted, so the cutoff is pinned to the Nyquist itself.
     #[default]
     Best,
 }
@@ -397,7 +405,8 @@ impl ResampleQuality {
         match self {
             Self::Best => SincInterpolationParameters::new(256, WindowFunction::BlackmanHarris2)
                 .oversampling_factor(128)
-                .interpolation(SincInterpolationType::Cubic),
+                .interpolation(SincInterpolationType::Cubic)
+                .f_cutoff(1.0),
         }
     }
 }
