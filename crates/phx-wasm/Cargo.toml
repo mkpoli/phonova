@@ -1,0 +1,10 @@
+[package]
+name = "phx-wasm"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+description = "wasm-bindgen bindings over phx-engine"
+
+[dependencies]
+phx-engine = { workspace = true }
+wasm-bindgen = { workspace = true }

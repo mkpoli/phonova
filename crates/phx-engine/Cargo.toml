@@ -1,0 +1,20 @@
+[package]
+name = "phx-engine"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+description = "The one API both frontends and future bindings consume: commands with explicit arguments, journaled unified undo, content-addressed analysis cache"
+
+[dependencies]
+phx-audio = { workspace = true }
+phx-dsp = { workspace = true }
+phx-spectrogram = { workspace = true }
+phx-pitch = { workspace = true }
+phx-formant = { workspace = true }
+phx-intensity = { workspace = true }
+phx-voice = { workspace = true }
+phx-annot = { workspace = true }
+phx-textgrid = { workspace = true }
+phx-render = { workspace = true }
+phx-figure = { workspace = true }
+phx-project = { workspace = true }

@@ -1,0 +1,14 @@
+[package]
+name = "phx-audio"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+description = "Audio (planar f32 samples + f64 sample rate), WAV via hound, broad decode via symphonia (opt-in), resampling via rubato"
+
+[dependencies]
+hound = { workspace = true }
+rubato = { workspace = true }
+symphonia = { workspace = true, optional = true }
+
+[features]
+decode-extended = ["dep:symphonia"]

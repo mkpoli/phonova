@@ -1,0 +1,10 @@
+[package]
+name = "phx-voice"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+description = "Pulse extraction from pitch + waveform, jitter/shimmer families, HNR, CPP/CPPS, spectral moments, aggregate voice report"
+
+[dependencies]
+phx-pitch = { workspace = true }
+phx-dsp = { workspace = true }

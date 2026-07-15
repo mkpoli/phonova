@@ -1,0 +1,46 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/phx-audio",
+    "crates/phx-dsp",
+    "crates/phx-spectrogram",
+    "crates/phx-pitch",
+    "crates/phx-formant",
+    "crates/phx-intensity",
+    "crates/phx-voice",
+    "crates/phx-annot",
+    "crates/phx-textgrid",
+    "crates/phx-render",
+    "crates/phx-figure",
+    "crates/phx-project",
+    "crates/phx-engine",
+    "crates/phx-wasm",
+]
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+hound = "3.5"
+symphonia = "0.6"
+rubato = "4"
+rustfft = "6.4"
+realfft = "3.5"
+ndarray = "0.16"
+wasm-bindgen = "0.2.126"
+serde = { version = "1", features = ["derive"] }
+phx-audio = { path = "crates/phx-audio", version = "0.0.1" }
+phx-dsp = { path = "crates/phx-dsp", version = "0.0.1" }
+phx-spectrogram = { path = "crates/phx-spectrogram", version = "0.0.1" }
+phx-pitch = { path = "crates/phx-pitch", version = "0.0.1" }
+phx-formant = { path = "crates/phx-formant", version = "0.0.1" }
+phx-intensity = { path = "crates/phx-intensity", version = "0.0.1" }
+phx-voice = { path = "crates/phx-voice", version = "0.0.1" }
+phx-annot = { path = "crates/phx-annot", version = "0.0.1" }
+phx-textgrid = { path = "crates/phx-textgrid", version = "0.0.1" }
+phx-render = { path = "crates/phx-render", version = "0.0.1" }
+phx-figure = { path = "crates/phx-figure", version = "0.0.1" }
+phx-project = { path = "crates/phx-project", version = "0.0.1" }
+phx-engine = { path = "crates/phx-engine", version = "0.0.1" }
+phx-wasm = { path = "crates/phx-wasm", version = "0.0.1" }

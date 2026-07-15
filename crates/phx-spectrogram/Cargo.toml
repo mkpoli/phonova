@@ -1,0 +1,9 @@
+[package]
+name = "phx-spectrogram"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+description = "Gaussian-window STFT power spectral density; viewport-independent tile computation in dB"
+
+[dependencies]
+phx-dsp = { workspace = true }
