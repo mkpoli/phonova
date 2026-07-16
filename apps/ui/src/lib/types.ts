@@ -6,6 +6,8 @@ export interface AudioInfo {
   sampleRate: number;
   channels: number;
   name?: string;
+  /** BLAKE3 content hash of the source bytes, 64 lowercase hex characters. */
+  hash?: string;
 }
 
 export interface MinMaxPyramidSlice {
@@ -159,7 +161,85 @@ export interface AnnotationClientLike {
   exportTextGrid(annotationId: AnnotationId): Promise<Uint8Array>;
 }
 
+/** One recording in a {@link SaveProjectSpec}, with session ids as plain numbers. */
+export interface SaveProjectMediaSpec {
+  mediaId: number;
+  relativePath: string;
+  hash: string;
+  duration: number;
+  sampleRate: number;
+  channels: number;
+  /** Session annotation id whose document is stored, or `null` when unannotated. */
+  annotation: number | null;
+}
+
+/** The argument to {@link CoreClientLike.saveProjectContainer}. */
+export interface SaveProjectSpec {
+  name: string;
+  savedAt: number;
+  view: unknown;
+  media: SaveProjectMediaSpec[];
+}
+
+/** One recording parsed from a project container. */
+export interface LoadedProjectMedia {
+  mediaId: number;
+  relativePath: string;
+  hash: string;
+  duration: number;
+  sampleRate: number;
+  channels: number;
+  /** Serialized annotation document to re-attach after import, or `null`. */
+  annotationJson: string | null;
+}
+
+/** A project container parsed back into the metadata a session restores from. */
+export interface LoadedProjectContainer {
+  name: string;
+  savedAt: number;
+  view: unknown;
+  media: LoadedProjectMedia[];
+}
+
+/** One recording inside an open project, bound to its live session ids. */
+export interface RecordingEntry {
+  /** Stable id within the project, independent of the session's audio ids. */
+  mediaId: number;
+  /** Display name (the file stem). */
+  name: string;
+  /** Basename stored under the project's `audio/` directory. */
+  fileName: string;
+  /** Path relative to the project file, using `/`. */
+  relativePath: string;
+  /** BLAKE3 content hash, 64 lowercase hex characters. */
+  hash: string;
+  duration: number;
+  sampleRate: number;
+  channels: number;
+  /** Live audio id once the recording is decoded into the session. */
+  audioId: AudioId | null;
+  /** Live annotation id once a document is attached. */
+  annotationId: AnnotationId | null;
+  /** Whether the recording carries an annotation document. */
+  hasAnnotation: boolean;
+}
+
+/** A project as listed on the home grid, without its media decoded. */
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  savedAt: number;
+  count: number;
+  /** A newer autosave sidecar holds unsaved work from an interrupted session. */
+  hasRecovery: boolean;
+}
+
 export interface CoreClientLike extends AnnotationClientLike {
+  annotationJson(annotationId: AnnotationId): Promise<string>;
+  attachAnnotationJson(audioId: AudioId, json: string): Promise<AnnotationId>;
+  saveProjectContainer(spec: SaveProjectSpec): Promise<Uint8Array>;
+  loadProjectContainer(bytes: Uint8Array): Promise<LoadedProjectContainer>;
+  renameProjectContainer(bytes: Uint8Array, name: string): Promise<Uint8Array>;
   waveformSlice(id: AudioId, t0: number, t1: number, px: number): Promise<MinMaxPyramidSlice>;
   spectrogramTile(id: AudioId, req: SpectrogramTileRequest): Promise<ImageBitmap>;
   pitchTrack(id: AudioId, floorHz: number, ceilingHz: number): Promise<PitchTrackData>;

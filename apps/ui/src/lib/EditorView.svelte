@@ -19,6 +19,11 @@
     type WasmColormapName
   } from './types';
 
+  interface RecordingChoice {
+    mediaId: number;
+    name: string;
+  }
+
   interface Props {
     client: CoreClientLike | null;
     audio: AudioInfo | null;
@@ -33,6 +38,11 @@
     onColormapChange: (colormap: WasmColormapName) => void;
     onCursorChange?: (time: number) => void;
     onAnnotationChange?: (id: bigint) => void;
+    onExit?: () => void;
+    projectName?: string;
+    recordings?: RecordingChoice[];
+    currentRecordingId?: number | null;
+    onSwitchRecording?: (mediaId: number) => void;
   }
 
   let {
@@ -48,7 +58,12 @@
     onThemeChange,
     onColormapChange,
     onCursorChange,
-    onAnnotationChange
+    onAnnotationChange,
+    onExit,
+    projectName,
+    recordings,
+    currentRecordingId,
+    onSwitchRecording
   }: Props = $props();
 
   let viewport = $state<ViewportState>(defaultViewport());
@@ -145,6 +160,29 @@
   data-visible-end={viewport.t1.toFixed(6)}
   data-cursor-time={cursorTime.toFixed(6)}
 >
+    <nav class="breadcrumb" data-testid="editor-breadcrumb">
+      {#if onExit}
+        <button type="button" class="crumb-back" data-testid="back-corpus" onclick={() => onExit?.()}>
+          ← {projectName ?? 'Project'}
+        </button>
+      {/if}
+      {#if recordings && recordings.length > 1 && onSwitchRecording}
+        <select
+          class="recording-switch"
+          aria-label="Switch recording"
+          data-testid="recording-switch"
+          value={currentRecordingId ?? undefined}
+          onchange={(event) => onSwitchRecording?.(Number(event.currentTarget.value))}
+        >
+          {#each recordings as recording (recording.mediaId)}
+            <option value={recording.mediaId}>{recording.name}</option>
+          {/each}
+        </select>
+      {:else}
+        <span class="crumb-current">{audio?.name ?? ''}</span>
+      {/if}
+    </nav>
+
   <TransportBar
     {audio}
     {cursorTime}
@@ -234,9 +272,45 @@
   .editor {
     min-height: 100vh;
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     background: var(--chrome);
     color: var(--text);
+  }
+
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-height: 2.1rem;
+    padding: 0.25rem 0.75rem;
+    border-bottom: 1px solid var(--chrome-strong);
+    background: var(--chrome);
+    font-size: 0.82rem;
+  }
+
+  .crumb-back {
+    border: 1px solid var(--chrome-strong);
+    border-radius: 5px;
+    background: var(--panel-soft);
+    color: var(--text);
+    padding: 0.15rem 0.5rem;
+  }
+
+  .crumb-back:hover {
+    background: var(--panel);
+  }
+
+  .crumb-current {
+    color: var(--muted);
+  }
+
+  .recording-switch {
+    border: 1px solid var(--chrome-strong);
+    border-radius: 5px;
+    background: var(--panel-soft);
+    color: var(--text);
+    padding: 0.15rem 0.4rem;
+    max-width: 18rem;
   }
 
   .workspace {
