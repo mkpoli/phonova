@@ -6,8 +6,8 @@ use phx_engine::{
     AlignMode, Annotation, AnnotationId, Applied, AudioId, BoundaryId, Colormap as EngineColormap,
     Command, DisplayMapping, Engine, ExportBundle, Figure, FigureFormat, FigureRequest,
     FormantParams, IntensityParams, IntervalId, LabelPattern, LabelQuery, LabelTarget, PitchParams,
-    PointId, SpectrogramParams, Theme as EngineTheme, Tier, TierId, TierRelation, TileRequest,
-    export_figure as engine_export_figure, figure_to_svg,
+    PointId, RecordingId, SpectrogramParams, Theme as EngineTheme, Tier, TierId, TierRelation,
+    TileRequest, export_figure as engine_export_figure, figure_to_svg,
 };
 use phx_project::{ContentHash, MediaId, MediaRef, Project};
 use serde::{Deserialize, Serialize};
@@ -124,6 +124,29 @@ impl WasmAudioInfo {
     #[wasm_bindgen(getter)]
     pub fn name(&self) -> Option<String> {
         self.name.clone()
+    }
+}
+
+/// A finished recording crossing the boundary: the new store id and the take
+/// encoded as WAV bytes for the host to persist.
+#[wasm_bindgen]
+pub struct WasmFinishedRecording {
+    audio: u64,
+    wav: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl WasmFinishedRecording {
+    /// Id of the audio buffer the take became in the store.
+    #[wasm_bindgen(getter)]
+    pub fn audio(&self) -> u64 {
+        self.audio
+    }
+
+    /// The take as RIFF/WAVE bytes (24-bit PCM), copied once across the boundary.
+    #[wasm_bindgen(getter)]
+    pub fn wav(&self) -> Uint8Array {
+        Uint8Array::from(self.wav.as_slice())
     }
 }
 
@@ -618,6 +641,74 @@ impl WasmEngine {
     pub fn import_wav_bytes(&mut self, bytes: &[u8]) -> Result<u64, JsError> {
         let id = self.inner.import_wav_bytes(bytes)?;
         Ok(id.as_u64())
+    }
+
+    /// Opens a streaming recording at `sampleRate` hertz with `channels`
+    /// channels and returns its id.
+    ///
+    /// The host reads `sampleRate` from the capture device (never assumes one)
+    /// and feeds sample chunks through [`WasmEngine::append_samples`]. The take
+    /// stays out of the audio store until [`WasmEngine::finish_recording`].
+    ///
+    /// # Errors
+    /// Rejects when `sampleRate` is not finite and positive, or when `channels`
+    /// is zero.
+    #[wasm_bindgen(js_name = beginRecording)]
+    pub fn begin_recording(&mut self, sample_rate: f64, channels: usize) -> Result<u64, JsError> {
+        let id = self.inner.begin_recording(sample_rate, channels)?;
+        Ok(id.as_u64())
+    }
+
+    /// Appends one planar sample chunk to an open recording.
+    ///
+    /// `samples` crosses the boundary as a borrowed `Float32Array`, copied once
+    /// into wasm memory for the call. It holds every channel's samples for this
+    /// chunk back to back, so its length must divide evenly by the channel
+    /// count the take opened with.
+    ///
+    /// # Errors
+    /// Rejects when `recordingId` names no open take, or when `samples` does
+    /// not divide evenly by the channel count.
+    #[wasm_bindgen(js_name = appendSamples)]
+    pub fn append_samples(&mut self, recording_id: u64, samples: &[f32]) -> Result<(), JsError> {
+        self.inner
+            .append_samples(RecordingId::from_u64(recording_id), samples)?;
+        Ok(())
+    }
+
+    /// Finishes a recording, materializing it as a store entry and returning
+    /// the new audio id together with the take as WAV bytes.
+    ///
+    /// The audio id names the same kind of buffer an import produces; the WAV
+    /// bytes (24-bit PCM) let the host persist the take beside imported media.
+    ///
+    /// # Errors
+    /// Rejects when `recordingId` names no open take, or when the accumulated
+    /// samples cannot form an audio buffer (an empty take).
+    #[wasm_bindgen(js_name = finishRecording)]
+    pub fn finish_recording(
+        &mut self,
+        recording_id: u64,
+        name: String,
+    ) -> Result<WasmFinishedRecording, JsError> {
+        let finished = self
+            .inner
+            .finish_recording(RecordingId::from_u64(recording_id), name)?;
+        Ok(WasmFinishedRecording {
+            audio: finished.audio.as_u64(),
+            wav: finished.wav,
+        })
+    }
+
+    /// Discards an open recording without materializing it.
+    ///
+    /// # Errors
+    /// Rejects when `recordingId` names no open take.
+    #[wasm_bindgen(js_name = abortRecording)]
+    pub fn abort_recording(&mut self, recording_id: u64) -> Result<(), JsError> {
+        self.inner
+            .abort_recording(RecordingId::from_u64(recording_id))?;
+        Ok(())
     }
 
     /// Returns duration, sample rate, channel count, and name for `id`.
@@ -2020,6 +2111,44 @@ mod tests {
     fn unknown_id_rejects_instead_of_panicking() {
         let engine = WasmEngine::new();
         assert!(engine.audio_info(999).is_err());
+    }
+
+    #[wasm_bindgen_test]
+    fn recording_begin_append_finish_round_trips_through_bindings() {
+        let mut engine = WasmEngine::new();
+        let sample_rate = 16_000.0;
+        let samples: Vec<f32> = (0..1_600).map(|i| (i as f32 * 0.01).sin() * 0.5).collect();
+
+        let rec = engine.begin_recording(sample_rate, 1).unwrap();
+        for chunk in samples.chunks(400) {
+            engine.append_samples(rec, chunk).unwrap();
+        }
+        let finished = engine.finish_recording(rec, "take".to_string()).unwrap();
+        let audio_id = finished.audio();
+        assert!(finished.wav().length() > 44);
+
+        // The materialized take reports the captured rate and full duration, and
+        // its waveform reads back as a real signal.
+        let info = engine.audio_info(audio_id).unwrap();
+        assert_eq!(info.sample_rate(), sample_rate);
+        assert!((info.duration() - samples.len() as f64 / sample_rate).abs() < 1.0e-6);
+        let waveform = engine
+            .waveform_slice(audio_id, 0.0, info.duration(), 16)
+            .unwrap();
+        assert_eq!(waveform.length(), 32);
+
+        // The spent id rejects a second finish.
+        assert!(engine.finish_recording(rec, "again".to_string()).is_err());
+    }
+
+    #[wasm_bindgen_test]
+    fn aborted_recording_rejects_further_use() {
+        let mut engine = WasmEngine::new();
+        let rec = engine.begin_recording(8_000.0, 1).unwrap();
+        engine.append_samples(rec, &[0.0; 64]).unwrap();
+        engine.abort_recording(rec).unwrap();
+        assert!(engine.append_samples(rec, &[0.0; 4]).is_err());
+        assert!(engine.abort_recording(rec).is_err());
     }
 
     #[wasm_bindgen_test]
