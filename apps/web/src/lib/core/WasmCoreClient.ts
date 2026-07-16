@@ -13,10 +13,12 @@ import type {
   IntervalData,
   IntervalId,
   LabelHit,
+  LoadedProjectContainer,
   MinMaxPyramidSlice,
   PitchTrackData,
   PointData,
   PointId,
+  SaveProjectSpec,
   SpectrogramTileRequest,
   TierId,
   TierInfo
@@ -201,6 +203,31 @@ export class WasmCoreClient implements CoreClient {
 
   exportTextGrid(annotationId: AnnotationId): Promise<Uint8Array> {
     return this.#call({ method: 'exportTextGrid', annotationId });
+  }
+
+  annotationJson(annotationId: AnnotationId): Promise<string> {
+    return this.#call({ method: 'annotationJson', annotationId });
+  }
+
+  attachAnnotationJson(audioId: AudioId, json: string): Promise<AnnotationId> {
+    return this.#call({ method: 'attachAnnotationJson', audioId, json });
+  }
+
+  saveProjectContainer(spec: SaveProjectSpec): Promise<Uint8Array> {
+    return this.#call({ method: 'saveProjectContainer', spec });
+  }
+
+  async loadProjectContainer(bytes: Uint8Array): Promise<LoadedProjectContainer> {
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const json = await this.#call<string>({ method: 'loadProjectContainer', bytes: buffer }, [
+      buffer
+    ]);
+    return JSON.parse(json) as LoadedProjectContainer;
+  }
+
+  renameProjectContainer(bytes: Uint8Array, name: string): Promise<Uint8Array> {
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    return this.#call({ method: 'renameProjectContainer', bytes: buffer, name }, [buffer]);
   }
 
   buildFigure(spec: FigureSpec): Promise<string> {

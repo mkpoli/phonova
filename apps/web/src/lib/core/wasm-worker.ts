@@ -3,7 +3,10 @@ import init, {
 	WasmEngine,
 	WasmTheme,
 	WasmTierRelation,
+	contentHash as wasmContentHash,
 	exportFigure as wasmExportFigure,
+	loadProjectContainer as wasmLoadProjectContainer,
+	renameProjectContainer as wasmRenameProjectContainer,
 	renderFigureSvg as wasmRenderFigureSvg
 } from '../wasm/pkg/phx_wasm.js';
 import type {
@@ -14,6 +17,7 @@ import type {
   FigureSpec,
   IntervalId,
   PointId,
+  SaveProjectSpec,
   SpectrogramTileRequest,
   TierId,
   TierInfo
@@ -97,6 +101,11 @@ type RequestMessage =
   | { id: number; method: 'searchLabels'; pattern: string; regex: boolean }
   | { id: number; method: 'importTextGrid'; audioId: AudioId; bytes: ArrayBuffer }
   | { id: number; method: 'exportTextGrid'; annotationId: AnnotationId }
+  | { id: number; method: 'annotationJson'; annotationId: AnnotationId }
+  | { id: number; method: 'attachAnnotationJson'; audioId: AudioId; json: string }
+  | { id: number; method: 'saveProjectContainer'; spec: SaveProjectSpec }
+  | { id: number; method: 'loadProjectContainer'; bytes: ArrayBuffer }
+  | { id: number; method: 'renameProjectContainer'; bytes: ArrayBuffer; name: string }
   | { id: number; method: 'buildFigure'; spec: FigureSpec }
   | { id: number; method: 'renderFigureSvg'; figureJson: string }
   | { id: number; method: 'exportFigure'; figureJson: string; format: FigureExportFormat };
@@ -110,34 +119,6 @@ let enginePromise: Promise<WasmEngine> | null = null;
 function engine() {
   enginePromise ??= init().then(() => new WasmEngine());
   return enginePromise;
-}
-
-type SyncAccessHandleLike = {
-  truncate(size: number): void;
-  write(buffer: BufferSource, options?: { at?: number }): number;
-  flush(): void;
-  close(): void;
-};
-
-async function storeInOpfs(audioId: AudioId, bytes: Uint8Array<ArrayBuffer>) {
-  const root = await navigator.storage?.getDirectory?.();
-  if (!root) return false;
-  const file = await root.getFileHandle(`audio-${String(audioId)}.wav`, { create: true });
-  const handleSource = file as FileSystemFileHandle & {
-    createSyncAccessHandle?: () => Promise<SyncAccessHandleLike>;
-  };
-  if (handleSource.createSyncAccessHandle) {
-    const handle = await handleSource.createSyncAccessHandle();
-    handle.truncate(0);
-    handle.write(bytes, { at: 0 });
-    handle.flush();
-    handle.close();
-    return true;
-  }
-  const writable = await file.createWritable();
-  await writable.write(bytes);
-  await writable.close();
-  return true;
 }
 
 function colormap(name: SpectrogramTileRequest['colormap']): WasmColormap {
@@ -239,14 +220,15 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
       case 'importAudio': {
         const bytes = new Uint8Array(message.bytes);
         const importedId = wasm.importWavBytes(bytes);
-        await storeInOpfs(importedId, bytes);
+        const hash = wasmContentHash(bytes);
         const info = wasm.audioInfo(importedId);
         const result = {
           id: importedId,
           duration: info.duration,
           sampleRate: info.sampleRate,
           channels: info.channels,
-          name: message.name || info.name || undefined
+          name: message.name || info.name || undefined,
+          hash
         };
         postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
         return;
@@ -456,6 +438,37 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
           { id: message.id, ok: true, result: copy },
           { transfer: [copy.buffer] }
         );
+        return;
+      }
+      case 'annotationJson': {
+        const result = wasm.annotationJson(message.annotationId);
+        postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'attachAnnotationJson': {
+        const result = wasm.attachAnnotationJson(message.audioId, message.json);
+        postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'saveProjectContainer': {
+        const bytes = wasm.saveProjectContainer(JSON.stringify(message.spec));
+        const copy = new Uint8Array(bytes.length);
+        copy.set(bytes);
+        postMessage({ id: message.id, ok: true, result: copy }, { transfer: [copy.buffer] });
+        return;
+      }
+      case 'loadProjectContainer': {
+        const bytes = new Uint8Array(message.bytes);
+        const result = wasmLoadProjectContainer(bytes);
+        postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'renameProjectContainer': {
+        const source = new Uint8Array(message.bytes);
+        const renamed = wasmRenameProjectContainer(source, message.name);
+        const copy = new Uint8Array(renamed.length);
+        copy.set(renamed);
+        postMessage({ id: message.id, ok: true, result: copy }, { transfer: [copy.buffer] });
         return;
       }
       case 'buildFigure': {
