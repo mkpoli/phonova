@@ -2,9 +2,11 @@
   import ExportDialog from './ExportDialog.svelte';
   import InspectorPanel from './InspectorPanel.svelte';
   import OverviewStrip from './OverviewStrip.svelte';
+  import ReadoutBar from './ReadoutBar.svelte';
   import SpectrogramPane from './SpectrogramPane.svelte';
   import TierPane from './TierPane.svelte';
   import TransportBar from './TransportBar.svelte';
+  import VoiceReportCard from './VoiceReportCard.svelte';
   import WaveformPane from './WaveformPane.svelte';
   import {
     clampViewport,
@@ -15,7 +17,10 @@
     type CoreClientLike,
     type OverlayParams,
     type OverlayStats,
+    type Selection,
+    type SelectionReadout,
     type ViewportState,
+    type VoiceReportData,
     type WasmColormapName
   } from './types';
 
@@ -43,6 +48,7 @@
     recordings?: RecordingChoice[];
     currentRecordingId?: number | null;
     onSwitchRecording?: (mediaId: number) => void;
+    onPlaySelection?: (t0: number, t1: number) => void;
   }
 
   let {
@@ -63,7 +69,8 @@
     projectName,
     recordings,
     currentRecordingId,
-    onSwitchRecording
+    onSwitchRecording,
+    onPlaySelection
   }: Props = $props();
 
   let viewport = $state<ViewportState>(defaultViewport());
@@ -72,10 +79,126 @@
   let inspectorOpen = $state(true);
   let exportOpen = $state(false);
 
+  let selection = $state<Selection | null>(null);
+  let readout = $state<SelectionReadout | null>(null);
+  let formantMeans = $state<number[] | null>(null);
+  let voiceReportOpen = $state(false);
+  let voiceReport = $state<VoiceReportData | null>(null);
+  let voiceReportLoading = $state(false);
+
   $effect(() => {
     const duration = audio?.duration ?? 1;
     viewport = defaultViewport(duration);
+    // A new recording invalidates any selection anchored in the old signal.
+    selection = null;
   });
+
+  // Selection readout: every value is an engine query over the box, so the bar
+  // shows exactly what a script reading the same API returns.
+  $effect(() => {
+    const sel = selection;
+    const id = audio?.id;
+    const pitch = overlayParams.pitch;
+    const intensityFloor = overlayParams.intensity.floorHz;
+    if (!client || id === undefined || !sel) {
+      readout = null;
+      return;
+    }
+    let cancelled = false;
+    client
+      .selectionReadout(
+        id,
+        sel.t0,
+        sel.t1,
+        sel.f0,
+        sel.f1,
+        pitch.floorHz,
+        pitch.ceilingHz,
+        intensityFloor
+      )
+      .then((result) => {
+        if (!cancelled) readout = result;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  // Provisional tracked-formant means, fetched only while the tracking toggle is
+  // on (the raw Burg display is the default until T2.6 closes).
+  $effect(() => {
+    const sel = selection;
+    const id = audio?.id;
+    const formant = overlayParams.formant;
+    if (!client || id === undefined || !sel || !formant.smoothed) {
+      formantMeans = null;
+      return;
+    }
+    let cancelled = false;
+    client
+      .formantSpanMeans(id, formant.ceilingHz, formant.maxFormants, true, sel.t0, sel.t1)
+      .then((means) => {
+        if (!cancelled) formantMeans = Array.from(means);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  function handleSelectionChange(next: Selection | null) {
+    selection = next;
+    if (!next) {
+      readout = null;
+      formantMeans = null;
+    }
+  }
+
+  function clearSelection() {
+    selection = null;
+    readout = null;
+    formantMeans = null;
+    voiceReportOpen = false;
+  }
+
+  function zoomToSelection() {
+    if (!selection) return;
+    setViewport({
+      ...viewport,
+      t0: selection.t0,
+      t1: selection.t1,
+      f0: selection.mode === 'box' ? selection.f0 : viewport.f0,
+      f1: selection.mode === 'box' ? selection.f1 : viewport.f1
+    });
+  }
+
+  function playSelection() {
+    if (!selection) return;
+    onCursorChange?.(selection.t0);
+    onPlaySelection?.(selection.t0, selection.t1);
+  }
+
+  async function openVoiceReport() {
+    if (!client || !audio || !selection) return;
+    voiceReportOpen = true;
+    voiceReportLoading = true;
+    voiceReport = null;
+    const sel = selection;
+    try {
+      voiceReport = await client.voiceReport(
+        audio.id,
+        sel.t0,
+        sel.t1,
+        overlayParams.pitch.floorHz,
+        overlayParams.pitch.ceilingHz
+      );
+    } catch {
+      voiceReport = null;
+    } finally {
+      voiceReportLoading = false;
+    }
+  }
 
   function setViewport(next: ViewportState) {
     viewport = clampViewport(next, audio?.duration ?? 1);
@@ -135,6 +258,12 @@
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
+    if (event.key === 'Escape' && (selection || voiceReportOpen)) {
+      event.preventDefault();
+      if (voiceReportOpen) voiceReportOpen = false;
+      else clearSelection();
+      return;
+    }
     if (event.code === 'Space') {
       event.preventDefault();
       onPlayToggle();
@@ -197,9 +326,31 @@
 
   <OverviewStrip {client} {audio} {viewport} {theme} onViewportChange={setViewport} />
 
+  {#if selection}
+    <ReadoutBar
+      {selection}
+      {readout}
+      {formantMeans}
+      showFormants={overlayParams.formant.smoothed}
+      onPlay={playSelection}
+      onZoom={zoomToSelection}
+      onVoiceReport={openVoiceReport}
+      onClear={clearSelection}
+    />
+  {/if}
+
   <div class="workspace">
     <main class="timeline" data-testid="timeline" onwheel={handleWheel} onpointerdown={handlePointer} onpointermove={handlePointer}>
-      <WaveformPane {client} {audio} {viewport} {cursorTime} {theme} />
+      <WaveformPane
+        {client}
+        {audio}
+        {viewport}
+        {cursorTime}
+        {theme}
+        {selection}
+        onSelectionChange={handleSelectionChange}
+        onSeek={(time) => onCursorChange?.(time)}
+      />
       <SpectrogramPane
         {client}
         {audio}
@@ -209,6 +360,9 @@
         {colormap}
         {overlayParams}
         onOverlayStats={(stats) => (overlayStats = stats)}
+        {selection}
+        onSelectionChange={handleSelectionChange}
+        onSeek={(time) => onCursorChange?.(time)}
       />
       <TierPane
         {client}
@@ -265,6 +419,10 @@
       {colormap}
       onClose={() => (exportOpen = false)}
     />
+  {/if}
+
+  {#if voiceReportOpen}
+    <VoiceReportCard report={voiceReport} loading={voiceReportLoading} onClose={() => (voiceReportOpen = false)} />
   {/if}
 </div>
 

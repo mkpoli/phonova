@@ -379,6 +379,16 @@
   const recordingChoices = $derived(
     project?.recordings.map((entry) => ({ mediaId: entry.mediaId, name: entry.name })) ?? []
   );
+
+  // Test hook: the batch-equals-GUI invariant check reads the live client and
+  // the open recording's audio id to run a direct engine query at the same
+  // coordinates the readout used.
+  $effect(() => {
+    (globalThis as unknown as { __phonix?: unknown }).__phonix = {
+      client,
+      audioId: audio?.id ?? null
+    };
+  });
 </script>
 
 {#if route === 'home'}
@@ -433,6 +443,10 @@
     recordings={recordingChoices}
     currentRecordingId={recording?.mediaId ?? null}
     onSwitchRecording={switchRecording}
+    onPlaySelection={(t0, t1) => {
+      cursorTime = t0;
+      void playback?.playRange(t0, t1);
+    }}
   />
 {/if}
 

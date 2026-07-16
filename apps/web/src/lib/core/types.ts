@@ -24,9 +24,12 @@ import type {
   RecordingEntry,
   SaveProjectMediaSpec,
   SaveProjectSpec,
+  Selection,
+  SelectionReadout,
   SpectrogramTileRequest,
   TierId,
-  TierInfo
+  TierInfo,
+  VoiceReportData
 } from '@phonix/ui';
 
 export type {
@@ -54,9 +57,12 @@ export type {
   RecordingEntry,
   SaveProjectMediaSpec,
   SaveProjectSpec,
+  Selection,
+  SelectionReadout,
   SpectrogramTileRequest,
   TierId,
-  TierInfo
+  TierInfo,
+  VoiceReportData
 };
 
 export type CoreClient = CoreClientLike;

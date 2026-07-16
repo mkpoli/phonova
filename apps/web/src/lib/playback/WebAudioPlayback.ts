@@ -46,6 +46,33 @@ export class WebAudioPlayback {
     };
   }
 
+  async playRange(t0: number, t1: number) {
+    if (!this.#buffer) return;
+    const context = this.#audioContext();
+    await context.resume();
+    this.stopSource();
+    const duration = this.#buffer.duration;
+    const start = Math.min(Math.max(0, t0), Math.max(0, duration - 0.001));
+    const end = Math.min(Math.max(start, t1), duration);
+    const source = context.createBufferSource();
+    source.buffer = this.#buffer;
+    source.connect(context.destination);
+    // A non-positive span falls back to playing from the start point.
+    if (end - start > 0) source.start(0, start, end - start);
+    else source.start(0, start);
+    this.#offset = start;
+    this.#startedAt = context.currentTime;
+    this.#source = source;
+    this.#playing = true;
+    source.onended = () => {
+      if (this.#source === source) {
+        this.#playing = false;
+        this.#offset = Math.min(this.position, this.#buffer?.duration ?? this.#offset);
+        this.#source = null;
+      }
+    };
+  }
+
   pause() {
     this.#offset = this.position;
     this.stopSource();

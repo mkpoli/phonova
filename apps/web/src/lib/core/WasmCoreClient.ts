@@ -19,9 +19,11 @@ import type {
   PointData,
   PointId,
   SaveProjectSpec,
+  SelectionReadout,
   SpectrogramTileRequest,
   TierId,
-  TierInfo
+  TierInfo,
+  VoiceReportData
 } from './types';
 
 type Pending = {
@@ -97,6 +99,62 @@ export class WasmCoreClient implements CoreClient {
 
   intensityTrack(id: AudioId, floorHz: number): Promise<IntensityTrackData> {
     return this.#call({ method: 'intensityTrack', audioId: id, floorHz });
+  }
+
+  bandEnergy(id: AudioId, t0: number, t1: number, f0: number, f1: number): Promise<number> {
+    return this.#call({ method: 'bandEnergy', audioId: id, t0, t1, f0, f1 });
+  }
+
+  selectionReadout(
+    id: AudioId,
+    t0: number,
+    t1: number,
+    f0: number,
+    f1: number,
+    pitchFloorHz: number,
+    pitchCeilingHz: number,
+    intensityFloorHz: number
+  ): Promise<SelectionReadout> {
+    return this.#call({
+      method: 'selectionReadout',
+      audioId: id,
+      t0,
+      t1,
+      f0,
+      f1,
+      pitchFloorHz,
+      pitchCeilingHz,
+      intensityFloorHz
+    });
+  }
+
+  formantSpanMeans(
+    id: AudioId,
+    ceilingHz: number,
+    maxFormants: number,
+    smoothed: boolean,
+    t0: number,
+    t1: number
+  ): Promise<Float64Array> {
+    return this.#call({
+      method: 'formantSpanMeans',
+      audioId: id,
+      ceilingHz,
+      maxFormants,
+      smoothed,
+      t0,
+      t1
+    });
+  }
+
+  voiceReport(
+    id: AudioId,
+    t0: number,
+    t1: number,
+    pitchFloorHz: number,
+    pitchCeilingHz: number
+  ): Promise<VoiceReportData> {
+    return this.#call({ method: 'voiceReport', audioId: id, t0, t1, pitchFloorHz, pitchCeilingHz });
   }
 
   createAnnotation(audioId: AudioId, xmin: number, xmax: number): Promise<AnnotationId> {

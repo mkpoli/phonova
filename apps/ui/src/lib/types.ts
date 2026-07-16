@@ -234,7 +234,110 @@ export interface ProjectSummary {
   hasRecovery: boolean;
 }
 
+/** How a selection was drawn, and therefore what it bounds. */
+export type SelectionMode = 'time' | 'box';
+
+/**
+ * A selection in signal coordinates, so it stays anchored to the signal across
+ * zoom and pan. A `time` selection (waveform drag) spans the visible frequency
+ * range; a `box` selection (spectrogram drag) bounds frequency too.
+ */
+export interface Selection {
+  t0: number;
+  t1: number;
+  f0: number;
+  f1: number;
+  mode: SelectionMode;
+}
+
+/**
+ * The measurement readout for a selection. Every number is an engine query over
+ * the box, so the readout bar equals what a script reading the same API returns
+ * (the batch-equals-GUI invariant). Absent measures are `null`.
+ */
+export interface SelectionReadout {
+  t0: number;
+  t1: number;
+  f0: number;
+  f1: number;
+  duration: number;
+  f0MeanHz: number | null;
+  f0MinHz: number | null;
+  f0MaxHz: number | null;
+  bandEnergyDb: number;
+  intensityMeanDb: number | null;
+  hnrMeanDb: number | null;
+}
+
+/** The aggregate voice report over a span, as the report card renders it. */
+export interface VoiceReportData {
+  t0: number;
+  t1: number;
+  pitch: { meanHz: number | null; medianHz: number | null; minHz: number | null; maxHz: number | null };
+  jitter: {
+    local: number | null;
+    localAbsolute: number | null;
+    rap: number | null;
+    ppq5: number | null;
+    ddp: number | null;
+  };
+  shimmer: {
+    local: number | null;
+    localDb: number | null;
+    apq3: number | null;
+    apq5: number | null;
+    apq11: number | null;
+    dda: number | null;
+  };
+  meanHnrDb: number | null;
+  cppDb: number;
+  cppsDb: number | null;
+  voiceBreaks: { thresholdSeconds: number; totalSeconds: number; count: number };
+  moments: {
+    centreOfGravityHz: number | null;
+    standardDeviationHz: number | null;
+    skewness: number | null;
+    kurtosis: number | null;
+  };
+  pulseCount: number;
+  params: {
+    pitchFloorHz: number;
+    pitchCeilingHz: number;
+    harmonicityFloorHz: number;
+    periodsPerWindow: number;
+    cppFrameLengthSeconds: number;
+    cppMinF0Hz: number;
+    cppMaxF0Hz: number;
+  };
+}
+
 export interface CoreClientLike extends AnnotationClientLike {
+  bandEnergy(id: AudioId, t0: number, t1: number, f0: number, f1: number): Promise<number>;
+  selectionReadout(
+    id: AudioId,
+    t0: number,
+    t1: number,
+    f0: number,
+    f1: number,
+    pitchFloorHz: number,
+    pitchCeilingHz: number,
+    intensityFloorHz: number
+  ): Promise<SelectionReadout>;
+  formantSpanMeans(
+    id: AudioId,
+    ceilingHz: number,
+    maxFormants: number,
+    smoothed: boolean,
+    t0: number,
+    t1: number
+  ): Promise<Float64Array>;
+  voiceReport(
+    id: AudioId,
+    t0: number,
+    t1: number,
+    pitchFloorHz: number,
+    pitchCeilingHz: number
+  ): Promise<VoiceReportData>;
   annotationJson(annotationId: AnnotationId): Promise<string>;
   attachAnnotationJson(audioId: AudioId, json: string): Promise<AnnotationId>;
   saveProjectContainer(spec: SaveProjectSpec): Promise<Uint8Array>;

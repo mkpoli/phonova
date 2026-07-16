@@ -4,11 +4,13 @@
     CoreClientLike,
     OverlayParams,
     OverlayStats,
+    Selection,
     SpectrogramTileRequest,
     ViewportState,
     WasmColormapName
   } from './types';
   import { cssVar, FrameTimeMonitor, hexToRgb01, makeProgram, resizeCanvas } from './rendering';
+  import SelectionLayer from './SelectionLayer.svelte';
   import TrackOverlay from './TrackOverlay.svelte';
 
   interface Props {
@@ -20,10 +22,24 @@
     colormap: WasmColormapName;
     overlayParams: OverlayParams;
     onOverlayStats?: (stats: OverlayStats) => void;
+    selection?: Selection | null;
+    onSelectionChange?: (selection: Selection | null) => void;
+    onSeek?: (time: number) => void;
   }
 
-  let { client, audio, viewport, cursorTime, theme, colormap, overlayParams, onOverlayStats }: Props =
-    $props();
+  let {
+    client,
+    audio,
+    viewport,
+    cursorTime,
+    theme,
+    colormap,
+    overlayParams,
+    onOverlayStats,
+    selection = null,
+    onSelectionChange,
+    onSeek
+  }: Props = $props();
   let canvas = $state<HTMLCanvasElement | null>(null);
   let notice = $state('');
   let usingCanvas2d = $state(false);
@@ -202,6 +218,15 @@
     <canvas bind:this={canvas} class="canvas" data-testid="spectrogram-canvas" data-render-token={renderToken}></canvas>
   {/key}
   <TrackOverlay {client} {audio} {viewport} {theme} params={overlayParams} onStats={onOverlayStats} />
+  {#if audio && onSelectionChange}
+    <SelectionLayer
+      {viewport}
+      mode="box"
+      {selection}
+      onChange={onSelectionChange}
+      {onSeek}
+    />
+  {/if}
   <div class="pane-label">Spectrogram</div>
   {#if notice}
     <div class="notice">{notice}</div>

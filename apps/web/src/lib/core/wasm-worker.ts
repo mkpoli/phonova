@@ -46,6 +46,46 @@ type RequestMessage =
       smoothed: boolean;
     }
   | { id: number; method: 'intensityTrack'; audioId: AudioId; floorHz: number }
+  | {
+      id: number;
+      method: 'bandEnergy';
+      audioId: AudioId;
+      t0: number;
+      t1: number;
+      f0: number;
+      f1: number;
+    }
+  | {
+      id: number;
+      method: 'selectionReadout';
+      audioId: AudioId;
+      t0: number;
+      t1: number;
+      f0: number;
+      f1: number;
+      pitchFloorHz: number;
+      pitchCeilingHz: number;
+      intensityFloorHz: number;
+    }
+  | {
+      id: number;
+      method: 'formantSpanMeans';
+      audioId: AudioId;
+      ceilingHz: number;
+      maxFormants: number;
+      smoothed: boolean;
+      t0: number;
+      t1: number;
+    }
+  | {
+      id: number;
+      method: 'voiceReport';
+      audioId: AudioId;
+      t0: number;
+      t1: number;
+      pitchFloorHz: number;
+      pitchCeilingHz: number;
+    }
   | { id: number; method: 'createAnnotation'; audioId: AudioId; xmin: number; xmax: number }
   | { id: number; method: 'addIntervalTier'; annotationId: AnnotationId; name: string }
   | { id: number; method: 'addPointTier'; annotationId: AnnotationId; name: string }
@@ -322,6 +362,59 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
           { id: message.id, ok: true, result: { times, db } },
           { transfer: [times.buffer, db.buffer] }
         );
+        return;
+      }
+      case 'bandEnergy': {
+        const result = wasm.bandEnergy(
+          message.audioId,
+          message.t0,
+          message.t1,
+          message.f0,
+          message.f1
+        );
+        postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'selectionReadout': {
+        const json = wasm.selectionReadout(
+          message.audioId,
+          message.t0,
+          message.t1,
+          message.f0,
+          message.f1,
+          message.pitchFloorHz,
+          message.pitchCeilingHz,
+          message.intensityFloorHz
+        );
+        postMessage({ id: message.id, ok: true, result: JSON.parse(json) } satisfies ResponseMessage);
+        return;
+      }
+      case 'formantSpanMeans': {
+        const data = wasm.formantSpanMeans(
+          message.audioId,
+          message.ceilingHz,
+          message.maxFormants,
+          message.smoothed,
+          message.t0,
+          message.t1
+        );
+        const copy = new Float64Array(data.length);
+        copy.set(data);
+        postMessage(
+          { id: message.id, ok: true, result: copy },
+          { transfer: [copy.buffer] }
+        );
+        return;
+      }
+      case 'voiceReport': {
+        const json = wasm.voiceReport(
+          message.audioId,
+          message.t0,
+          message.t1,
+          message.pitchFloorHz,
+          message.pitchCeilingHz
+        );
+        postMessage({ id: message.id, ok: true, result: JSON.parse(json) } satisfies ResponseMessage);
         return;
       }
       case 'createAnnotation': {

@@ -1,6 +1,7 @@
 <script lang="ts">
-  import type { AudioInfo, CoreClientLike, ViewportState } from './types';
+  import type { AudioInfo, CoreClientLike, Selection, ViewportState } from './types';
   import { cssVar, FrameTimeMonitor, hexToRgb01, makeProgram, resizeCanvas } from './rendering';
+  import SelectionLayer from './SelectionLayer.svelte';
 
   interface Props {
     client: CoreClientLike | null;
@@ -8,9 +9,21 @@
     viewport: ViewportState;
     cursorTime: number;
     theme: 'light' | 'dark';
+    selection?: Selection | null;
+    onSelectionChange?: (selection: Selection | null) => void;
+    onSeek?: (time: number) => void;
   }
 
-  let { client, audio, viewport, cursorTime, theme }: Props = $props();
+  let {
+    client,
+    audio,
+    viewport,
+    cursorTime,
+    theme,
+    selection = null,
+    onSelectionChange,
+    onSeek
+  }: Props = $props();
   let canvas = $state<HTMLCanvasElement | null>(null);
   let notice = $state('');
   let usingCanvas2d = $state(false);
@@ -184,6 +197,15 @@
   {#key usingCanvas2d}
     <canvas bind:this={canvas} class="canvas" data-testid="waveform-canvas" data-render-token={renderToken}></canvas>
   {/key}
+  {#if audio && onSelectionChange}
+    <SelectionLayer
+      {viewport}
+      mode="time"
+      {selection}
+      onChange={onSelectionChange}
+      {onSeek}
+    />
+  {/if}
 </section>
 
 <style>
