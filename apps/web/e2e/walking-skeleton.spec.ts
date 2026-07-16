@@ -117,7 +117,9 @@ test('analysis overlays: toggles, live pitch ceiling, clipping badge, screenshot
   // the contours read across several vowels (400 Hz ceiling suits the male
   // fixture; the cached whole-signal tracks redraw without recomputing).
   await page.getByTestId('pitch-ceiling').fill('400');
-  await page.getByTestId('spectrogram-canvas').click();
+  // Blur the ceiling input so the fit shortcut reaches the editor; the
+  // selection layer sits over the canvas, so this click passes through it.
+  await page.getByTestId('spectrogram-canvas').click({ force: true });
   await page.keyboard.press('0');
   await expect.poll(() => visibleSpan(page)).toBeGreaterThan(2);
   // Wait for the whole-signal track at this ceiling to settle, so the pitch
