@@ -246,11 +246,13 @@
 
   function handleWheel(event: WheelEvent) {
     if (!audio) return;
+    // Always swallow the wheel: a Ctrl/Cmd wheel is how a macOS trackpad pinch
+    // arrives, and the browser would otherwise page-zoom the whole app.
     event.preventDefault();
     const target = event.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
     const anchorRatio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-    if (event.ctrlKey || event.metaKey) {
+    if (event.altKey) {
       zoomVertical(event.deltaY < 0 ? 0.86 : 1.16);
       return;
     }
@@ -259,6 +261,9 @@
       scrollHorizontal((event.deltaY / 600) * span);
       return;
     }
+    // Plain wheel and Ctrl/Cmd wheel (the trackpad pinch) both drive time zoom
+    // anchored on the pointer. Every pane reads the one shared viewport, so the
+    // waveform and spectrogram stay locked to the same time axis.
     zoomHorizontal(event.deltaY < 0 ? 0.82 : 1.22, anchorRatio);
   }
 
@@ -331,7 +336,8 @@
       id: 'zoomIn',
       title: 'Zoom in',
       group: 'View',
-      shortcut: 'Wheel up',
+      shortcut: 'Wheel / pinch',
+      keywords: ['time zoom', 'ctrl wheel'],
       enabled: hasAudio,
       run: () => zoomHorizontal(0.8, 0.5)
     },
@@ -339,9 +345,19 @@
       id: 'zoomOut',
       title: 'Zoom out',
       group: 'View',
-      shortcut: 'Wheel down',
+      shortcut: 'Wheel / pinch',
+      keywords: ['time zoom', 'ctrl wheel'],
       enabled: hasAudio,
       run: () => zoomHorizontal(1.25, 0.5)
+    },
+    {
+      id: 'zoomFrequency',
+      title: 'Zoom frequency / amplitude',
+      group: 'View',
+      shortcut: 'Alt+wheel',
+      keywords: ['vertical zoom', 'frequency range', 'amplitude'],
+      enabled: hasAudio,
+      run: () => zoomVertical(0.86)
     },
     {
       id: 'toggleInspector',
@@ -468,6 +484,7 @@
   data-testid="editor"
   data-visible-start={viewport.t0.toFixed(6)}
   data-visible-end={viewport.t1.toFixed(6)}
+  data-visible-freq={viewport.f1.toFixed(6)}
   data-cursor-time={cursorTime.toFixed(6)}
 >
     <nav class="breadcrumb" data-testid="editor-breadcrumb">

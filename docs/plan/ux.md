@@ -53,10 +53,20 @@ Single-window, synchronized-pane timeline (the WaveSurfer/DAW model):
   2). The readout shows duration, F0 mean, and band energy for the current
   selection; actions on a selection (play, zoom-to, voice report, extract,
   export figure) come from the palette, the context menu, and keys.
-- **Navigation**: wheel = horizontal zoom centered on pointer; Shift+wheel =
-  scroll; Ctrl/Cmd+wheel = vertical (amplitude / frequency-range) zoom;
-  pinch on trackpads; `F` fits selection, `0` fits file. All bindings
-  remappable later; defaults follow DAW conventions.
+- **Navigation**: wheel = horizontal (time) zoom centered on pointer;
+  Ctrl/Cmd+wheel and trackpad pinch = the same time zoom, so a pinch never
+  page-zooms the browser and every pane stays locked to one time axis;
+  Shift+wheel = scroll; Alt+wheel = vertical (amplitude / frequency-range)
+  zoom; `F` fits selection, `0` fits file. All bindings remappable later;
+  defaults follow DAW conventions.
+
+  | Gesture | Action |
+  | --- | --- |
+  | Wheel | Time zoom, anchored on the pointer |
+  | Ctrl/Cmd+wheel, pinch | Time zoom (macOS pinch arrives as a Ctrl wheel) |
+  | Shift+wheel | Scroll the time axis |
+  | Alt+wheel | Amplitude / frequency-range zoom |
+  | `F` / `0` | Fit selection / fit file |
 - **Playback**: space plays selection or from cursor; the cursor is
   sample-accurate from the engine clock, never animated by the frontend.
 - **Annotation loop** (keyboard-first): `Tab`/`Shift-Tab` next/previous
