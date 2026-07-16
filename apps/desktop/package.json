@@ -11,6 +11,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@fontsource/voces": "^5.2.7",
     "@phonix/ui": "workspace:*",
     "@sveltejs/adapter-static": "^3.0.8",
     "@sveltejs/kit": "^2.16.0",
@@ -22,9 +23,11 @@
     "vite": "^6.0.0"
   },
   "devDependencies": {
+    "@iconify-json/lucide": "^1.2.117",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tauri-apps/cli": "^2.0.0",
     "svelte-check": "^4.1.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "unplugin-icons": "^23.0.1"
   }
 }

@@ -14,10 +14,12 @@
     "svelte": "^5.0.0"
   },
   "devDependencies": {
+    "@iconify-json/lucide": "^1.2.117",
     "@sveltejs/package": "^2.3.11",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "svelte": "^5.0.0",
     "typescript": "^5.7.2",
+    "unplugin-icons": "^23.0.1",
     "vite": "^6.0.0"
   }
 }

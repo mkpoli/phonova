@@ -1,44 +1,122 @@
 @import 'tailwindcss';
+@import '@fontsource/voces';
+
+/* Design tokens.
+   - Type: system sans for UI; Voces (SIL OFL) for IPA tier labels and
+     transcriptions; a serif stack reserved for the Phonix wordmark.
+   - Brand teal ramp anchored on the values the app already used
+     (teal-600 in light, teal-300 in dark), refined into a full scale.
+   - Blue ramp is the functional-action accent, kept apart from brand teal. */
+@theme {
+  --font-sans:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-ipa: 'Voces', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: ui-serif, 'Iowan Old Style', 'Palatino Linotype', Georgia, 'Times New Roman', serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-teal-50: #f0fdfa;
+  --color-teal-100: #ccfbf1;
+  --color-teal-200: #99f6e4;
+  --color-teal-300: #5eead4;
+  --color-teal-400: #2dd4bf;
+  --color-teal-500: #14b8a6;
+  --color-teal-600: #0f766e;
+  --color-teal-700: #115e59;
+  --color-teal-800: #134e4a;
+  --color-teal-900: #123f3b;
+
+  --color-action-300: #93c5fd;
+  --color-action-400: #60a5fa;
+  --color-action-500: #3b82f6;
+  --color-action-600: #2563eb;
+  --color-action-700: #1d4ed8;
+
+  --radius-sm: 5px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+}
 
 :root {
   color-scheme: light;
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  --chrome: #f8fafc;
-  --chrome-strong: #e5e7eb;
+  font-family: var(--font-sans);
+
+  /* Warm paper neutrals, a quiet lab-instrument surface. */
+  --chrome: #f7f6f3;
+  --chrome-strong: #e4e2db;
   --panel: #ffffff;
-  --panel-soft: #f1f5f9;
-  --text: #101828;
-  --muted: #64748b;
-  --accent: #0f766e;
-  --accent-strong: #115e59;
+  --panel-soft: #f1f0ea;
+  --text: #1a1a16;
+  --muted: #6c6a61;
+
+  /* Teal is identity/chrome; blue is the functional form action. */
+  --accent: var(--color-teal-600);
+  --accent-strong: var(--color-teal-700);
+  --accent-tint: color-mix(in oklab, var(--color-teal-600) 14%, var(--panel));
+  --action: var(--color-action-600);
+  --action-strong: var(--color-action-700);
+  --on-accent: #ffffff;
+
   --warn: #b45309;
-  --canvas: #f8fafc;
-  --grid: rgba(15, 23, 42, 0.12);
+  --danger: #dc2626;
+
+  --canvas: #f1f0ea;
+  --grid: rgba(26, 26, 22, 0.1);
   /* Overlay chrome (pane labels, fallback notice) sits over the spectrogram,
      so it carries its own backing chip rather than relying on the pane behind. */
-  --chip-bg: rgba(248, 250, 252, 0.86);
-  --chip-fg: #1f2937;
-  --chip-ring: rgba(15, 23, 42, 0.18);
+  --chip-bg: rgba(247, 246, 243, 0.88);
+  --chip-fg: #26251f;
+  --chip-ring: rgba(26, 26, 22, 0.16);
+
+  /* Analysis overlay hues — kept fixed across themes so pitch/formant/intensity
+     read the same on the canvas and in the inspector swatches. */
+  --overlay-pitch: #9cc4ff;
+  --overlay-formant: #ff5a52;
+  --overlay-intensity: #ffcc33;
+
+  --shadow-sm: 0 1px 2px rgba(26, 26, 22, 0.07), 0 1px 1px rgba(26, 26, 22, 0.04);
+  --shadow-md: 0 6px 18px rgba(26, 26, 22, 0.09), 0 2px 5px rgba(26, 26, 22, 0.06);
+  --shadow-lg: 0 18px 44px rgba(26, 26, 22, 0.14), 0 4px 12px rgba(26, 26, 22, 0.08);
+
+  --t-fast: 0.15s ease-in-out;
+  --t: 0.2s ease-in-out;
 }
 
 :root.dark {
   color-scheme: dark;
-  --chrome: #111827;
-  --chrome-strong: #253043;
-  --panel: #0b1220;
-  --panel-soft: #172033;
-  --text: #e5edf8;
-  --muted: #91a0b5;
-  --accent: #5eead4;
-  --accent-strong: #99f6e4;
+
+  /* Warm charcoal: red ≥ green ≥ blue, so the dark surface reads warm rather
+     than the near-black blue-slate it was before. */
+  --chrome: #1e1d1a;
+  --chrome-strong: #37342e;
+  --panel: #1a1917;
+  --panel-soft: #26241f;
+  --text: #eeede7;
+  --muted: #a3a096;
+
+  --accent: var(--color-teal-300);
+  --accent-strong: var(--color-teal-200);
+  --accent-tint: color-mix(in oklab, var(--color-teal-300) 20%, var(--panel));
+  --action: var(--color-action-400);
+  --action-strong: var(--color-action-300);
+  --on-accent: #10201d;
+
   --warn: #fbbf24;
-  --canvas: #0f172a;
-  --grid: rgba(226, 232, 240, 0.16);
-  --chip-bg: rgba(9, 14, 26, 0.82);
-  --chip-fg: #e5edf8;
-  --chip-ring: rgba(148, 163, 184, 0.28);
+  --danger: #f87171;
+
+  --canvas: #131210;
+  --grid: rgba(238, 237, 231, 0.14);
+  --chip-bg: rgba(15, 14, 11, 0.84);
+  --chip-fg: #eeede7;
+  --chip-ring: rgba(163, 160, 150, 0.28);
+
+  --overlay-pitch: #9cc4ff;
+  --overlay-formant: #ff5a52;
+  --overlay-intensity: #ffcc33;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.46), 0 2px 5px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 20px 46px rgba(0, 0, 0, 0.52), 0 5px 14px rgba(0, 0, 0, 0.42);
 }
 
 html,
@@ -47,11 +125,7 @@ body {
   margin: 0;
   background: var(--chrome);
   color: var(--text);
-}
-
-button,
-input {
-  font: inherit;
+  font-family: var(--font-sans);
 }
 
 * {
@@ -59,8 +133,10 @@ input {
 }
 
 button,
+input,
 select,
-label {
+label,
+textarea {
   font: inherit;
 }
 
@@ -75,4 +151,11 @@ button,
 select,
 label {
   cursor: pointer;
+}
+
+/* One focus-visible treatment across every interactive surface. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
