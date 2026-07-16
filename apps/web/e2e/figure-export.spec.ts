@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { openEditorWithFixture } from './helpers';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../../..');
@@ -12,9 +13,7 @@ const screenshots = path.join(here, 'screenshots');
 const figcheck = path.join(root, 'tools/figcheck/check.sh');
 
 async function loadFixture(page: Page) {
-  await page.goto('/');
-  await page.getByTestId('file-input').setInputFiles(wavFixture);
-  await expect(page.getByTestId('editor')).toHaveAttribute('data-visible-end', /[1-9]/);
+  await openEditorWithFixture(page, wavFixture);
   await expect(page.getByTestId('tier-pane')).toHaveAttribute('data-undo-depth', '1', {
     timeout: 60_000
   });

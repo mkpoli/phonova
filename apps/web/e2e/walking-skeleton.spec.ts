@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { openEditorWithFixture } from './helpers';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../../..');
@@ -9,9 +10,7 @@ const longFixture = path.join(root, 'tests/fixtures/audio/long_scroll_test.wav')
 const screenshots = path.join(here, 'screenshots');
 
 test('drop wav, render, zoom, play, and scroll long fixture', async ({ page }) => {
-  await page.goto('/');
-  await page.getByTestId('file-input').setInputFiles(shortFixture);
-  await expect(page.getByTestId('editor')).toHaveAttribute('data-visible-end', /[1-9]/);
+  await openEditorWithFixture(page, shortFixture);
   await expect(page.getByTestId('waveform-canvas')).toHaveAttribute('data-render-token', /[1-9]/);
   await expect(page.getByTestId('spectrogram-canvas')).toHaveAttribute('data-render-token', /[1-9]/);
 
@@ -52,9 +51,7 @@ test('analysis overlays: toggles, live pitch ceiling, clipping badge, screenshot
   page
 }) => {
   test.setTimeout(180_000);
-  await page.goto('/');
-  await page.getByTestId('file-input').setInputFiles(shortFixture);
-  await expect(page.getByTestId('editor')).toHaveAttribute('data-visible-end', /[1-9]/);
+  await openEditorWithFixture(page, shortFixture);
 
   const overlay = page.getByTestId('track-overlay');
   // Wait for the whole-signal pitch track (the slow one) to settle.

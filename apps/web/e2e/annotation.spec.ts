@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { openEditorWithFixture } from './helpers';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../../..');
@@ -9,10 +10,8 @@ const textGridFixture = path.join(root, 'tests/fixtures/textgrids/arctic_bdl_a00
 const screenshots = path.join(here, 'screenshots');
 
 async function loadFixture(page: Page) {
-  await page.goto('/');
-  await page.getByTestId('file-input').setInputFiles(wavFixture);
-  await expect(page.getByTestId('editor')).toHaveAttribute('data-visible-end', /[1-9]/);
-  // The imported audio gets an empty annotation document attached; the attach
+  await openEditorWithFixture(page, wavFixture);
+  // Opening the recording attaches an empty annotation document; the attach
   // command queues behind the whole-signal analyses in the engine worker.
   await expect(page.getByTestId('tier-pane')).toHaveAttribute('data-undo-depth', '1', {
     timeout: 60_000
