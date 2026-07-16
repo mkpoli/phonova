@@ -76,6 +76,7 @@
   let previewToken = 0;
 
   const activeFormat = $derived(FORMATS.find((f) => f.value === format));
+  const noLayers = $derived(!LAYER_LABELS.some(({ key }) => layers[key]));
 
   function buildSpec(): FigureSpec | null {
     if (!audio) return null;
@@ -109,9 +110,10 @@
 
   async function refresh() {
     const spec = buildSpec();
-    if (!client || !spec) {
+    if (!client || !spec || noLayers) {
       svg = '';
       figureJson = '';
+      if (noLayers) error = '';
       return;
     }
     const token = ++previewToken;
@@ -262,6 +264,8 @@
         {#if svg}
           <!-- eslint-disable-next-line svelte/no-at-html-tags -->
           {@html svg}
+        {:else if noLayers}
+          <p class="hint" data-testid="figure-no-layers">Select at least one layer to build the figure.</p>
         {:else}
           <p class="hint">{busy ? 'Rendering…' : 'No preview'}</p>
         {/if}

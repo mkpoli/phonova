@@ -36,6 +36,24 @@
   let newName = $state('');
   let fileInput = $state<HTMLInputElement | null>(null);
 
+  const PALETTE_HINT_KEY = 'phonix-hint-palette';
+  const isMac =
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const paletteKey = isMac ? '⌘K' : 'Ctrl-K';
+
+  let paletteHintDismissed = $state(
+    typeof localStorage !== 'undefined' && localStorage.getItem(PALETTE_HINT_KEY) === 'dismissed'
+  );
+
+  function dismissPaletteHint() {
+    paletteHintDismissed = true;
+    try {
+      localStorage.setItem(PALETTE_HINT_KEY, 'dismissed');
+    } catch {
+      // A blocked storage only means the hint returns next visit; not worth surfacing.
+    }
+  }
+
   async function handleDrop(event: DragEvent) {
     event.preventDefault();
     dragging = false;
@@ -133,8 +151,14 @@
       <div class="empty" data-testid="home-empty">
         <p class="lead">Drop a folder of recordings here to start a project.</p>
         <p class="sub">
-          Every WAV becomes a browsable entry; a TextGrid next to one attaches as its annotation.
+          Every WAV becomes a browsable entry. A TextGrid beside a WAV of the same name attaches as
+          its annotation.
         </p>
+        <div class="empty-actions">
+          <button type="button" class="ghost" data-testid="empty-choose-files" onclick={() => fileInput?.click()}>
+            Choose files
+          </button>
+        </div>
       </div>
     {:else}
       <div class="grid" data-testid="project-grid">
@@ -159,6 +183,13 @@
 
   {#if busy}
     <div class="busy" role="status" data-testid="home-busy">{busyLabel}</div>
+  {/if}
+
+  {#if !paletteHintDismissed}
+    <div class="palette-hint" data-testid="palette-hint">
+      <span>Press <kbd>{paletteKey}</kbd> to open the command palette and search every action by name.</span>
+      <button type="button" class="hint-close" aria-label="Dismiss hint" onclick={dismissPaletteHint}>×</button>
+    </div>
   {/if}
 </div>
 
@@ -272,6 +303,12 @@
     font-size: 0.9rem;
   }
 
+  .empty-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+  }
+
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
@@ -308,5 +345,45 @@
     color: var(--text);
     box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
     font-size: 0.85rem;
+  }
+
+  .palette-hint {
+    position: fixed;
+    left: 1.25rem;
+    bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    max-width: min(30rem, calc(100vw - 2.5rem));
+    padding: 0.45rem 0.6rem 0.45rem 0.85rem;
+    border-radius: 8px;
+    border: 1px solid var(--chrome-strong);
+    background: var(--panel);
+    color: var(--muted);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
+    font-size: 0.82rem;
+  }
+
+  .palette-hint kbd {
+    border: 1px solid var(--chrome-strong);
+    border-radius: 4px;
+    background: var(--panel-soft);
+    color: var(--text);
+    padding: 0.02rem 0.34rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.76rem;
+  }
+
+  .hint-close {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 1.05rem;
+    line-height: 1;
+    padding: 0 0.2rem;
+  }
+
+  .hint-close:hover {
+    color: var(--text);
   }
 </style>

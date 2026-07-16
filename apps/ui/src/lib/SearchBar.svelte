@@ -37,6 +37,9 @@
   <span class="count" data-testid="search-count">{count === 0 ? '0' : `${index + 1}/${count}`}</span>
   <button type="button" aria-label="Previous match" disabled={count === 0} onclick={onPrev}>‹</button>
   <button type="button" aria-label="Next match" disabled={count === 0} onclick={onNext}>›</button>
+  {#if query.trim() && count === 0}
+    <span class="no-hits" data-testid="search-empty">No labels match.</span>
+  {/if}
 </div>
 
 <style>
@@ -62,6 +65,11 @@
     font-size: 0.76rem;
     color: var(--muted);
     font-variant-numeric: tabular-nums;
+  }
+
+  .no-hits {
+    font-size: 0.76rem;
+    color: var(--muted);
   }
 
   button {

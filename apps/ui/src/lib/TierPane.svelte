@@ -668,7 +668,17 @@
 
   <div class="tier-rows" bind:this={rowsEl}>
     {#if tiers.length === 0}
-      <div class="empty" data-testid="tier-empty">Add a tier to start annotating.</div>
+      <div class="empty" data-testid="tier-empty">
+        <p class="empty-lead">No tiers yet.</p>
+        <p class="empty-sub">
+          Add an interval tier for labeled spans, or a point tier for instants, from the toolbar
+          above.
+        </p>
+        <p class="empty-keys">
+          Once a tier holds intervals: <kbd>Tab</kbd> moves, <kbd>Enter</kbd> edits,
+          <kbd>S</kbd> splits at the cursor, <kbd>M</kbd> merges.
+        </p>
+      </div>
     {/if}
     {#each tiers as tier, tierIndex (tier.id)}
       <div class="tier-row">
@@ -805,9 +815,40 @@
   }
 
   .empty {
-    padding: 0.75rem 0.6rem;
+    padding: 0.85rem 0.7rem;
     color: var(--muted);
     font-size: 0.85rem;
+  }
+
+  .empty p {
+    margin: 0 0 0.35rem;
+  }
+
+  .empty-lead {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .empty-sub {
+    max-width: 34rem;
+  }
+
+  .empty-keys {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    font-size: 0.8rem;
+  }
+
+  .empty-keys kbd {
+    border: 1px solid var(--chrome-strong);
+    border-radius: 4px;
+    background: var(--panel-soft);
+    color: var(--text);
+    padding: 0.02rem 0.32rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.74rem;
   }
 
   .hidden-input {

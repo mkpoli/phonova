@@ -35,12 +35,20 @@
   }: Props = $props();
 
   let dragging = $state(false);
+  let fileInput = $state<HTMLInputElement | null>(null);
 
   async function handleDrop(event: DragEvent) {
     event.preventDefault();
     dragging = false;
     if (!event.dataTransfer) return;
     const files = await filesFromDataTransfer(event.dataTransfer);
+    if (files.length > 0) onImportFiles(files);
+  }
+
+  function handleInput(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
     if (files.length > 0) onImportFiles(files);
   }
 
@@ -106,10 +114,27 @@
     </div>
   </header>
 
+  <input
+    bind:this={fileInput}
+    type="file"
+    accept=".wav,audio/wav,.TextGrid"
+    multiple
+    class="hidden-input"
+    data-testid="corpus-file-input"
+    onchange={handleInput}
+  />
+
   <main class="body">
     {#if recordings.length === 0}
       <div class="empty" data-testid="corpus-empty">
-        <p>Drop WAV files here to add recordings to this project.</p>
+        <p class="empty-lead">No recordings yet.</p>
+        <p class="empty-sub">
+          Drop WAV files here, or choose them. A TextGrid beside a WAV of the same name attaches as
+          its annotation.
+        </p>
+        <button type="button" class="empty-action" data-testid="corpus-choose-files" onclick={() => fileInput?.click()}>
+          Choose files
+        </button>
       </div>
     {:else}
       <table class="corpus">
@@ -249,9 +274,33 @@
 
   .empty {
     height: 100%;
-    display: grid;
-    place-items: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    text-align: center;
     color: var(--muted);
+  }
+
+  .empty-lead {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text);
+  }
+
+  .empty-sub {
+    margin: 0;
+    max-width: 32rem;
+    font-size: 0.9rem;
+  }
+
+  .empty-action {
+    margin-top: 0.4rem;
+  }
+
+  .hidden-input {
+    display: none;
   }
 
   .corpus {
