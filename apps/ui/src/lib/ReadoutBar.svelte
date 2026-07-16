@@ -1,4 +1,8 @@
 <script lang="ts">
+  import IconPlay from '~icons/lucide/play';
+  import IconZoomIn from '~icons/lucide/zoom-in';
+  import IconActivity from '~icons/lucide/activity';
+  import IconX from '~icons/lucide/x';
   import { formatTime, type Selection, type SelectionReadout } from './types';
 
   interface Props {
@@ -89,10 +93,18 @@
     {#if showFormants}
       <span class="marker" data-testid="provisional-marker">* provisional tracking</span>
     {/if}
-    <button type="button" data-testid="selection-play" onclick={onPlay}>Play</button>
-    <button type="button" data-testid="selection-zoom" onclick={onZoom}>Zoom to</button>
-    <button type="button" data-testid="selection-voice-report" onclick={onVoiceReport}>Voice report</button>
-    <button type="button" data-testid="selection-clear" onclick={onClear}>Clear</button>
+    <button type="button" data-testid="selection-play" onclick={onPlay}>
+      <IconPlay aria-hidden="true" /><span>Play</span>
+    </button>
+    <button type="button" data-testid="selection-zoom" onclick={onZoom}>
+      <IconZoomIn aria-hidden="true" /><span>Zoom to</span>
+    </button>
+    <button type="button" data-testid="selection-voice-report" onclick={onVoiceReport}>
+      <IconActivity aria-hidden="true" /><span>Voice report</span>
+    </button>
+    <button type="button" class="clear" data-testid="selection-clear" onclick={onClear}>
+      <IconX aria-hidden="true" /><span>Clear</span>
+    </button>
   </div>
 </div>
 
@@ -151,15 +163,32 @@
   }
 
   .actions button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     background: var(--panel-soft);
     color: var(--text);
-    padding: 0.18rem 0.55rem;
+    padding: 0.22rem 0.55rem;
     font-size: 0.76rem;
+    transition:
+      background var(--t-fast),
+      border-color var(--t-fast),
+      color var(--t-fast);
+  }
+
+  .actions button :global(svg) {
+    font-size: 0.85rem;
   }
 
   .actions button:hover {
     background: var(--panel);
+    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
+  }
+
+  .actions .clear:hover {
+    color: var(--danger);
+    border-color: color-mix(in oklab, var(--danger) 40%, var(--chrome-strong));
   }
 </style>

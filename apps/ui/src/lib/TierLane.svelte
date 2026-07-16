@@ -216,7 +216,8 @@
 
   .label {
     padding: 0 0.3rem 0.3rem;
-    font-size: 0.82rem;
+    font-family: var(--font-ipa);
+    font-size: 0.85rem;
     color: var(--text);
     white-space: nowrap;
     overflow: hidden;
@@ -253,7 +254,8 @@
     position: absolute;
     bottom: 0.2rem;
     left: 0.2rem;
-    font-size: 0.76rem;
+    font-family: var(--font-ipa);
+    font-size: 0.78rem;
     color: var(--text);
     background: var(--chip-bg);
     padding: 0 0.2rem;

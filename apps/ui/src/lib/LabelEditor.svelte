@@ -61,7 +61,8 @@
     background: var(--panel);
     color: var(--text);
     padding: 0 0.25rem;
-    font-size: 0.82rem;
+    font-family: var(--font-ipa);
+    font-size: 0.85rem;
     text-align: center;
     outline: none;
     box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent), transparent 65%);

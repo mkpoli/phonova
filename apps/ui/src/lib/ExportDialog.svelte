@@ -1,5 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import IconImage from '~icons/lucide/image';
+  import IconX from '~icons/lucide/x';
+  import IconDownload from '~icons/lucide/download';
   import { zipStore } from './zip';
   import type {
     AudioInfo,
@@ -252,10 +255,10 @@
 
 <section class="export-dialog" data-testid="export-dialog" aria-label="Figure export">
   <header class="head">
-    <h2>Export figure</h2>
-    <button type="button" class="close" data-testid="export-close" aria-label="Close" onclick={onClose}
-      >×</button
-    >
+    <h2><IconImage aria-hidden="true" />Export figure</h2>
+    <button type="button" class="close" data-testid="export-close" aria-label="Close" onclick={onClose}>
+      <IconX aria-hidden="true" />
+    </button>
   </header>
 
   <div class="body">
@@ -401,8 +404,10 @@
         class="download"
         data-testid="figure-download"
         disabled={!figureJson || activeFormat?.nativeOnly}
-        onclick={download}>Download</button
+        onclick={download}
       >
+        <IconDownload aria-hidden="true" /><span>Download</span>
+      </button>
     </div>
   </div>
 </section>
@@ -419,8 +424,8 @@
     background: var(--panel);
     color: var(--text);
     border: 1px solid var(--chrome-strong);
-    border-radius: 10px;
-    box-shadow: 0 20px 60px rgba(2, 6, 23, 0.35);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
     z-index: 20;
     overflow: hidden;
   }
@@ -436,20 +441,35 @@
 
   .head h2 {
     margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
     font-size: 0.95rem;
     font-weight: 600;
   }
 
+  .head h2 :global(svg) {
+    font-size: 1rem;
+    color: var(--accent);
+  }
+
   .close {
-    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--muted);
-    font-size: 1.2rem;
-    line-height: 1;
+    padding: 0.2rem;
     cursor: pointer;
+    transition:
+      background var(--t-fast),
+      color var(--t-fast);
   }
 
   .close:hover {
+    background: var(--panel);
     color: var(--text);
   }
 
@@ -568,7 +588,7 @@
 
   .segmented button.active {
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
   }
 
   .note {
@@ -585,14 +605,30 @@
   }
 
   .download {
-    border: 1px solid var(--accent);
-    border-radius: 6px;
-    background: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border: 1px solid var(--action);
+    border-radius: var(--radius-md);
+    background: var(--action);
     color: #fff;
-    padding: 0.45rem 0.6rem;
+    padding: 0.5rem 0.6rem;
     font-size: 0.88rem;
     font-weight: 600;
     cursor: pointer;
+    transition:
+      background var(--t-fast),
+      border-color var(--t-fast);
+  }
+
+  .download :global(svg) {
+    font-size: 1rem;
+  }
+
+  .download:hover:not(:disabled) {
+    background: var(--action-strong);
+    border-color: var(--action-strong);
   }
 
   .download:disabled {

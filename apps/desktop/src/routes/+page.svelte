@@ -499,10 +499,10 @@
     max-width: min(30rem, calc(100vw - 2rem));
     padding: 0.75rem 0.9rem;
     border: 1px solid color-mix(in oklab, var(--warn), transparent 30%);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--panel);
     color: var(--warn);
-    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+    box-shadow: var(--shadow-lg);
   }
 
   .modal-backdrop {
@@ -510,7 +510,8 @@
     inset: 0;
     display: grid;
     place-items: center;
-    background: rgba(15, 23, 42, 0.42);
+    background: color-mix(in oklab, #000 52%, transparent);
+    backdrop-filter: blur(2px);
     z-index: 20;
   }
 
@@ -518,10 +519,10 @@
     max-width: 26rem;
     padding: 1.25rem 1.4rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 12px;
+    border-radius: var(--radius-xl);
     background: var(--panel);
     color: var(--text);
-    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.3);
+    box-shadow: var(--shadow-lg);
   }
 
   .modal h2 {
@@ -544,14 +545,28 @@
 
   .modal-actions button {
     border: 1px solid var(--chrome-strong);
-    border-radius: 6px;
-    padding: 0.4rem 0.9rem;
+    border-radius: var(--radius-md);
+    padding: 0.45rem 0.95rem;
     background: var(--panel-soft);
     color: var(--text);
+    transition:
+      background var(--t-fast),
+      border-color var(--t-fast);
+  }
+
+  .modal-actions button:hover {
+    background: var(--panel);
+    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
   }
 
   .modal-actions .primary {
-    border-color: var(--accent);
-    background: color-mix(in oklab, var(--accent) 22%, var(--panel-soft));
+    border-color: var(--action);
+    background: var(--action);
+    color: #fff;
+  }
+
+  .modal-actions .primary:hover {
+    background: var(--action-strong);
+    border-color: var(--action-strong);
   }
 </style>

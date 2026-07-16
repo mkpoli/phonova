@@ -1,4 +1,8 @@
 <script lang="ts">
+  import IconActivity from '~icons/lucide/activity';
+  import IconX from '~icons/lucide/x';
+  import IconClipboard from '~icons/lucide/clipboard-copy';
+  import IconCheck from '~icons/lucide/check';
   import { formatTime, type VoiceReportData } from './types';
 
   interface Props {
@@ -70,11 +74,13 @@
 <div class="backdrop" data-testid="voice-report-card">
   <div class="card" role="dialog" aria-modal="true" aria-label="Voice report">
     <header>
-      <h2>Voice report</h2>
+      <h2><IconActivity aria-hidden="true" />Voice report</h2>
       {#if report}
         <span class="span">{formatTime(report.t0)}–{formatTime(report.t1)} s</span>
       {/if}
-      <button type="button" class="close" data-testid="voice-report-close" onclick={onClose} aria-label="Close">×</button>
+      <button type="button" class="close" data-testid="voice-report-close" onclick={onClose} aria-label="Close">
+        <IconX aria-hidden="true" />
+      </button>
     </header>
 
     {#if loading}
@@ -102,7 +108,11 @@
           ({report.params.cppMinF0Hz.toFixed(0)}–{report.params.cppMaxF0Hz.toFixed(0)} Hz)
         </p>
         <button type="button" class="copy" data-testid="voice-report-copy" onclick={copyCsv}>
-          {copied ? 'Copied' : 'Copy CSV'}
+          {#if copied}
+            <IconCheck aria-hidden="true" /><span>Copied</span>
+          {:else}
+            <IconClipboard aria-hidden="true" /><span>Copy CSV</span>
+          {/if}
         </button>
       </footer>
     {:else}
@@ -127,10 +137,10 @@
     overflow: auto;
     padding: 1rem 1.2rem 1.2rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 12px;
+    border-radius: var(--radius-xl);
     background: var(--panel);
     color: var(--text);
-    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.3);
+    box-shadow: var(--shadow-lg);
   }
 
   header {
@@ -142,7 +152,15 @@
 
   header h2 {
     margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
     font-size: 1.02rem;
+  }
+
+  header h2 :global(svg) {
+    font-size: 1rem;
+    color: var(--accent);
   }
 
   .span {
@@ -153,14 +171,23 @@
 
   .close {
     margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: 1px solid var(--chrome-strong);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--panel-soft);
+    color: var(--muted);
+    width: 1.8rem;
+    height: 1.8rem;
+    transition:
+      background var(--t-fast),
+      color var(--t-fast);
+  }
+
+  .close:hover {
+    background: var(--panel);
     color: var(--text);
-    width: 1.7rem;
-    height: 1.7rem;
-    font-size: 1rem;
-    line-height: 1;
   }
 
   .status {
@@ -205,11 +232,26 @@
 
   .copy {
     flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--panel-soft);
     color: var(--text);
-    padding: 0.3rem 0.7rem;
+    padding: 0.32rem 0.7rem;
     font-size: 0.78rem;
+    transition:
+      background var(--t-fast),
+      border-color var(--t-fast);
+  }
+
+  .copy :global(svg) {
+    font-size: 0.9rem;
+  }
+
+  .copy:hover {
+    background: var(--panel);
+    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
   }
 </style>

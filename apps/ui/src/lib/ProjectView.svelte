@@ -1,4 +1,11 @@
 <script lang="ts">
+  import IconArrowLeft from '~icons/lucide/arrow-left';
+  import IconSave from '~icons/lucide/save';
+  import IconMic from '~icons/lucide/mic';
+  import IconSun from '~icons/lucide/sun';
+  import IconMoon from '~icons/lucide/moon';
+  import IconFolderOpen from '~icons/lucide/folder-open';
+  import IconTags from '~icons/lucide/tags';
   import WaveThumb from './WaveThumb.svelte';
   import { filesFromDataTransfer } from './dnd';
   import { registerCommands } from './commands.svelte';
@@ -101,14 +108,20 @@
 >
   <header class="top">
     <div class="left">
-      <button type="button" class="ghost" onclick={onBack} data-testid="back-home">← Projects</button>
+      <button type="button" class="ghost back" onclick={onBack} data-testid="back-home">
+        <IconArrowLeft aria-hidden="true" />
+        <span>Projects</span>
+      </button>
       <span class="name">{projectName}</span>
     </div>
     <div class="right">
       <span class="dirty" data-testid="dirty-state" data-dirty={dirty}>
         {dirty ? 'Unsaved changes' : 'All changes saved'}
       </span>
-      <button type="button" onclick={onSave} data-testid="save-project" disabled={!dirty}>Save</button>
+      <button type="button" class="action" onclick={onSave} data-testid="save-project" disabled={!dirty}>
+        <IconSave aria-hidden="true" />
+        <span>Save</span>
+      </button>
       {#if onStartRecording}
         <button
           type="button"
@@ -117,16 +130,22 @@
           disabled={recording}
           onclick={() => onStartRecording?.()}
         >
-          Record
+          <IconMic aria-hidden="true" />
+          <span>Record</span>
         </button>
       {/if}
       <button
         type="button"
-        class="ghost"
+        class="ghost icon-only"
         aria-label="Toggle theme"
+        title={theme === 'light' ? 'Switch to dark' : 'Switch to light'}
         onclick={() => onThemeChange(theme === 'light' ? 'dark' : 'light')}
       >
-        {theme === 'light' ? 'Dark' : 'Light'}
+        {#if theme === 'light'}
+          <IconMoon aria-hidden="true" />
+        {:else}
+          <IconSun aria-hidden="true" />
+        {/if}
       </button>
     </div>
   </header>
@@ -151,7 +170,8 @@
         </p>
         <div class="empty-actions">
           <button type="button" class="empty-action" data-testid="corpus-choose-files" onclick={() => fileInput?.click()}>
-            Choose files
+            <IconFolderOpen aria-hidden="true" />
+            <span>Choose files</span>
           </button>
           {#if onStartRecording}
             <button
@@ -161,7 +181,8 @@
               disabled={recording}
               onclick={() => onStartRecording?.()}
             >
-              Record
+              <IconMic aria-hidden="true" />
+              <span>Record</span>
             </button>
           {/if}
         </div>
@@ -209,7 +230,9 @@
               <td class="num">{recording.channels}</td>
               <td>
                 {#if recording.hasAnnotation}
-                  <span class="tag" data-testid="annotation-present">tiers</span>
+                  <span class="tag" data-testid="annotation-present">
+                    <IconTags aria-hidden="true" />tiers
+                  </span>
                 {:else}
                   <span class="tag muted">—</span>
                 {/if}
@@ -267,23 +290,72 @@
   }
 
   button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--panel-soft);
     color: var(--text);
-    padding: 0.3rem 0.65rem;
+    padding: 0.35rem 0.65rem;
+    box-shadow: var(--shadow-sm);
+    transition:
+      background var(--t-fast),
+      border-color var(--t-fast),
+      color var(--t-fast);
+  }
+
+  button :global(svg) {
+    font-size: 1rem;
+    flex: none;
   }
 
   button:hover:not(:disabled) {
     background: var(--panel);
+    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
   }
 
   button:disabled {
     opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
   }
 
   .ghost {
     color: var(--muted);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .ghost:hover:not(:disabled) {
+    color: var(--text);
+  }
+
+  .icon-only {
+    padding: 0.35rem;
+    width: 2.15rem;
+    justify-content: center;
+  }
+
+  .action {
+    border-color: var(--action);
+    background: var(--action);
+    color: #fff;
+  }
+
+  .action:hover:not(:disabled) {
+    background: var(--action-strong);
+    border-color: var(--action-strong);
+  }
+
+  .action:disabled {
+    background: var(--panel-soft);
+    border-color: var(--chrome-strong);
+    color: var(--muted);
+  }
+
+  .record :global(svg) {
+    color: var(--danger);
   }
 
   .dirty {
@@ -331,20 +403,6 @@
     margin-top: 0.4rem;
   }
 
-  .record {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-
-  .record::before {
-    content: '';
-    width: 0.55rem;
-    height: 0.55rem;
-    border-radius: 50%;
-    background: #dc2626;
-  }
-
   .record:disabled {
     opacity: 0.5;
   }
@@ -355,20 +413,29 @@
 
   .corpus {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 0.9rem;
+    border: 1px solid var(--chrome-strong);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--panel);
+    box-shadow: var(--shadow-sm);
   }
 
   .corpus thead th {
     text-align: left;
-    padding: 0.5rem 0.75rem;
+    padding: 0.55rem 0.8rem;
     border-bottom: 1px solid var(--chrome-strong);
     color: var(--muted);
     font-weight: 500;
-    font-size: 0.8rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
     position: sticky;
     top: 0;
-    background: var(--chrome);
+    background: var(--panel-soft);
+    z-index: 1;
   }
 
   .corpus th.num,
@@ -379,15 +446,21 @@
 
   .row {
     cursor: pointer;
+    transition: background var(--t-fast);
   }
 
   .row td {
-    padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid var(--chrome-strong);
+    padding: 0.5rem 0.8rem;
+    border-bottom: 1px solid color-mix(in oklab, var(--chrome-strong) 65%, transparent);
+    vertical-align: middle;
+  }
+
+  .row:last-child td {
+    border-bottom: none;
   }
 
   .row:hover td {
-    background: var(--panel-soft);
+    background: var(--accent-tint);
   }
 
   .row:focus-visible {
@@ -396,7 +469,12 @@
   }
 
   .thumb-col {
-    width: 150px;
+    width: 156px;
+  }
+
+  .thumb-col :global(.thumb) {
+    border: 1px solid var(--chrome-strong);
+    box-shadow: var(--shadow-sm);
   }
 
   .name-cell {
@@ -404,17 +482,25 @@
   }
 
   .tag {
-    display: inline-block;
-    padding: 0.1rem 0.5rem;
-    border-radius: 999px;
-    background: color-mix(in oklab, var(--accent) 18%, transparent);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    padding: 0.12rem 0.55rem;
+    border-radius: var(--radius-pill, 999px);
+    background: var(--accent-tint);
     color: var(--accent-strong);
     font-size: 0.76rem;
+    border: 1px solid color-mix(in oklab, var(--accent) 30%, transparent);
+  }
+
+  .tag :global(svg) {
+    font-size: 0.85rem;
   }
 
   .tag.muted {
     background: transparent;
     color: var(--muted);
+    border-color: transparent;
   }
 
   .drop-hint {
@@ -440,12 +526,12 @@
     left: 50%;
     bottom: 1.25rem;
     transform: translateX(-50%);
-    padding: 0.5rem 0.9rem;
-    border-radius: 8px;
+    padding: 0.55rem 0.95rem;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--chrome-strong);
     background: var(--panel);
     color: var(--text);
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+    box-shadow: var(--shadow-lg);
     font-size: 0.85rem;
   }
 </style>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import IconSquare from '~icons/lucide/square';
+  import IconX from '~icons/lucide/x';
   import { formatTime } from './types';
 
   interface RecorderDevice {
@@ -92,9 +94,11 @@
 
   <div class="actions">
     <button type="button" class="cancel" data-testid="recording-cancel" onclick={onCancel}>
-      Cancel
+      <IconX aria-hidden="true" /><span>Cancel</span>
     </button>
-    <button type="button" class="stop" data-testid="recording-stop" onclick={onStop}>Stop</button>
+    <button type="button" class="stop" data-testid="recording-stop" onclick={onStop}>
+      <IconSquare aria-hidden="true" /><span>Stop</span>
+    </button>
   </div>
 </div>
 
@@ -111,10 +115,10 @@
     max-width: calc(100vw - 2rem);
     padding: 0.55rem 0.9rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     background: var(--panel);
     color: var(--text);
-    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.28);
+    box-shadow: var(--shadow-lg);
     font-size: 0.85rem;
   }
 
@@ -238,21 +242,37 @@
   }
 
   .actions button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 6px;
-    padding: 0.3rem 0.75rem;
+    border-radius: var(--radius-md);
+    padding: 0.32rem 0.75rem;
     background: var(--panel-soft);
     color: var(--text);
     font-size: 0.82rem;
+    transition:
+      background var(--t-fast),
+      border-color var(--t-fast);
+  }
+
+  .actions button :global(svg) {
+    font-size: 0.85rem;
   }
 
   .actions .stop {
     border-color: var(--accent);
-    background: color-mix(in oklab, var(--accent) 22%, var(--panel-soft));
+    background: var(--accent-tint);
+    color: var(--accent-strong);
     font-weight: 600;
   }
 
+  .actions .stop :global(svg) {
+    fill: currentColor;
+  }
+
   .actions button:hover {
-    filter: brightness(1.05);
+    filter: brightness(1.04);
+    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
   }
 </style>

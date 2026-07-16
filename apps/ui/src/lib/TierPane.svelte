@@ -1,4 +1,9 @@
 <script lang="ts">
+  import IconListTree from '~icons/lucide/list-tree';
+  import IconMapPin from '~icons/lucide/map-pin';
+  import IconFileUp from '~icons/lucide/file-up';
+  import IconFileDown from '~icons/lucide/file-down';
+  import IconX from '~icons/lucide/x';
   import SearchBar from './SearchBar.svelte';
   import TierLane from './TierLane.svelte';
   import { registerCommands } from './commands.svelte';
@@ -646,12 +651,20 @@
   onkeydown={handleKeydown}
 >
   <div class="anno-toolbar" role="toolbar" aria-label="Annotation actions" tabindex="-1" onpointerdown={(event) => event.stopPropagation()}>
-    <button type="button" data-testid="add-interval-tier" disabled={annotationId === null} onclick={() => addTier('interval')}>+ Interval tier</button>
-    <button type="button" data-testid="add-point-tier" disabled={annotationId === null} onclick={() => addTier('point')}>+ Point tier</button>
+    <button type="button" data-testid="add-interval-tier" disabled={annotationId === null} onclick={() => addTier('interval')}>
+      <IconListTree aria-hidden="true" /><span>Interval tier</span>
+    </button>
+    <button type="button" data-testid="add-point-tier" disabled={annotationId === null} onclick={() => addTier('point')}>
+      <IconMapPin aria-hidden="true" /><span>Point tier</span>
+    </button>
     <div class="spacer"></div>
     <SearchBar query={query} count={hits.length} index={hitIndex} onQuery={runSearch} onNext={nextHit} onPrev={prevHit} />
-    <button type="button" data-testid="import-textgrid" disabled={audioId === null} onclick={() => fileInput?.click()}>Import TextGrid</button>
-    <button type="button" data-testid="export-textgrid" disabled={annotationId === null} onclick={exportTextGrid}>Export TextGrid</button>
+    <button type="button" data-testid="import-textgrid" disabled={audioId === null} onclick={() => fileInput?.click()}>
+      <IconFileUp aria-hidden="true" /><span>Import TextGrid</span>
+    </button>
+    <button type="button" data-testid="export-textgrid" disabled={annotationId === null} onclick={exportTextGrid}>
+      <IconFileDown aria-hidden="true" /><span>Export TextGrid</span>
+    </button>
     <input
       bind:this={fileInput}
       class="hidden-input"
@@ -703,7 +716,9 @@
           <button type="button" class="tier-name" data-testid="tier-name" onclick={() => activateTier(tier.id)}>
             <span class="tier-digit">{tierIndex + 1}</span>{tier.name}
           </button>
-          <button type="button" class="tier-remove" aria-label={`Remove ${tier.name}`} data-testid="remove-tier" onclick={() => removeTier(tier.id)}>×</button>
+          <button type="button" class="tier-remove" aria-label={`Remove ${tier.name}`} data-testid="remove-tier" onclick={() => removeTier(tier.id)}>
+            <IconX aria-hidden="true" />
+          </button>
         </div>
       </div>
     {/each}
@@ -743,16 +758,31 @@
   }
 
   .anno-toolbar button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     background: var(--panel);
     color: var(--text);
-    padding: 0.15rem 0.5rem;
+    padding: 0.2rem 0.5rem;
     font-size: 0.8rem;
+    transition:
+      background var(--t-fast),
+      border-color var(--t-fast);
+  }
+
+  .anno-toolbar button :global(svg) {
+    font-size: 0.9rem;
+  }
+
+  .anno-toolbar button:hover:not(:disabled) {
+    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
   }
 
   .anno-toolbar button:disabled {
     opacity: 0.45;
+    cursor: not-allowed;
   }
 
   .tier-rows {
@@ -802,16 +832,22 @@
   }
 
   .tier-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: none;
     background: var(--chip-bg);
     color: var(--muted);
-    padding: 0 0.4rem;
-    font-size: 0.85rem;
+    padding: 0 0.35rem;
     line-height: 1;
   }
 
+  .tier-remove :global(svg) {
+    font-size: 0.8rem;
+  }
+
   .tier-remove:hover {
-    color: var(--warn);
+    color: var(--danger);
   }
 
   .empty {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import IconSearch from '~icons/lucide/search';
   import {
     COMMAND_GROUP_ORDER,
     searchCommands,
@@ -128,16 +129,19 @@
     }}
   >
     <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
-      <input
-        bind:this={inputEl}
-        class="palette-input"
-        data-testid="command-palette-input"
-        type="text"
-        placeholder="Search actions…"
-        aria-label="Search actions"
-        bind:value={query}
-        onkeydown={onPaletteKeydown}
-      />
+      <div class="palette-search">
+        <IconSearch class="search-icon" aria-hidden="true" />
+        <input
+          bind:this={inputEl}
+          class="palette-input"
+          data-testid="command-palette-input"
+          type="text"
+          placeholder="Search actions…"
+          aria-label="Search actions"
+          bind:value={query}
+          onkeydown={onPaletteKeydown}
+        />
+      </div>
       <div class="palette-list" role="listbox" aria-label="Actions">
         {#if flat.length === 0}
           <p class="palette-empty" data-testid="command-palette-empty">No matching action.</p>
@@ -195,19 +199,33 @@
     display: flex;
     flex-direction: column;
     border: 1px solid var(--chrome-strong);
-    border-radius: 12px;
+    border-radius: var(--radius-xl);
     background: var(--panel);
     color: var(--text);
-    box-shadow: 0 24px 64px rgba(15, 23, 42, 0.34);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
   }
 
-  .palette-input {
-    border: none;
+  .palette-search {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0 1rem;
     border-bottom: 1px solid var(--chrome-strong);
-    background: var(--panel);
+  }
+
+  .palette-search :global(.search-icon) {
+    flex: none;
+    font-size: 1.05rem;
+    color: var(--muted);
+  }
+
+  .palette-input {
+    flex: 1;
+    border: none;
+    background: transparent;
     color: var(--text);
-    padding: 0.85rem 1rem;
+    padding: 0.9rem 0;
     font-size: 1rem;
     outline: none;
   }
@@ -247,8 +265,13 @@
     cursor: pointer;
   }
 
+  .palette-item {
+    transition: background var(--t-fast);
+  }
+
   .palette-item.selected {
-    background: color-mix(in oklab, var(--accent) 20%, var(--panel));
+    background: var(--accent-tint);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
 
   .item-main {

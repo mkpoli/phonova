@@ -1,4 +1,10 @@
 <script lang="ts">
+  import IconPlus from '~icons/lucide/plus';
+  import IconFolderOpen from '~icons/lucide/folder-open';
+  import IconMic from '~icons/lucide/mic';
+  import IconSun from '~icons/lucide/sun';
+  import IconMoon from '~icons/lucide/moon';
+  import IconSparkles from '~icons/lucide/sparkles';
   import ProjectCard from './ProjectCard.svelte';
   import { filesFromDataTransfer } from './dnd';
   import { registerCommands } from './commands.svelte';
@@ -136,10 +142,14 @@
           data-testid="new-project-name"
           aria-label="New project name"
         />
-        <button type="submit" data-testid="new-project">Create</button>
+        <button type="submit" class="action" data-testid="new-project">
+          <IconPlus aria-hidden="true" />
+          <span>Create</span>
+        </button>
       </form>
       <button type="button" class="ghost" onclick={() => fileInput?.click()} data-testid="choose-files">
-        Choose files
+        <IconFolderOpen aria-hidden="true" />
+        <span>Choose files</span>
       </button>
       {#if onStartRecording}
         <button
@@ -149,16 +159,22 @@
           disabled={recording}
           onclick={() => onStartRecording?.()}
         >
-          Record
+          <IconMic aria-hidden="true" />
+          <span>Record</span>
         </button>
       {/if}
       <button
         type="button"
-        class="ghost"
+        class="ghost icon-only"
         aria-label="Toggle theme"
+        title={theme === 'light' ? 'Switch to dark' : 'Switch to light'}
         onclick={() => onThemeChange(theme === 'light' ? 'dark' : 'light')}
       >
-        {theme === 'light' ? 'Dark' : 'Light'}
+        {#if theme === 'light'}
+          <IconMoon aria-hidden="true" />
+        {:else}
+          <IconSun aria-hidden="true" />
+        {/if}
       </button>
     </div>
   </header>
@@ -184,11 +200,13 @@
         <div class="empty-actions">
           {#if onOpenSample}
             <button type="button" class="primary" data-testid="open-sample" onclick={onOpenSample}>
-              Open sample project
+              <IconSparkles aria-hidden="true" />
+              <span>Open sample project</span>
             </button>
           {/if}
           <button type="button" class="ghost" data-testid="empty-choose-files" onclick={() => fileInput?.click()}>
-            Choose files
+            <IconFolderOpen aria-hidden="true" />
+            <span>Choose files</span>
           </button>
           {#if onStartRecording}
             <button
@@ -198,7 +216,8 @@
               disabled={recording}
               onclick={() => onStartRecording?.()}
             >
-              Record
+              <IconMic aria-hidden="true" />
+              <span>Record</span>
             </button>
           {/if}
         </div>
@@ -273,15 +292,19 @@
   }
 
   .mark {
-    width: 0.9rem;
-    height: 0.9rem;
-    border-radius: 3px;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 4px;
     background: linear-gradient(140deg, var(--accent), var(--accent-strong));
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent);
   }
 
   .title {
+    font-family: var(--font-serif);
+    font-size: 1.35rem;
     font-weight: 600;
     letter-spacing: 0.01em;
+    color: var(--accent-strong);
   }
 
   .tools {
@@ -292,51 +315,92 @@
 
   .create {
     display: flex;
-    gap: 0.35rem;
+    gap: 0.4rem;
   }
 
   .create input {
     min-width: 12rem;
-    padding: 0.35rem 0.6rem;
+    padding: 0.4rem 0.65rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--panel-soft);
     color: var(--text);
+    transition:
+      border-color var(--t-fast),
+      box-shadow var(--t-fast);
+  }
+
+  .create input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent);
   }
 
   button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--panel-soft);
     color: var(--text);
-    padding: 0.35rem 0.7rem;
+    padding: 0.4rem 0.7rem;
+    box-shadow: var(--shadow-sm);
+    transition:
+      background var(--t-fast),
+      border-color var(--t-fast),
+      color var(--t-fast);
   }
 
-  button:hover {
+  button :global(svg) {
+    font-size: 1rem;
+    flex: none;
+  }
+
+  button:hover:not(:disabled) {
     background: var(--panel);
+    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
+  }
+
+  .icon-only {
+    padding: 0.4rem;
+    width: 2.25rem;
+    justify-content: center;
+  }
+
+  /* The one primary form action is blue, kept distinct from the teal brand. */
+  .action {
+    border-color: var(--action);
+    background: var(--action);
+    color: #fff;
+  }
+
+  .action:hover:not(:disabled) {
+    background: var(--action-strong);
+    border-color: var(--action-strong);
   }
 
   .ghost {
     color: var(--muted);
+    box-shadow: none;
+    background: transparent;
   }
 
-  .record {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
+  .ghost:hover:not(:disabled) {
     color: var(--text);
   }
 
-  .record::before {
-    content: '';
-    width: 0.55rem;
-    height: 0.55rem;
-    border-radius: 50%;
-    background: #dc2626;
+  .record {
+    color: var(--text);
+  }
+
+  .record :global(svg) {
+    color: var(--danger);
   }
 
   .record:disabled {
     opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .hidden-input {
@@ -378,8 +442,13 @@
 
   .empty-actions .primary {
     border-color: var(--accent);
-    background: color-mix(in oklab, var(--accent) 20%, var(--panel-soft));
-    color: var(--text);
+    background: var(--accent-tint);
+    color: var(--accent-strong);
+    font-weight: 500;
+  }
+
+  .empty-actions .primary:hover {
+    background: color-mix(in oklab, var(--accent) 24%, var(--panel));
   }
 
   .empty-note {
@@ -389,7 +458,7 @@
 
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
     gap: 1rem;
   }
 
@@ -416,12 +485,12 @@
     left: 50%;
     bottom: 1.25rem;
     transform: translateX(-50%);
-    padding: 0.5rem 0.9rem;
-    border-radius: 8px;
+    padding: 0.55rem 0.95rem;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--chrome-strong);
     background: var(--panel);
     color: var(--text);
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+    box-shadow: var(--shadow-lg);
     font-size: 0.85rem;
   }
 
@@ -433,12 +502,12 @@
     align-items: center;
     gap: 0.6rem;
     max-width: min(30rem, calc(100vw - 2.5rem));
-    padding: 0.45rem 0.6rem 0.45rem 0.85rem;
-    border-radius: 8px;
+    padding: 0.55rem 0.7rem 0.55rem 0.9rem;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--chrome-strong);
     background: var(--panel);
     color: var(--muted);
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
+    box-shadow: var(--shadow-md);
     font-size: 0.82rem;
   }
 
@@ -447,18 +516,28 @@
     border-radius: 4px;
     background: var(--panel-soft);
     color: var(--text);
-    padding: 0.02rem 0.34rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 0.05rem 0.36rem;
+    font-family: var(--font-mono);
     font-size: 0.76rem;
+    font-variant-numeric: tabular-nums;
   }
 
   .hint-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: none;
     background: transparent;
     color: var(--muted);
     font-size: 1.05rem;
     line-height: 1;
     padding: 0 0.2rem;
+    box-shadow: none;
+  }
+
+  .hint-close:hover:not(:disabled) {
+    background: transparent;
+    border: none;
   }
 
   .hint-close:hover {

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import IconPencil from '~icons/lucide/pencil';
+  import IconCopy from '~icons/lucide/copy';
+  import IconTrash from '~icons/lucide/trash-2';
   import type { ProjectSummary } from './types';
 
   interface Props {
@@ -42,13 +45,13 @@
   </button>
   <div class="actions">
     <button type="button" data-testid="rename-project" onclick={() => onRename(project.id, project.name)}>
-      Rename
+      <IconPencil aria-hidden="true" /><span>Rename</span>
     </button>
     <button type="button" data-testid="duplicate-project" onclick={() => onDuplicate(project.id)}>
-      Duplicate
+      <IconCopy aria-hidden="true" /><span>Duplicate</span>
     </button>
     <button type="button" class="danger" data-testid="delete-project" onclick={() => onDelete(project.id)}>
-      Delete
+      <IconTrash aria-hidden="true" /><span>Delete</span>
     </button>
   </div>
 </div>
@@ -58,9 +61,20 @@
     display: flex;
     flex-direction: column;
     border: 1px solid var(--chrome-strong);
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     background: var(--panel);
     overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    transition:
+      box-shadow var(--t),
+      border-color var(--t),
+      transform var(--t);
+  }
+
+  .card:hover {
+    box-shadow: var(--shadow-md);
+    border-color: color-mix(in oklab, var(--accent) 28%, var(--chrome-strong));
+    transform: translateY(-1px);
   }
 
   .open {
@@ -77,7 +91,7 @@
   }
 
   .open:hover {
-    background: var(--panel-soft);
+    background: var(--accent-tint);
   }
 
   .name {
@@ -111,19 +125,32 @@
 
   .actions {
     display: flex;
-    gap: 0.25rem;
-    padding: 0.4rem 0.6rem;
+    gap: 0.2rem;
+    padding: 0.4rem 0.5rem;
     border-top: 1px solid var(--chrome-strong);
     background: var(--panel-soft);
   }
 
   .actions button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
     border: 1px solid transparent;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--muted);
-    padding: 0.2rem 0.45rem;
-    font-size: 0.76rem;
+    padding: 0.2rem 0.4rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    transition:
+      background var(--t-fast),
+      border-color var(--t-fast),
+      color var(--t-fast);
+  }
+
+  .actions button :global(svg) {
+    font-size: 0.82rem;
+    flex: none;
   }
 
   .actions button:hover {

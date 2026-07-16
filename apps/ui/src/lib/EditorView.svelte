@@ -1,4 +1,8 @@
 <script lang="ts">
+  import IconArrowLeft from '~icons/lucide/arrow-left';
+  import IconMic from '~icons/lucide/mic';
+  import IconImage from '~icons/lucide/image';
+  import IconPanelRight from '~icons/lucide/panel-right';
   import ExportDialog from './ExportDialog.svelte';
   import InspectorPanel from './InspectorPanel.svelte';
   import OverviewStrip from './OverviewStrip.svelte';
@@ -490,7 +494,8 @@
     <nav class="breadcrumb" data-testid="editor-breadcrumb">
       {#if onExit}
         <button type="button" class="crumb-back" data-testid="back-corpus" onclick={() => onExit?.()}>
-          ← {projectName ?? 'Project'}
+          <IconArrowLeft aria-hidden="true" />
+          <span>{projectName ?? 'Project'}</span>
         </button>
       {/if}
       {#if recordings && recordings.length > 1 && onSwitchRecording}
@@ -516,7 +521,8 @@
           disabled={recording}
           onclick={() => onStartRecording?.()}
         >
-          Record
+          <IconMic aria-hidden="true" />
+          <span>Record</span>
         </button>
       {/if}
     </nav>
@@ -603,16 +609,19 @@
         aria-pressed={exportOpen}
         onclick={() => (exportOpen = !exportOpen)}
       >
-        Export figure
+        <IconImage aria-hidden="true" />
+        <span>Export figure</span>
       </button>
       <button
         type="button"
         class="inspector-toggle"
+        class:on={inspectorOpen}
         data-testid="inspector-toggle"
         aria-pressed={inspectorOpen}
         onclick={() => (inspectorOpen = !inspectorOpen)}
       >
-        Inspector {inspectorOpen ? '▸' : '◂'}
+        <IconPanelRight aria-hidden="true" />
+        <span>Inspector</span>
       </button>
     </span>
   </footer>
@@ -655,55 +664,51 @@
     font-size: 0.82rem;
   }
 
-  .crumb-back {
+  .crumb-back,
+  .crumb-record {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     background: var(--panel-soft);
     color: var(--text);
-    padding: 0.15rem 0.5rem;
+    padding: 0.2rem 0.55rem;
+    transition:
+      background var(--t-fast),
+      border-color var(--t-fast);
   }
 
-  .crumb-back:hover {
+  .crumb-back :global(svg),
+  .crumb-record :global(svg) {
+    font-size: 0.95rem;
+  }
+
+  .crumb-back:hover,
+  .crumb-record:hover:not(:disabled) {
     background: var(--panel);
+    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
   }
 
   .crumb-current {
     color: var(--muted);
   }
 
-  .crumb-record {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    border: 1px solid var(--chrome-strong);
-    border-radius: 5px;
-    background: var(--panel-soft);
-    color: var(--text);
-    padding: 0.15rem 0.5rem;
-  }
-
-  .crumb-record::before {
-    content: '';
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 50%;
-    background: #dc2626;
+  .crumb-record :global(svg) {
+    color: var(--danger);
   }
 
   .crumb-record:disabled {
     opacity: 0.5;
-  }
-
-  .crumb-record:hover:not(:disabled) {
-    background: var(--panel);
+    cursor: not-allowed;
   }
 
   .recording-switch {
     border: 1px solid var(--chrome-strong);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     background: var(--panel-soft);
     color: var(--text);
-    padding: 0.15rem 0.4rem;
+    padding: 0.2rem 0.45rem;
     max-width: 18rem;
   }
 
@@ -741,11 +746,38 @@
   }
 
   .inspector-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     background: var(--panel-soft);
     color: var(--text);
-    padding: 0.15rem 0.5rem;
+    padding: 0.2rem 0.55rem;
     font-size: 0.78rem;
+    transition:
+      background var(--t-fast),
+      border-color var(--t-fast),
+      color var(--t-fast);
+  }
+
+  .inspector-toggle :global(svg) {
+    font-size: 0.95rem;
+  }
+
+  .inspector-toggle:hover:not(:disabled) {
+    background: var(--panel);
+    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
+  }
+
+  .inspector-toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .inspector-toggle.on {
+    color: var(--accent-strong);
+    border-color: color-mix(in oklab, var(--accent) 45%, var(--chrome-strong));
+    background: var(--accent-tint);
   }
 </style>

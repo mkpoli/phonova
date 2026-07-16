@@ -1,4 +1,6 @@
 <script lang="ts">
+  import IconSliders from '~icons/lucide/sliders-horizontal';
+  import IconX from '~icons/lucide/x';
   import type { OverlayParams, OverlayStats } from './types';
 
   interface Props {
@@ -23,9 +25,11 @@
 
 <aside class="inspector" data-testid="inspector" aria-label="Analysis inspector">
   <header class="head">
-    <h2>Inspector</h2>
+    <h2><IconSliders aria-hidden="true" />Inspector</h2>
     {#if onClose}
-      <button type="button" class="close" aria-label="Close inspector" onclick={onClose}>×</button>
+      <button type="button" class="close" aria-label="Close inspector" onclick={onClose}>
+        <IconX aria-hidden="true" />
+      </button>
     {/if}
   </header>
 
@@ -170,17 +174,37 @@
 
   .head h2 {
     margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
     font-size: 0.95rem;
     font-weight: 600;
   }
 
+  .head h2 :global(svg) {
+    font-size: 1rem;
+    color: var(--muted);
+  }
+
   .close {
-    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--muted);
-    font-size: 1.2rem;
+    font-size: 1rem;
     line-height: 1;
-    padding: 0 0.25rem;
+    padding: 0.2rem;
+    transition:
+      background var(--t-fast),
+      color var(--t-fast);
+  }
+
+  .close:hover {
+    background: var(--panel-soft);
+    color: var(--text);
   }
 
   .group {
@@ -211,15 +235,15 @@
   }
 
   .swatch.pitch {
-    background: #9cc4ff;
+    background: var(--overlay-pitch);
   }
 
   .swatch.formant {
-    background: #ff5a52;
+    background: var(--overlay-formant);
   }
 
   .swatch.intensity {
-    background: #ffcc33;
+    background: var(--overlay-intensity);
   }
 
   .field {
@@ -240,12 +264,21 @@
 
   input[type='number'] {
     width: 100%;
-    padding: 0.3rem 0.45rem;
+    padding: 0.32rem 0.45rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     background: var(--panel-soft);
     color: var(--text);
     font-variant-numeric: tabular-nums;
+    transition:
+      border-color var(--t-fast),
+      box-shadow var(--t-fast);
+  }
+
+  input[type='number']:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 20%, transparent);
   }
 
   .note {
