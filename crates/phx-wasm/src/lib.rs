@@ -886,6 +886,180 @@ impl WasmEngine {
         Ok(WasmIntensityTrack { times, db })
     }
 
+    /// Returns the mean raw band energy inside a time–frequency box, in decibels.
+    ///
+    /// `t0`/`t1`/`f0`/`f1` bound the spectrogram selection, each pair accepted in
+    /// either order. This is the direct engine query a selection readout equals
+    /// at the same coordinates (the batch-equals-GUI invariant).
+    ///
+    /// # Errors
+    /// Rejects when `id` names no live buffer, or when a bound is not finite.
+    #[wasm_bindgen(js_name = bandEnergy)]
+    pub fn band_energy(&self, id: u64, t0: f64, t1: f64, f0: f64, f1: f64) -> Result<f64, JsError> {
+        Ok(self
+            .inner
+            .band_energy(AudioId::from_u64(id), t0, t1, f0, f1)?)
+    }
+
+    /// Computes the selection measurement readout as a JSON string.
+    ///
+    /// The object carries the box geometry and the span statistics the readout
+    /// bar shows: `f0MeanHz`/`f0MinHz`/`f0MaxHz`, `bandEnergyDb`,
+    /// `intensityMeanDb`, and `hnrMeanDb`, with absent values serialized as
+    /// `null`. `bandEnergyDb` equals [`WasmEngine::band_energy`] for the same
+    /// box, so the bar never recomputes a number the engine already answers.
+    ///
+    /// # Errors
+    /// Rejects when `id` names no live buffer, or when a bound is not finite.
+    #[allow(clippy::too_many_arguments)]
+    #[wasm_bindgen(js_name = selectionReadout)]
+    pub fn selection_readout(
+        &self,
+        id: u64,
+        t0: f64,
+        t1: f64,
+        f0: f64,
+        f1: f64,
+        pitch_floor_hz: f64,
+        pitch_ceiling_hz: f64,
+        intensity_floor_hz: f64,
+    ) -> Result<String, JsError> {
+        let readout = self.inner.selection_readout(
+            AudioId::from_u64(id),
+            t0,
+            t1,
+            f0,
+            f1,
+            pitch_floor_hz,
+            pitch_ceiling_hz,
+            intensity_floor_hz,
+        )?;
+        let value = serde_json::json!({
+            "t0": readout.t0,
+            "t1": readout.t1,
+            "f0": readout.f0,
+            "f1": readout.f1,
+            "duration": readout.duration,
+            "f0MeanHz": readout.f0_mean_hz,
+            "f0MinHz": readout.f0_min_hz,
+            "f0MaxHz": readout.f0_max_hz,
+            "bandEnergyDb": readout.band_energy_db,
+            "intensityMeanDb": readout.intensity_mean_db,
+            "hnrMeanDb": readout.hnr_mean_db,
+        });
+        serde_json::to_string(&value).map_err(|err| JsError::new(&err.to_string()))
+    }
+
+    /// Returns the mean of each formant slot over a time span as a
+    /// `Float64Array`, with `NaN` for a slot no frame in the span carries.
+    ///
+    /// Slot `j` is the `j`-th lowest candidate per frame. When `smoothed` is set
+    /// the Xia–Espy-Wilson tracker runs first — the provisional tracked view the
+    /// readout marks while the tracking weights stay unvalidated.
+    ///
+    /// # Errors
+    /// Rejects when `id` names no live buffer, when a formant parameter is out of
+    /// range, or when a bound is not finite.
+    #[wasm_bindgen(js_name = formantSpanMeans)]
+    pub fn formant_span_means(
+        &self,
+        id: u64,
+        ceiling_hz: f64,
+        max_formants: usize,
+        smoothed: bool,
+        t0: f64,
+        t1: f64,
+    ) -> Result<Float64Array, JsError> {
+        let params = FormantParams {
+            ceiling_hz,
+            max_formants,
+            ..FormantParams::default()
+        };
+        let means =
+            self.inner
+                .formant_span_means(AudioId::from_u64(id), &params, smoothed, t0, t1)?;
+        let flat: Vec<f64> = means
+            .into_iter()
+            .map(|value| value.unwrap_or(f64::NAN))
+            .collect();
+        Ok(Float64Array::from(flat.as_slice()))
+    }
+
+    /// Computes the aggregate voice report over a selection span as a JSON string.
+    ///
+    /// The object carries the pitch summary, jitter and shimmer families, mean
+    /// HNR, CPP and CPPS, voice breaks, spectral moments at the span midpoint,
+    /// the pulse count, and the analysis parameters used — everything the voice
+    /// report card renders. Absent measures serialize as `null`.
+    ///
+    /// # Errors
+    /// Rejects when `id` names no live buffer, or when a bound is not finite.
+    #[wasm_bindgen(js_name = voiceReport)]
+    pub fn voice_report(
+        &self,
+        id: u64,
+        t0: f64,
+        t1: f64,
+        pitch_floor_hz: f64,
+        pitch_ceiling_hz: f64,
+    ) -> Result<String, JsError> {
+        let audio_id = AudioId::from_u64(id);
+        let report = self
+            .inner
+            .voice_report(audio_id, t0, t1, pitch_floor_hz, pitch_ceiling_hz)?;
+        let moments = self.inner.spectral_moments_in_span(audio_id, t0, t1, 2.0)?;
+        let value = serde_json::json!({
+            "t0": report.span.start,
+            "t1": report.span.end,
+            "pitch": {
+                "meanHz": report.pitch.mean_hz,
+                "medianHz": report.pitch.median_hz,
+                "minHz": report.pitch.min_hz,
+                "maxHz": report.pitch.max_hz,
+            },
+            "jitter": {
+                "local": report.jitter.local,
+                "localAbsolute": report.jitter.local_absolute,
+                "rap": report.jitter.rap,
+                "ppq5": report.jitter.ppq5,
+                "ddp": report.jitter.ddp,
+            },
+            "shimmer": {
+                "local": report.shimmer.local,
+                "localDb": report.shimmer.local_db,
+                "apq3": report.shimmer.apq3,
+                "apq5": report.shimmer.apq5,
+                "apq11": report.shimmer.apq11,
+                "dda": report.shimmer.dda,
+            },
+            "meanHnrDb": report.mean_hnr_db,
+            "cppDb": report.cpp_db,
+            "cppsDb": report.cpps_db,
+            "voiceBreaks": {
+                "thresholdSeconds": report.voice_breaks.threshold_seconds,
+                "totalSeconds": report.voice_breaks.total_seconds,
+                "count": report.voice_breaks.gaps.len(),
+            },
+            "moments": {
+                "centreOfGravityHz": moments.centre_of_gravity_hz,
+                "standardDeviationHz": moments.standard_deviation_hz,
+                "skewness": moments.skewness,
+                "kurtosis": moments.kurtosis,
+            },
+            "pulseCount": report.pulses.times().len(),
+            "params": {
+                "pitchFloorHz": report.pitch_params.floor_hz,
+                "pitchCeilingHz": report.pitch_params.ceiling_hz,
+                "harmonicityFloorHz": report.harmonicity_params.floor_hz,
+                "periodsPerWindow": report.harmonicity_params.periods_per_window,
+                "cppFrameLengthSeconds": report.cpp_params.frame_length_seconds,
+                "cppMinF0Hz": report.cpp_params.min_f0_hz,
+                "cppMaxF0Hz": report.cpp_params.max_f0_hz,
+            },
+        });
+        serde_json::to_string(&value).map_err(|err| JsError::new(&err.to_string()))
+    }
+
     /// Creates an empty annotation over `[xmin, xmax]` seconds and attaches it
     /// to `audioId`, returning the new annotation id.
     ///
@@ -1755,6 +1929,41 @@ mod tests {
     use wasm_bindgen_test::wasm_bindgen_test;
 
     const FIXTURE_WAV: &[u8] = include_bytes!("../../../tests/fixtures/audio/arctic_bdl_a0001.wav");
+    const VOWEL_WAV: &[u8] = include_bytes!("../../../tests/fixtures/audio/synth_vowel_a.wav");
+
+    #[wasm_bindgen_test]
+    fn selection_and_voice_report_cross_the_boundary() {
+        let mut engine = WasmEngine::new();
+        let id = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let info = engine.audio_info(id).unwrap();
+        let (t0, t1, f0, f1) = (info.duration() * 0.3, info.duration() * 0.6, 0.0, 4000.0);
+
+        let direct = engine.band_energy(id, t0, t1, f0, f1).unwrap();
+        assert!(direct.is_finite());
+
+        let readout_json = engine
+            .selection_readout(id, t0, t1, f0, f1, 75.0, 600.0, 100.0)
+            .unwrap();
+        let readout: serde_json::Value = serde_json::from_str(&readout_json).unwrap();
+        // The batch-equals-GUI invariant across the JS boundary: the readout's
+        // band energy is bit-identical to the direct query.
+        assert_eq!(
+            readout["bandEnergyDb"].as_f64().unwrap().to_bits(),
+            direct.to_bits()
+        );
+        assert!(readout["f0MeanHz"].as_f64().unwrap() > 0.0);
+
+        let means = engine
+            .formant_span_means(id, 5000.0, 5, false, t0, t1)
+            .unwrap();
+        assert_eq!(means.length(), 5);
+
+        let report_json = engine.voice_report(id, t0, t1, 75.0, 600.0).unwrap();
+        let report: serde_json::Value = serde_json::from_str(&report_json).unwrap();
+        assert!(report["jitter"]["local"].as_f64().unwrap() < 0.05);
+        assert!(report["meanHnrDb"].as_f64().unwrap() > 10.0);
+        assert!(report["moments"]["centreOfGravityHz"].as_f64().unwrap() > 0.0);
+    }
 
     #[wasm_bindgen_test]
     fn import_then_info_then_tile_round_trip() {
