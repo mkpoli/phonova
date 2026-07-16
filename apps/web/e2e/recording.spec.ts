@@ -62,7 +62,12 @@ test('record from the microphone, land a corpus row, open it in the editor', asy
   await expect(page.getByTestId('waveform-canvas')).toHaveAttribute('data-render-token', /[1-9]/, {
     timeout: 60_000
   });
-  expect(await canvasUniqueColors(page, 'waveform-canvas')).toBeGreaterThan(2);
+  // The first render token can precede the recorded-audio paint (the canvas is
+  // still blank), so poll until the take's waveform actually covers the pane
+  // rather than sampling a single frame that races the paint.
+  await expect
+    .poll(() => canvasForegroundCoverage(page, 'waveform-canvas'), { timeout: 60_000 })
+    .toBeGreaterThan(200);
 
   // The take is a corpus row: back out and confirm exactly one recording.
   await page.getByTestId('back-corpus').click();
@@ -92,20 +97,33 @@ function visibleEnd(page: Page) {
   return page.getByTestId('editor').evaluate((node) => Number(node.getAttribute('data-visible-end')));
 }
 
-async function canvasUniqueColors(page: Page, testId: string) {
+/**
+ * Counts painted waveform pixels — those departing from the pane's dominant
+ * background colour. The WebGL waveform draws hard-edged (no anti-aliasing), so
+ * unique-colour counting can't distinguish a real signal from a flat line;
+ * coverage does, and it is independent of the fake tone's amplitude or the
+ * playback cursor.
+ */
+async function canvasForegroundCoverage(page: Page, testId: string) {
   return page.getByTestId(testId).evaluate(async (canvas: HTMLCanvasElement) => {
     const bitmap = await createImageBitmap(canvas);
-    const w = Math.min(96, bitmap.width);
-    const h = Math.min(96, bitmap.height);
+    const w = bitmap.width;
+    const h = bitmap.height;
     const off = new OffscreenCanvas(w, h);
     const ctx = off.getContext('2d');
     if (!ctx) return 0;
-    ctx.drawImage(bitmap, 0, 0, w, h);
+    ctx.drawImage(bitmap, 0, 0);
     const pixels = ctx.getImageData(0, 0, w, h).data;
-    const colors = new Set<string>();
-    for (let i = 0; i < pixels.length; i += 16) {
-      colors.add(`${pixels[i]},${pixels[i + 1]},${pixels[i + 2]},${pixels[i + 3]}`);
+    const tally = new Map<number, number>();
+    const key = (i: number) =>
+      (pixels[i] << 24) | (pixels[i + 1] << 16) | (pixels[i + 2] << 8) | pixels[i + 3];
+    for (let i = 0; i < pixels.length; i += 4) {
+      const k = key(i);
+      tally.set(k, (tally.get(k) ?? 0) + 1);
     }
-    return colors.size;
+    let backgroundCount = 0;
+    for (const count of tally.values()) if (count > backgroundCount) backgroundCount = count;
+    const total = pixels.length / 4;
+    return total - backgroundCount;
   });
 }
