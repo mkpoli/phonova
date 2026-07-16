@@ -1,0 +1,30 @@
+{
+  "name": "Sample: ARCTIC sentences",
+  "files": [
+    {
+      "path": "arctic_bdl_a0001.wav",
+      "name": "arctic_bdl_a0001.wav",
+      "mime": "audio/wav"
+    },
+    {
+      "path": "arctic_slt_a0001.wav",
+      "name": "arctic_slt_a0001.wav",
+      "mime": "audio/wav"
+    },
+    {
+      "path": "synth_vowel_perturbed.wav",
+      "name": "synth_vowel_perturbed.wav",
+      "mime": "audio/wav"
+    },
+    {
+      "path": "arctic_bdl_a0001.TextGrid",
+      "name": "arctic_bdl_a0001.TextGrid",
+      "mime": "text/plain"
+    },
+    {
+      "path": "arctic_slt_a0001.TextGrid",
+      "name": "arctic_slt_a0001.TextGrid",
+      "mime": "text/plain"
+    }
+  ]
+}

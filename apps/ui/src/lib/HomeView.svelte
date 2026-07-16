@@ -11,6 +11,7 @@
     theme: 'light' | 'dark';
     onImportFiles: (files: File[]) => void;
     onNewProject: (name: string) => void;
+    onOpenSample?: () => void;
     onOpenProject: (id: string) => void;
     onRenameProject: (id: string, currentName: string) => void;
     onDeleteProject: (id: string) => void;
@@ -25,6 +26,7 @@
     theme,
     onImportFiles,
     onNewProject,
+    onOpenSample,
     onOpenProject,
     onRenameProject,
     onDeleteProject,
@@ -81,6 +83,14 @@
       group: 'Project',
       keywords: ['open', 'add recordings', 'wav', 'choose files'],
       run: () => fileInput?.click()
+    },
+    {
+      id: 'openSampleProject',
+      title: 'Open sample project',
+      group: 'Project',
+      keywords: ['demo', 'example', 'arctic', 'try'],
+      enabled: () => onOpenSample !== undefined,
+      run: () => onOpenSample?.()
     }
   ]);
 </script>
@@ -155,10 +165,20 @@
           its annotation.
         </p>
         <div class="empty-actions">
+          {#if onOpenSample}
+            <button type="button" class="primary" data-testid="open-sample" onclick={onOpenSample}>
+              Open sample project
+            </button>
+          {/if}
           <button type="button" class="ghost" data-testid="empty-choose-files" onclick={() => fileInput?.click()}>
             Choose files
           </button>
         </div>
+        {#if onOpenSample}
+          <p class="empty-note">
+            The sample holds two CMU ARCTIC sentences with word tiers and a synthesized vowel.
+          </p>
+        {/if}
       </div>
     {:else}
       <div class="grid" data-testid="project-grid">
@@ -307,6 +327,17 @@
     display: flex;
     gap: 0.5rem;
     margin-top: 0.4rem;
+  }
+
+  .empty-actions .primary {
+    border-color: var(--accent);
+    background: color-mix(in oklab, var(--accent) 20%, var(--panel-soft));
+    color: var(--text);
+  }
+
+  .empty-note {
+    font-size: 0.82rem;
+    color: var(--muted);
   }
 
   .grid {

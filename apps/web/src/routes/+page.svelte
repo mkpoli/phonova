@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { base } from '$app/paths';
   import {
     CommandPalette,
     EditorView,
@@ -136,6 +137,44 @@
     busyLabel = 'Importing recordings…';
     try {
       const created = await store.create(deriveName(files));
+      project = created;
+      route = 'project';
+      await store.importFiles(created, files, () => {
+        project = { ...created };
+      });
+      project = { ...created };
+      resetAutosaveBaseline();
+      await refreshProjects();
+    } catch (caught) {
+      report(caught);
+    } finally {
+      busy = false;
+    }
+  }
+
+  interface SampleManifest {
+    name: string;
+    files: Array<{ path: string; name: string; mime: string }>;
+  }
+
+  async function openSampleProject() {
+    if (!store) return;
+    error = '';
+    busy = true;
+    busyLabel = 'Loading sample project…';
+    try {
+      const manifest: SampleManifest = await fetch(`${base}/sample/manifest.json`).then((res) => {
+        if (!res.ok) throw new Error('Sample project manifest is unavailable.');
+        return res.json();
+      });
+      const files = await Promise.all(
+        manifest.files.map(async (entry) => {
+          const res = await fetch(`${base}/sample/${entry.path}`);
+          if (!res.ok) throw new Error(`Sample file ${entry.path} is unavailable.`);
+          return new File([await res.arrayBuffer()], entry.name, { type: entry.mime });
+        })
+      );
+      const created = await store.create(manifest.name);
       project = created;
       route = 'project';
       await store.importFiles(created, files, () => {
@@ -414,6 +453,7 @@
     {theme}
     onImportFiles={importToNewProject}
     onNewProject={createEmptyProject}
+    onOpenSample={openSampleProject}
     onOpenProject={requestOpen}
     onRenameProject={renameProject}
     onDeleteProject={deleteProject}

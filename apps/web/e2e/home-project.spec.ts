@@ -77,6 +77,25 @@ test('drop a folder, build a browsable corpus, screenshots both themes', async (
   await page.screenshot({ path: path.join(screenshots, 'home-grid-light.png'), fullPage: true });
 });
 
+test('open sample project loads the bundled corpus', async ({ page }) => {
+  await page.goto('/');
+
+  // The empty state offers the sample entry and the first-run palette hint.
+  await expect(page.getByTestId('home-empty')).toBeVisible();
+  await expect(page.getByTestId('palette-hint')).toBeVisible();
+
+  await page.getByTestId('open-sample').click();
+
+  // Three recordings (two ARCTIC sentences and the perturbed vowel); the two
+  // ARCTIC sentences carry their word-tier TextGrids.
+  await expect(page.getByTestId('corpus')).toBeVisible();
+  await expect(page.getByTestId('corpus-row')).toHaveCount(3, { timeout: 30_000 });
+  await expect(page.locator('[data-testid="corpus-row"][data-has-annotation="true"]')).toHaveCount(
+    2
+  );
+  await expect(page.locator('[data-recording-name="synth_vowel_perturbed"]')).toHaveCount(1);
+});
+
 test('annotate, recover after reload via autosave, then delete', async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto('/');
