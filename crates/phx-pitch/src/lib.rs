@@ -8,6 +8,9 @@ mod params;
 mod path;
 mod types;
 
+#[cfg(test)]
+mod perf;
+
 use phx_audio::AudioView;
 use phx_dsp::{FrameGrid, RealFftPlan};
 
