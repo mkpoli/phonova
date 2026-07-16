@@ -32,7 +32,9 @@
     viewport: ViewportState;
     cursorTime: number;
     onSeek?: (time: number) => void;
-    onAnnotationChange?: (id: bigint) => void;
+    /** Fires when the pane repoints to a different document, including the
+     * no-annotation state (`null`) reached by undoing an import or attach. */
+    onAnnotationChange?: (id: bigint | null) => void;
   }
 
   let {
@@ -109,8 +111,7 @@
     return () => observer.disconnect();
   });
 
-  async function refresh() {
-    const ann = annotationId;
+  async function refresh(ann: bigint | null = annotationId) {
     const active = client;
     if (!active || ann === null) {
       tiers = [];
@@ -350,18 +351,42 @@
     }
   }
 
+  /**
+   * Reconciles the current document against the engine's live state for this
+   * audio, after an undo or redo may have detached or reattached one.
+   *
+   * Rather than pattern-matching the journal step's kind, this always asks
+   * the engine which documents remain attached to the audio: if the pane's
+   * current document is still among them, nothing changes; otherwise the
+   * pane repoints to the most recently attached survivor, or to the
+   * no-annotation state when none remain. The caller's own `onAnnotationChange`
+   * propagates the new id up so the rest of the editor (export, the audio
+   * store) stays in sync, and the resolved id is returned so the pane can
+   * refresh itself immediately rather than waiting on that round trip.
+   */
+  async function reconcileAnnotation(): Promise<bigint | null> {
+    if (!client || audioId === null) return annotationId;
+    const live = await client.listAnnotations(audioId);
+    if (annotationId !== null && live.includes(annotationId)) return annotationId;
+    const next = live.length > 0 ? live[live.length - 1] : null;
+    if (next !== annotationId) onAnnotationChange?.(next);
+    return next;
+  }
+
   async function undo() {
     if (!client) return;
     editing = null;
     await client.undo();
-    await refresh();
+    const next = await reconcileAnnotation();
+    await refresh(next);
   }
 
   async function redo() {
     if (!client) return;
     editing = null;
     await client.redo();
-    await refresh();
+    const next = await reconcileAnnotation();
+    await refresh(next);
   }
 
   async function runSearch(text: string) {

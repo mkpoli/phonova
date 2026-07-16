@@ -47,7 +47,7 @@
     onThemeChange: (theme: 'light' | 'dark') => void;
     onColormapChange: (colormap: WasmColormapName) => void;
     onCursorChange?: (time: number) => void;
-    onAnnotationChange?: (id: bigint) => void;
+    onAnnotationChange?: (id: bigint | null) => void;
     onExit?: () => void;
     projectName?: string;
     recordings?: RecordingChoice[];

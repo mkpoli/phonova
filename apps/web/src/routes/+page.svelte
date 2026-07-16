@@ -682,7 +682,10 @@
     onCursorChange={handleCursorChange}
     onAnnotationChange={(id) => {
       annotationId = id;
-      if (recording) recording.annotationId = id;
+      if (recording) {
+        recording.annotationId = id;
+        recording.hasAnnotation = id !== null;
+      }
     }}
     onExit={backToProject}
     projectName={project?.name}

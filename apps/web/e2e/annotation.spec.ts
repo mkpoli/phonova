@@ -189,6 +189,36 @@ test('label search finds hits and navigates between them', async ({ page }) => {
   await expect(pane(page)).toHaveAttribute('data-active-index', String(first));
 });
 
+test('undoing a textgrid import repoints the pane instead of going blank', async ({ page }) => {
+  await loadFixture(page);
+  // Opening the recording already attached an empty document (undo depth 1,
+  // zero tiers); importing the TextGrid attaches a second document on top of
+  // it rather than replacing it.
+  await expect(pane(page)).toHaveAttribute('data-tier-count', '0');
+
+  await page.getByTestId('textgrid-input').setInputFiles(textGridFixture);
+  await expect(pane(page)).toHaveAttribute('data-tier-count', '3');
+  await expect(pane(page)).toHaveAttribute('data-undo-depth', '2');
+  const importedHash = await stateHash(page);
+
+  // Undo the import: the pane repoints to the pre-import document (empty,
+  // not an error) instead of continuing to point at the now-detached one.
+  await page.keyboard.press('Control+z');
+  await expect(pane(page)).toHaveAttribute('data-undo-depth', '1');
+  await expect(pane(page)).toHaveAttribute('data-tier-count', '0');
+  await expect(page.getByTestId('tier-empty')).toBeVisible();
+  await expect(page.getByTestId('tier-status')).toHaveCount(0);
+
+  // Redo reattaches the imported document and its tiers return.
+  await page.keyboard.press('Control+Shift+z');
+  await expect(pane(page)).toHaveAttribute('data-undo-depth', '2');
+  await expect(pane(page)).toHaveAttribute('data-tier-count', '3');
+  await expect.poll(() => stateHash(page)).toBe(importedHash);
+  await expect(
+    page.getByTestId('interval').filter({ hasText: 'danger' }).first()
+  ).toBeVisible();
+});
+
 test('textgrid import/export round trip and 4-tier screenshots in both themes', async ({
   page
 }) => {
