@@ -1,6 +1,7 @@
 <script lang="ts">
   import ProjectCard from './ProjectCard.svelte';
   import { filesFromDataTransfer } from './dnd';
+  import { registerCommands } from './commands.svelte';
   import type { ProjectSummary } from './types';
 
   interface Props {
@@ -54,6 +55,16 @@
     onNewProject(newName);
     newName = '';
   }
+
+  registerCommands([
+    {
+      id: 'importAudioFiles',
+      title: 'Import audio files',
+      group: 'Project',
+      keywords: ['open', 'add recordings', 'wav', 'choose files'],
+      run: () => fileInput?.click()
+    }
+  ]);
 </script>
 
 <div

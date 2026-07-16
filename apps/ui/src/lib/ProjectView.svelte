@@ -1,6 +1,7 @@
 <script lang="ts">
   import WaveThumb from './WaveThumb.svelte';
   import { filesFromDataTransfer } from './dnd';
+  import { registerCommands } from './commands.svelte';
   import { formatTime, type CoreClientLike, type RecordingEntry } from './types';
 
   interface Props {
@@ -46,6 +47,25 @@
   function sampleRateLabel(hz: number): string {
     return hz >= 1000 ? `${(hz / 1000).toFixed(hz % 1000 === 0 ? 0 : 1)} kHz` : `${hz} Hz`;
   }
+
+  registerCommands([
+    {
+      id: 'saveProject',
+      title: 'Save project',
+      group: 'Project',
+      api: ['saveProjectContainer'],
+      keywords: ['write', 'store'],
+      enabled: () => dirty,
+      run: () => onSave()
+    },
+    {
+      id: 'backToHome',
+      title: 'Back to projects',
+      group: 'Project',
+      keywords: ['home', 'exit', 'close project'],
+      run: () => onBack()
+    }
+  ]);
 </script>
 
 <div

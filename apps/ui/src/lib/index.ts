@@ -1,4 +1,5 @@
 export { default as BoundaryHandle } from './BoundaryHandle.svelte';
+export { default as CommandPalette } from './CommandPalette.svelte';
 export { default as EditorView } from './EditorView.svelte';
 export { default as ExportDialog } from './ExportDialog.svelte';
 export { default as HomeView } from './HomeView.svelte';
@@ -19,4 +20,15 @@ export { default as VoiceReportCard } from './VoiceReportCard.svelte';
 export { default as WaveThumb } from './WaveThumb.svelte';
 export { default as WaveformPane } from './WaveformPane.svelte';
 export { filesFromDataTransfer } from './dnd';
+export {
+  CommandRegistry,
+  COMMAND_GROUP_ORDER,
+  getCommandRegistry,
+  provideCommandRegistry,
+  registerCommands,
+  searchCommands,
+  type Command,
+  type CommandGroup,
+  type CommandMatch
+} from './commands.svelte';
 export * from './types';

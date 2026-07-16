@@ -1,6 +1,7 @@
 <script lang="ts">
   import SearchBar from './SearchBar.svelte';
   import TierLane from './TierLane.svelte';
+  import { registerCommands } from './commands.svelte';
   import type {
     AnnotationClientLike,
     IntervalData,
@@ -504,6 +505,122 @@
       void redo();
     }
   }
+
+  const hasDocument = () => annotationId !== null;
+  const onIntervalTier = () => annotationId !== null && activeTier?.kind === 'interval';
+
+  registerCommands([
+    {
+      id: 'addIntervalTier',
+      title: 'Add interval tier',
+      group: 'Annotation',
+      api: ['addIntervalTier'],
+      keywords: ['tier', 'new'],
+      enabled: hasDocument,
+      run: () => void addTier('interval')
+    },
+    {
+      id: 'addPointTier',
+      title: 'Add point tier',
+      group: 'Annotation',
+      api: ['addPointTier'],
+      keywords: ['tier', 'new'],
+      enabled: hasDocument,
+      run: () => void addTier('point')
+    },
+    {
+      id: 'removeTier',
+      title: 'Remove active tier',
+      group: 'Annotation',
+      api: ['removeTier'],
+      keywords: ['delete tier'],
+      enabled: () => activeTierId !== null,
+      run: () => {
+        if (activeTierId !== null) void removeTier(activeTierId);
+      }
+    },
+    {
+      id: 'insertBoundary',
+      title: 'Split interval at cursor',
+      group: 'Annotation',
+      api: ['insertBoundary'],
+      shortcut: 'S',
+      keywords: ['boundary', 'divide'],
+      enabled: onIntervalTier,
+      run: () => void splitAtCursor()
+    },
+    {
+      id: 'removeBoundary',
+      title: 'Merge intervals',
+      group: 'Annotation',
+      api: ['removeBoundary'],
+      shortcut: 'M',
+      keywords: ['boundary', 'join'],
+      enabled: () => onIntervalTier() && activeIntervals.length >= 2,
+      run: () => void mergeActive()
+    },
+    {
+      id: 'editLabel',
+      title: 'Edit label',
+      group: 'Annotation',
+      api: ['setIntervalLabel', 'setPointLabel'],
+      shortcut: 'Enter',
+      enabled: () => activeCount > 0,
+      run: () => openEditor(activeIndex)
+    },
+    {
+      id: 'nextInterval',
+      title: 'Next interval',
+      group: 'Annotation',
+      shortcut: 'Tab',
+      enabled: () => activeCount > 0,
+      run: () => selectIndex(activeIndex + 1)
+    },
+    {
+      id: 'previousInterval',
+      title: 'Previous interval',
+      group: 'Annotation',
+      shortcut: 'Shift+Tab',
+      enabled: () => activeCount > 0,
+      run: () => selectIndex(activeIndex - 1)
+    },
+    {
+      id: 'undo',
+      title: 'Undo',
+      group: 'Annotation',
+      api: ['undo'],
+      shortcut: 'Ctrl/Cmd+Z',
+      enabled: () => undoDepth > 0,
+      run: () => void undo()
+    },
+    {
+      id: 'redo',
+      title: 'Redo',
+      group: 'Annotation',
+      api: ['redo'],
+      shortcut: 'Ctrl/Cmd+Shift+Z',
+      enabled: () => redoDepth > 0,
+      run: () => void redo()
+    },
+    {
+      id: 'importTextGrid',
+      title: 'Import TextGrid',
+      group: 'Annotation',
+      api: ['importTextGrid'],
+      keywords: ['open', 'praat'],
+      enabled: () => audioId !== null,
+      run: () => fileInput?.click()
+    },
+    {
+      id: 'exportTextGrid',
+      title: 'Export TextGrid',
+      group: 'Annotation',
+      api: ['exportTextGrid'],
+      keywords: ['save', 'praat'],
+      enabled: hasDocument,
+      run: () => void exportTextGrid()
+    }
+  ]);
 </script>
 
 <svelte:window onkeydown={handleGlobalKeydown} />

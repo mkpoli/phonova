@@ -8,6 +8,7 @@
   import TransportBar from './TransportBar.svelte';
   import VoiceReportCard from './VoiceReportCard.svelte';
   import WaveformPane from './WaveformPane.svelte';
+  import { registerCommands } from './commands.svelte';
   import {
     clampViewport,
     defaultOverlayParams,
@@ -278,6 +279,169 @@
       exportOpen = !exportOpen;
     }
   }
+
+  const hasSelection = () => selection !== null;
+  const hasAudio = () => audio !== null;
+
+  registerCommands([
+    {
+      id: 'playPause',
+      title: 'Play / pause',
+      group: 'Playback',
+      shortcut: 'Space',
+      keywords: ['transport', 'stop'],
+      enabled: hasAudio,
+      run: () => onPlayToggle()
+    },
+    {
+      id: 'fitFile',
+      title: 'Fit whole file',
+      group: 'View',
+      shortcut: '0',
+      keywords: ['zoom out', 'reset zoom', 'overview'],
+      enabled: hasAudio,
+      run: fitFile
+    },
+    {
+      id: 'zoomToSelection',
+      title: 'Zoom to selection',
+      group: 'View',
+      keywords: ['fit selection'],
+      enabled: hasSelection,
+      run: zoomToSelection
+    },
+    {
+      id: 'zoomIn',
+      title: 'Zoom in',
+      group: 'View',
+      shortcut: 'Wheel up',
+      enabled: hasAudio,
+      run: () => zoomHorizontal(0.8, 0.5)
+    },
+    {
+      id: 'zoomOut',
+      title: 'Zoom out',
+      group: 'View',
+      shortcut: 'Wheel down',
+      enabled: hasAudio,
+      run: () => zoomHorizontal(1.25, 0.5)
+    },
+    {
+      id: 'toggleInspector',
+      title: 'Toggle inspector',
+      group: 'View',
+      shortcut: 'I',
+      keywords: ['parameters', 'panel'],
+      run: () => {
+        inspectorOpen = !inspectorOpen;
+      }
+    },
+    {
+      id: 'togglePitchTrack',
+      title: 'Toggle pitch track',
+      group: 'Analysis',
+      api: ['pitchTrack'],
+      keywords: ['f0', 'overlay'],
+      run: () => {
+        overlayParams.pitch.show = !overlayParams.pitch.show;
+      }
+    },
+    {
+      id: 'toggleFormantTrack',
+      title: 'Toggle formant track',
+      group: 'Analysis',
+      api: ['formantTrack'],
+      keywords: ['overlay'],
+      run: () => {
+        overlayParams.formant.show = !overlayParams.formant.show;
+      }
+    },
+    {
+      id: 'toggleIntensityTrack',
+      title: 'Toggle intensity track',
+      group: 'Analysis',
+      api: ['intensityTrack'],
+      keywords: ['overlay', 'db'],
+      run: () => {
+        overlayParams.intensity.show = !overlayParams.intensity.show;
+      }
+    },
+    {
+      id: 'toggleFormantTracking',
+      title: 'Toggle formant tracking',
+      group: 'Analysis',
+      api: ['formantSpanMeans'],
+      keywords: ['smoothed', 'burg'],
+      run: () => {
+        overlayParams.formant.smoothed = !overlayParams.formant.smoothed;
+      }
+    },
+    {
+      id: 'voiceReport',
+      title: 'Voice report over selection',
+      group: 'Analysis',
+      api: ['voiceReport'],
+      keywords: ['jitter', 'shimmer', 'hnr'],
+      enabled: hasSelection,
+      run: () => void openVoiceReport()
+    },
+    {
+      id: 'playSelection',
+      title: 'Play selection',
+      group: 'Selection',
+      enabled: hasSelection,
+      run: playSelection
+    },
+    {
+      id: 'clearSelection',
+      title: 'Clear selection',
+      group: 'Selection',
+      shortcut: 'Esc',
+      enabled: hasSelection,
+      run: clearSelection
+    },
+    {
+      id: 'exportFigure',
+      title: 'Export figure',
+      group: 'Figures',
+      api: ['buildFigure', 'exportFigure'],
+      shortcut: 'E',
+      keywords: ['svg', 'pdf', 'png', 'save image'],
+      enabled: hasAudio,
+      run: () => {
+        exportOpen = !exportOpen;
+      }
+    },
+    {
+      id: 'colormapViridis',
+      title: 'Spectrogram palette: Viridis',
+      group: 'Appearance',
+      keywords: ['colormap', 'color'],
+      run: () => onColormapChange('Viridis')
+    },
+    {
+      id: 'colormapMagma',
+      title: 'Spectrogram palette: Magma',
+      group: 'Appearance',
+      keywords: ['colormap', 'color'],
+      run: () => onColormapChange('Magma')
+    },
+    {
+      id: 'colormapGrayscale',
+      title: 'Spectrogram palette: Grayscale',
+      group: 'Appearance',
+      keywords: ['colormap', 'grayscale', 'print', 'publication'],
+      run: () => onColormapChange('Grayscale')
+    },
+    {
+      id: 'closeRecording',
+      title: 'Close recording',
+      group: 'Project',
+      keywords: ['back', 'corpus', 'exit'],
+      enabled: () => onExit !== undefined,
+      run: () => onExit?.()
+    }
+  ]);
 </script>
 
 <svelte:window onkeydown={handleKeydown} />

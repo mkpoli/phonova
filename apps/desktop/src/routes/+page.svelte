@@ -1,9 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
+    CommandPalette,
     EditorView,
     HomeView,
     ProjectView,
+    provideCommandRegistry,
+    registerCommands,
     type AudioInfo,
     type ProjectSummary,
     type RecordingEntry,
@@ -40,6 +43,8 @@
   let busyLabel = $state('');
   let dirty = $state(false);
   let recovery = $state<{ id: string; name: string } | null>(null);
+
+  const commands = provideCommandRegistry();
 
   // Autosave debounce, driven from a coarse tick against the engine state hash.
   let lastHash: bigint | null = null;
@@ -90,6 +95,16 @@
     theme = next;
     applyTheme(next);
   }
+
+  registerCommands([
+    {
+      id: 'switchTheme',
+      title: 'Switch color theme',
+      group: 'Appearance',
+      keywords: ['dark', 'light', 'appearance', 'toggle theme'],
+      run: () => handleThemeChange(theme === 'light' ? 'dark' : 'light')
+    }
+  ]);
 
   async function refreshProjects() {
     if (!store) return;
@@ -473,6 +488,8 @@
 {#if error}
   <div class="error" role="alert" data-testid="error">{error}</div>
 {/if}
+
+<CommandPalette registry={commands} />
 
 <style>
   .error {
