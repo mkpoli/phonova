@@ -47,29 +47,43 @@ impl PointProcess {
 
 /// Pulse extraction parameters.
 ///
-/// Defaults are implementation parameters for the period-by-period peak
-/// alignment described in the Praat voice manual: positive waveform peaks,
-/// a half-period peak-search radius, and accepted pulse spacings between
-/// `0.6` and `1.6` times the local pitch period.
+/// Defaults follow the cross-correlation pulse finder documented in the Praat
+/// manual "Sound & Pitch: To PointProcess (cc)...": within each voiced
+/// interval the first pulse is the absolute waveform extremum near the interval
+/// midpoint, and further pulses are located recursively by maximizing the
+/// cross-correlation of the waveform environment against the previous pulse,
+/// searched over `[0.8, 1.2]` times the local pitch period. A pulse is dropped
+/// when its correlation falls below `0.3`; one extra pulse is allowed at a
+/// voiced edge when its correlation exceeds `0.7`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PulseParams {
-    /// Search radius as a fraction of the local pitch period.
-    pub peak_search_radius_periods: f64,
-    /// Smallest accepted pulse spacing as a fraction of the local pitch period.
+    /// Smallest candidate spacing as a fraction of the local pitch period.
     pub min_period_factor: f64,
-    /// Largest accepted pulse spacing as a fraction of the local pitch period.
+    /// Largest candidate spacing as a fraction of the local pitch period.
     pub max_period_factor: f64,
-    /// Minimum selected pitch-frame strength used as a pulse-chain seed.
-    pub min_seed_strength: f64,
+    /// Cross-correlation window half-width as a fraction of the local pitch
+    /// period.
+    ///
+    /// The manual under-specifies the length of the "environment" that is
+    /// cross-correlated. A half-width of half a period (one period total)
+    /// matches the manual's own first-pulse search window (`tmid ± T0/2`) and
+    /// is the defensible choice taken here; it is not fitted to any reference.
+    pub correlation_window_periods: f64,
+    /// Least cross-correlation retained for a pulse (Praat cc: `0.3`).
+    pub min_correlation: f64,
+    /// Cross-correlation above which one extra pulse is kept at a voiced edge
+    /// (Praat cc: `0.7`).
+    pub edge_correlation: f64,
 }
 
 impl Default for PulseParams {
     fn default() -> Self {
         Self {
-            peak_search_radius_periods: 0.5,
-            min_period_factor: 0.6,
-            max_period_factor: 1.6,
-            min_seed_strength: 0.0,
+            min_period_factor: 0.8,
+            max_period_factor: 1.2,
+            correlation_window_periods: 0.5,
+            min_correlation: 0.3,
+            edge_correlation: 0.7,
         }
     }
 }
@@ -317,13 +331,21 @@ pub struct VoiceReport {
     pub voice_breaks: VoiceBreaks,
 }
 
-/// Extracts glottal pulses by chaining positive waveform peaks through voiced pitch spans.
+/// Extracts glottal pulses by cross-correlation, per the Praat manual
+/// "Sound & Pitch: To PointProcess (cc)...".
 ///
-/// For each contiguous voiced span, the strongest pitch frame seeds a pulse
-/// chain. Pulses advance and retreat by the local pitch period, each predicted
-/// time is aligned to the largest positive waveform sample within
-/// `peak_search_radius_periods` periods, and spacings outside
-/// `[min_period_factor, max_period_factor]` times the local period are rejected.
+/// Voiced intervals come from the pitch track's voiced/unvoiced decisions. In
+/// each interval the first pulse is the absolute waveform extremum within
+/// `tmid ± T0/2` of the interval midpoint `tmid`, where `T0` is the pitch
+/// period there. Further pulses are found recursively toward each edge: the
+/// next pulse maximizes the normalized cross-correlation of the waveform
+/// environment around a candidate time against the environment around the
+/// previous pulse, searched over `[min_period_factor, max_period_factor]`
+/// times the local period and refined by parabolic interpolation of the
+/// correlation function. A candidate whose correlation is below
+/// `min_correlation` ends the recursion in that direction, except that one
+/// pulse past the strict period window is kept at a voiced edge when its
+/// correlation exceeds `edge_correlation`.
 #[must_use]
 pub fn pulses(audio: AudioView<'_>, pitch: &PitchTrack, params: &PulseParams) -> PointProcess {
     if audio.frames() == 0 || pitch.frames().is_empty() {
@@ -335,18 +357,15 @@ pub fn pulses(audio: AudioView<'_>, pitch: &PitchTrack, params: &PulseParams) ->
     let mut times = Vec::new();
 
     for segment in segments {
-        let Some(seed) = strongest_frame_in_span(pitch, segment, params.min_seed_strength) else {
+        let midpoint = 0.5 * (segment.start + segment.end);
+        let Some(mid_period) = period_at(pitch, midpoint) else {
             continue;
         };
-        let Some(seed_period) = local_period(pitch, seed.time) else {
-            continue;
-        };
-        let Some(seed_time) = align_positive_peak(
+        let Some(seed_time) = absolute_extremum(
             &signal,
             sample_rate,
-            seed.time,
-            seed_period,
-            params.peak_search_radius_periods,
+            midpoint - 0.5 * mid_period,
+            midpoint + 0.5 * mid_period,
         ) else {
             continue;
         };
@@ -675,51 +694,55 @@ fn voiced_segments(pitch: &PitchTrack, duration: f64) -> Vec<VoicedSegment> {
     segments
 }
 
-fn strongest_frame_in_span(
-    pitch: &PitchTrack,
-    segment: VoicedSegment,
-    min_strength: f64,
-) -> Option<&phx_pitch::PitchFrame> {
-    pitch
-        .frames()
-        .iter()
-        .filter(|frame| segment.start <= frame.time && frame.time <= segment.end)
-        .filter(|frame| frame.f0.is_some() && frame.strength >= min_strength)
-        .max_by(|a, b| a.strength.total_cmp(&b.strength))
-}
-
-fn local_period(pitch: &PitchTrack, time: f64) -> Option<f64> {
-    pitch
+/// Local pitch period in seconds at `time`, linearly interpolated from the
+/// nearest bracketing voiced frames of the pitch contour (Praat cc: `T0` "as
+/// can be interpolated from the Pitch contour"). Clamped to the nearest voiced
+/// frame outside the voiced range.
+fn period_at(pitch: &PitchTrack, time: f64) -> Option<f64> {
+    let voiced: Vec<(f64, f64)> = pitch
         .frames()
         .iter()
         .filter_map(|frame| frame.f0.map(|f0| (frame.time, f0)))
         .filter(|(_, f0)| f0.is_finite() && *f0 > 0.0)
-        .min_by(|(time_a, _), (time_b, _)| (time_a - time).abs().total_cmp(&(time_b - time).abs()))
-        .map(|(_, f0)| 1.0 / f0)
+        .collect();
+    let (&first, &last) = (voiced.first()?, voiced.last()?);
+    if time <= first.0 {
+        return Some(1.0 / first.1);
+    }
+    if time >= last.0 {
+        return Some(1.0 / last.1);
+    }
+    for pair in voiced.windows(2) {
+        let (t0, f0) = pair[0];
+        let (t1, f1) = pair[1];
+        if t0 <= time && time <= t1 {
+            let frequency = if (t1 - t0).abs() <= EPSILON {
+                f0
+            } else {
+                f0 + (f1 - f0) * (time - t0) / (t1 - t0)
+            };
+            return (frequency > 0.0).then_some(1.0 / frequency);
+        }
+    }
+    Some(1.0 / last.1)
 }
 
-fn align_positive_peak(
-    signal: &[f64],
-    sample_rate: f64,
-    predicted_time: f64,
-    period: f64,
-    radius_periods: f64,
-) -> Option<f64> {
-    if signal.is_empty() || !predicted_time.is_finite() || period <= 0.0 || radius_periods < 0.0 {
+/// Time of the largest absolute waveform sample within `[lo_time, hi_time]`.
+fn absolute_extremum(signal: &[f64], sample_rate: f64, lo_time: f64, hi_time: f64) -> Option<f64> {
+    if signal.is_empty() {
         return None;
     }
-    let centre = (predicted_time * sample_rate).round() as isize;
-    let radius = (radius_periods * period * sample_rate).round().max(1.0) as isize;
-    let start = (centre - radius).max(0) as usize;
-    let end = (centre + radius + 1).min(signal.len() as isize) as usize;
-    if start >= end {
+    let len = signal.len() as isize;
+    let start = ((lo_time * sample_rate).round() as isize).max(0);
+    let end = ((hi_time * sample_rate).round() as isize).min(len - 1);
+    if start > end {
         return None;
     }
-    let (offset, _) = signal[start..end]
+    let (offset, _) = signal[start as usize..=end as usize]
         .iter()
         .enumerate()
-        .max_by(|(_, a), (_, b)| a.total_cmp(b))?;
-    Some((start + offset) as f64 / sample_rate)
+        .max_by(|(_, a), (_, b)| a.abs().total_cmp(&b.abs()))?;
+    Some((start as usize + offset) as f64 / sample_rate)
 }
 
 fn chain_pulses(
@@ -729,32 +752,131 @@ fn chain_pulses(
     times: &mut Vec<f64>,
 ) {
     let mut current = seed_time;
-    while let Some(period) = local_period(context.pitch, current) {
-        let predicted = match direction {
-            ChainDirection::Forward => current + period,
-            ChainDirection::Backward => current - period,
+    while let Some(period) = period_at(context.pitch, current) {
+        let half_window = (context.params.correlation_window_periods * period * context.sample_rate)
+            .round()
+            .max(1.0) as usize;
+        let (lo, hi) = match direction {
+            ChainDirection::Forward => (
+                current + context.params.min_period_factor * period,
+                current + context.params.max_period_factor * period,
+            ),
+            ChainDirection::Backward => (
+                current - context.params.max_period_factor * period,
+                current - context.params.min_period_factor * period,
+            ),
         };
-        if predicted < context.segment.start || predicted > context.segment.end {
+        let clamped_lo = lo.max(context.segment.start);
+        let clamped_hi = hi.min(context.segment.end);
+        if clamped_lo > clamped_hi {
             break;
         }
-        let Some(aligned) = align_positive_peak(
+        let at_edge = clamped_lo > lo || clamped_hi < hi;
+        let Some((time, correlation)) = best_correlation_point(
             context.signal,
             context.sample_rate,
-            predicted,
-            period,
-            context.params.peak_search_radius_periods,
+            current,
+            clamped_lo,
+            clamped_hi,
+            half_window,
         ) else {
             break;
         };
-        let spacing = (aligned - current).abs();
-        if spacing < context.params.min_period_factor * period
-            || spacing > context.params.max_period_factor * period
-        {
+        let threshold = if at_edge {
+            context.params.edge_correlation
+        } else {
+            context.params.min_correlation
+        };
+        if correlation < threshold {
             break;
         }
-        times.push(aligned);
-        current = aligned;
+        times.push(time);
+        current = time;
     }
+}
+
+/// Finds the candidate time in `[lo_time, hi_time]` whose waveform environment
+/// best cross-correlates with the environment around `anchor_time`, refined to
+/// sub-sample precision by parabolic interpolation of the correlation function.
+///
+/// Returns the refined time and the normalized correlation at the peak (in
+/// `[-1, 1]`). Correlation windows are `±half_window` samples wide; candidates
+/// whose window would leave the signal are skipped.
+fn best_correlation_point(
+    signal: &[f64],
+    sample_rate: f64,
+    anchor_time: f64,
+    lo_time: f64,
+    hi_time: f64,
+    half_window: usize,
+) -> Option<(f64, f64)> {
+    let len = signal.len() as isize;
+    let radius = half_window as isize;
+    let anchor = (anchor_time * sample_rate).round() as isize;
+    if anchor - radius < 0 || anchor + radius >= len {
+        return None;
+    }
+    let anchor_window = &signal[(anchor - radius) as usize..=(anchor + radius) as usize];
+    let anchor_energy: f64 = anchor_window.iter().map(|value| value * value).sum();
+    if anchor_energy <= 0.0 {
+        return None;
+    }
+
+    let candidate_lo = (lo_time * sample_rate).round() as isize;
+    let candidate_hi = (hi_time * sample_rate).round() as isize;
+    if candidate_lo > candidate_hi {
+        return None;
+    }
+    let correlations: Vec<f64> = (candidate_lo..=candidate_hi)
+        .map(|center| {
+            if center - radius < 0 || center + radius >= len {
+                return f64::NEG_INFINITY;
+            }
+            let window = &signal[(center - radius) as usize..=(center + radius) as usize];
+            let mut cross = 0.0;
+            let mut energy = 0.0;
+            for (a, b) in anchor_window.iter().zip(window) {
+                cross += a * b;
+                energy += b * b;
+            }
+            if energy > 0.0 {
+                cross / (anchor_energy * energy).sqrt()
+            } else {
+                f64::NEG_INFINITY
+            }
+        })
+        .collect();
+
+    let best =
+        (0..correlations.len()).max_by(|&a, &b| correlations[a].total_cmp(&correlations[b]))?;
+    let peak_value = correlations[best];
+    if !peak_value.is_finite() {
+        return None;
+    }
+    let (delta, refined) = if best > 0
+        && best + 1 < correlations.len()
+        && correlations[best - 1].is_finite()
+        && correlations[best + 1].is_finite()
+    {
+        parabolic_peak(correlations[best - 1], peak_value, correlations[best + 1])
+    } else {
+        (0.0, peak_value)
+    };
+    let center = (candidate_lo + best as isize) as f64 + delta;
+    Some((center / sample_rate, refined))
+}
+
+/// Parabolic vertex from three equally spaced correlation samples, the middle
+/// being the discrete maximum. Returns the sub-sample offset (clamped to
+/// `[-1, 1]`) and the interpolated peak value.
+fn parabolic_peak(left: f64, center: f64, right: f64) -> (f64, f64) {
+    let denominator = left - 2.0 * center + right;
+    if denominator.abs() <= EPSILON {
+        return (0.0, center);
+    }
+    let offset = 0.5 * (left - right) / denominator;
+    let peak = center - 0.25 * (left - right) * offset;
+    (offset.clamp(-1.0, 1.0), peak)
 }
 
 fn periods_in_span(pp: &PointProcess, span: TimeSpan) -> Vec<f64> {
@@ -819,6 +941,15 @@ fn second_difference_average(values: &[f64]) -> Option<f64> {
     )
 }
 
+/// Peak amplitude of each glottal period in `span`, per the Praat voice manual
+/// "Voice 3. Shimmer".
+///
+/// A pulse marks its period's amplitude extremum (Praat "Sound & Pitch: To
+/// PointProcess (cc)..." seeds each interval at the absolute waveform
+/// extremum), so the period owned by pulse `start` is the half-open sample
+/// span `[start, end)` up to the next pulse: it holds this period's own
+/// extremum and excludes the next pulse's, yielding the peak amplitude of one
+/// period rather than the larger of two adjacent peaks.
 fn amplitudes_in_span(audio: AudioView<'_>, pp: &PointProcess, span: TimeSpan) -> Vec<f64> {
     let signal = mono_as_f64(&audio);
     let sample_rate = audio.sample_rate();
@@ -830,8 +961,8 @@ fn amplitudes_in_span(audio: AudioView<'_>, pp: &PointProcess, span: TimeSpan) -
             if !(span.contains(start) && span.contains(end) && end > start) {
                 return None;
             }
-            let start_sample = (start * sample_rate).floor().max(0.0) as usize;
-            let end_sample = (end * sample_rate).ceil().min(signal.len() as f64) as usize;
+            let start_sample = (start * sample_rate).round().max(0.0) as usize;
+            let end_sample = (end * sample_rate).round().min(signal.len() as f64) as usize;
             (start_sample < end_sample).then(|| {
                 signal[start_sample..end_sample]
                     .iter()
