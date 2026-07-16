@@ -13,6 +13,7 @@ use phx_annot::{AnnotationError, IntegrityIssue};
 use phx_audio::AudioError;
 
 use crate::document::AnnotationId;
+use crate::recording::RecordingId;
 use crate::store::AudioId;
 
 /// Errors produced by [`crate::Engine`] entry points.
@@ -22,6 +23,8 @@ pub enum EngineError {
     UnknownAudioId(AudioId),
     /// The given [`AnnotationId`] does not name a live annotation document.
     UnknownAnnotationId(AnnotationId),
+    /// The given [`RecordingId`] does not name an open capture take.
+    UnknownRecordingId(RecordingId),
     /// WAV import failed.
     Audio(AudioError),
     /// An annotation mutation was rejected by [`phx_annot`].
@@ -43,6 +46,7 @@ impl fmt::Display for EngineError {
         match self {
             Self::UnknownAudioId(id) => write!(f, "unknown audio id {}", id.as_u64()),
             Self::UnknownAnnotationId(id) => write!(f, "unknown annotation id {}", id.as_u64()),
+            Self::UnknownRecordingId(id) => write!(f, "unknown recording id {}", id.as_u64()),
             Self::Audio(err) => write!(f, "audio import failed: {err}"),
             Self::Annotation(err) => write!(f, "annotation mutation failed: {err}"),
             Self::InvalidAnnotation(issues) => {
@@ -64,6 +68,7 @@ impl Error for EngineError {
             Self::Annotation(err) => Some(err),
             Self::UnknownAudioId(_)
             | Self::UnknownAnnotationId(_)
+            | Self::UnknownRecordingId(_)
             | Self::InvalidAnnotation(_)
             | Self::InvalidRequest { .. } => None,
         }

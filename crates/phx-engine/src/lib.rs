@@ -20,11 +20,12 @@ mod error;
 mod figure;
 mod journal;
 mod pyramid;
+mod recording;
 mod store;
 
 use std::hash::{Hash, Hasher};
 
-use phx_audio::Audio;
+use phx_audio::{Audio, BitDepth};
 use phx_dsp::Window;
 
 use document::DocumentStore;
@@ -53,7 +54,10 @@ pub use phx_voice::{
     ShimmerMeasures, VoiceBreaks, VoiceReport,
 };
 pub use pyramid::MinMax;
+pub use recording::{FinishedRecording, RecordingId};
 pub use store::{AudioId, AudioInfo, AudioStore};
+
+use recording::RecordingStore;
 
 /// The measurement readout for a time–frequency selection.
 ///
@@ -97,6 +101,7 @@ pub struct Engine {
     store: AudioStore,
     documents: DocumentStore,
     journal: Journal,
+    recordings: RecordingStore,
 }
 
 impl Engine {
@@ -114,6 +119,72 @@ impl Engine {
     pub fn import_wav_bytes(&mut self, bytes: &[u8]) -> Result<AudioId, EngineError> {
         let audio = Audio::from_wav_bytes(bytes)?;
         Ok(self.store.insert(audio))
+    }
+
+    /// Opens a streaming recording and returns its id.
+    ///
+    /// `sample_rate` is the true capture rate (the host reads it from the
+    /// audio device, never assumes one) and `channels` its channel count.
+    /// Sample chunks arrive through [`Engine::append_samples`]; the take stays
+    /// out of the audio store until [`Engine::finish_recording`] materializes
+    /// it, so nothing queries a half-captured buffer.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::InvalidRequest`] when `sample_rate` is not finite
+    /// and positive, or when `channels` is zero.
+    pub fn begin_recording(
+        &mut self,
+        sample_rate: f64,
+        channels: usize,
+    ) -> Result<RecordingId, EngineError> {
+        self.recordings.begin(sample_rate, channels)
+    }
+
+    /// Appends one planar sample chunk to an open recording.
+    ///
+    /// `planar` carries every channel's samples for this chunk back to back,
+    /// so its length must divide evenly by the take's channel count. Chunks
+    /// accumulate in memory until the take is finished or aborted.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownRecordingId`] when `id` names no open
+    /// take, and [`EngineError::InvalidRequest`] when `planar` does not divide
+    /// evenly by the channel count.
+    pub fn append_samples(&mut self, id: RecordingId, planar: &[f32]) -> Result<(), EngineError> {
+        self.recordings.append(id, planar)
+    }
+
+    /// Finishes a recording, materializing it as a store entry and returning
+    /// that id alongside the take encoded as WAV bytes.
+    ///
+    /// The store entry is the same kind of buffer an import produces, so every
+    /// analysis reads a recorded take exactly as it reads an imported file. The
+    /// WAV bytes (24-bit PCM, lossless for the captured `[-1, 1]` signal) let
+    /// the host persist the take beside imported media through its own storage
+    /// path. Finishing consumes the take; the id is invalid afterwards.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownRecordingId`] when `id` names no open
+    /// take, and [`EngineError::Audio`] when the accumulated samples cannot
+    /// form an audio buffer (an empty take, or one too large to allocate).
+    pub fn finish_recording(
+        &mut self,
+        id: RecordingId,
+        name: String,
+    ) -> Result<FinishedRecording, EngineError> {
+        let take = self.recordings.finish(id)?;
+        let audio = Audio::new(take.channels, take.sample_rate)?.with_name(name);
+        let wav = audio.to_wav_bytes(BitDepth::Pcm24)?;
+        let audio = self.store.insert(audio);
+        Ok(FinishedRecording { audio, wav })
+    }
+
+    /// Discards an open recording without materializing it.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownRecordingId`] when `id` names no open take.
+    pub fn abort_recording(&mut self, id: RecordingId) -> Result<(), EngineError> {
+        self.recordings.abort(id)
     }
 
     /// Returns duration, sample rate, channel count, and name for `id`.
@@ -1386,6 +1457,96 @@ mod tests {
         assert_eq!(info.sample_rate, 16_000.0);
         assert_eq!(info.channels, 1);
         assert!((info.duration - 0.5).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn streaming_recording_equals_a_one_shot_buffer_bit_for_bit() {
+        let sample_rate = 16_000.0;
+        let samples: Vec<f32> = (0..2_000)
+            .map(|i| (2.0 * PI * 220.0 * i as f64 / sample_rate).sin() as f32)
+            .collect();
+
+        // Stream the same samples through three uneven chunks.
+        let mut engine = Engine::new();
+        let rec = engine.begin_recording(sample_rate, 1).unwrap();
+        for chunk in samples.chunks(517) {
+            engine.append_samples(rec, chunk).unwrap();
+        }
+        let finished = engine.finish_recording(rec, "take".to_string()).unwrap();
+
+        // The materialized buffer matches one built from the whole sample vector
+        // in a single call, sample for sample.
+        let streamed = engine.store.audio(finished.audio).unwrap();
+        assert_eq!(streamed.sample_rate(), sample_rate);
+        assert_eq!(streamed.name(), Some("take"));
+        let one_shot = Audio::new(vec![samples.clone()], sample_rate).unwrap();
+        assert_eq!(streamed.frames(), one_shot.frames());
+        for (a, b) in streamed.channel(0).iter().zip(one_shot.channel(0)) {
+            assert_eq!(a.to_bits(), b.to_bits());
+        }
+
+        // The finished id is spent; a second finish is a typed error.
+        assert!(matches!(
+            engine.finish_recording(rec, "again".to_string()),
+            Err(EngineError::UnknownRecordingId(_))
+        ));
+
+        // The WAV bytes round-trip back to the same signal.
+        let reloaded = Audio::from_wav_bytes(&finished.wav).unwrap();
+        assert_eq!(reloaded.frames(), samples.len());
+    }
+
+    #[test]
+    fn streaming_recording_interleaves_planar_channels() {
+        let mut engine = Engine::new();
+        let rec = engine.begin_recording(8_000.0, 2).unwrap();
+        // Two frames per chunk, planar: [L0, L1, R0, R1].
+        engine.append_samples(rec, &[0.1, 0.2, -0.1, -0.2]).unwrap();
+        engine.append_samples(rec, &[0.3, 0.4, -0.3, -0.4]).unwrap();
+        let finished = engine.finish_recording(rec, "stereo".to_string()).unwrap();
+        let audio = engine.store.audio(finished.audio).unwrap();
+        assert_eq!(audio.channel_count(), 2);
+        assert_eq!(audio.channel(0), &[0.1, 0.2, 0.3, 0.4]);
+        assert_eq!(audio.channel(1), &[-0.1, -0.2, -0.3, -0.4]);
+    }
+
+    #[test]
+    fn aborted_recording_leaves_no_store_entry_and_a_typed_error() {
+        let mut engine = Engine::new();
+        let before = engine.store.ids_sorted().len();
+        let rec = engine.begin_recording(16_000.0, 1).unwrap();
+        engine.append_samples(rec, &[0.0; 256]).unwrap();
+        engine.abort_recording(rec).unwrap();
+        // Aborting materializes nothing.
+        assert_eq!(engine.store.ids_sorted().len(), before);
+        // The take is gone: appending, finishing, or aborting again all reject.
+        assert!(matches!(
+            engine.append_samples(rec, &[0.0; 4]),
+            Err(EngineError::UnknownRecordingId(_))
+        ));
+        assert!(matches!(
+            engine.abort_recording(rec),
+            Err(EngineError::UnknownRecordingId(_))
+        ));
+    }
+
+    #[test]
+    fn recording_rejects_bad_parameters_and_ragged_chunks() {
+        let mut engine = Engine::new();
+        assert!(matches!(
+            engine.begin_recording(0.0, 1),
+            Err(EngineError::InvalidRequest { .. })
+        ));
+        assert!(matches!(
+            engine.begin_recording(16_000.0, 0),
+            Err(EngineError::InvalidRequest { .. })
+        ));
+        let rec = engine.begin_recording(16_000.0, 2).unwrap();
+        // An odd chunk cannot split across two channels.
+        assert!(matches!(
+            engine.append_samples(rec, &[0.1, 0.2, 0.3]),
+            Err(EngineError::InvalidRequest { .. })
+        ));
     }
 
     #[test]
