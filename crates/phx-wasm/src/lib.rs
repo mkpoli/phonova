@@ -1594,6 +1594,22 @@ pub fn load_project_container(bytes: &[u8]) -> Result<String, JsError> {
     serde_json::to_string(&result).map_err(|err| JsError::new(&err.to_string()))
 }
 
+/// Rewrites a project container's name, preserving everything else.
+///
+/// Loads the container and re-saves it with `name`, keeping media references,
+/// annotations, profiles, view state, and save timestamp. This renames a stored
+/// project without decoding its recordings into a session.
+///
+/// # Errors
+/// Rejects when the bytes are not a readable project container this build
+/// understands.
+#[wasm_bindgen(js_name = renameProjectContainer)]
+pub fn rename_project_container(bytes: &[u8], name: &str) -> Result<Uint8Array, JsError> {
+    let mut project = phx_project::load(bytes).map_err(|err| JsError::new(&err.to_string()))?;
+    project.name = name.to_string();
+    Ok(Uint8Array::from(phx_project::save(&project).as_slice()))
+}
+
 /// Returns the BLAKE3 content hash of `bytes` as 64 lowercase hex characters.
 ///
 /// This is the content address a project manifest records for a recording, so
@@ -1951,6 +1967,76 @@ mod tests {
             .unwrap();
         assert_eq!(points.ids(), vec![point]);
         assert_eq!(points.labels(), vec!["H".to_string()]);
+    }
+
+    #[wasm_bindgen_test]
+    fn project_container_round_trips_media_and_annotation() {
+        let mut engine = WasmEngine::new();
+        let audio = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let info = engine.audio_info(audio).unwrap();
+        let doc = engine
+            .create_annotation(audio, 0.0, info.duration())
+            .unwrap();
+        let tier = engine
+            .add_interval_tier(
+                doc,
+                "phones".to_string(),
+                WasmTierRelation::Independent,
+                None,
+            )
+            .unwrap();
+        engine
+            .insert_boundary(doc, tier, info.duration() / 2.0)
+            .unwrap();
+        let intervals = engine
+            .intervals_in_range(doc, tier, 0.0, info.duration())
+            .unwrap();
+        engine
+            .set_interval_label(doc, tier, intervals.ids()[0], "aː".to_string())
+            .unwrap();
+
+        let hash = content_hash(FIXTURE_WAV);
+        let spec = format!(
+            "{{\"name\":\"Fieldwork\",\"savedAt\":42,\"view\":null,\"media\":[{{\
+             \"mediaId\":7,\"relativePath\":\"audio/a.wav\",\"hash\":\"{hash}\",\
+             \"duration\":{},\"sampleRate\":{},\"channels\":{},\"annotation\":{doc}}}]}}",
+            info.duration(),
+            info.sample_rate(),
+            info.channels()
+        );
+        let bytes = engine.save_project_container(&spec).unwrap().to_vec();
+
+        // Loading returns the media and an inline annotation document.
+        let loaded_json = load_project_container(&bytes).unwrap();
+        let loaded: serde_json::Value = serde_json::from_str(&loaded_json).unwrap();
+        assert_eq!(loaded["name"], "Fieldwork");
+        assert_eq!(loaded["savedAt"], 42);
+        let media = loaded["media"].as_array().unwrap();
+        assert_eq!(media.len(), 1);
+        assert_eq!(media[0]["mediaId"], 7);
+        assert_eq!(media[0]["hash"], hash);
+        let annotation_json = media[0]["annotationJson"].as_str().unwrap();
+
+        // Re-attaching the document to a fresh audio restores the label.
+        let mut restored = WasmEngine::new();
+        let audio2 = restored.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let doc2 = restored
+            .attach_annotation_json(audio2, annotation_json)
+            .unwrap();
+        let tiers = restored.annotation_tiers(doc2).unwrap();
+        let reintervals = restored
+            .intervals_in_range(doc2, tiers.ids()[0], 0.0, info.duration())
+            .unwrap();
+        assert_eq!(reintervals.labels()[0], "aː");
+
+        // Renaming the container keeps the annotation reachable.
+        let renamed = rename_project_container(&bytes, "Renamed")
+            .unwrap()
+            .to_vec();
+        let after: serde_json::Value =
+            serde_json::from_str(&load_project_container(&renamed).unwrap()).unwrap();
+        assert_eq!(after["name"], "Renamed");
+        assert!(after["media"][0]["annotationJson"].is_string());
     }
 
     #[wasm_bindgen_test]
