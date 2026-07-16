@@ -352,6 +352,9 @@
             >
               <option value="viridis">Viridis</option>
               <option value="magma">Magma</option>
+              <option value="inferno">Inferno</option>
+              <option value="plasma">Plasma</option>
+              <option value="cividis">Cividis</option>
               <option value="grayscale">Grayscale (print)</option>
             </select>
           </label>

@@ -495,6 +495,9 @@ enum ThemeDef {
 enum ColormapDef {
     Viridis,
     Magma,
+    Inferno,
+    Plasma,
+    Cividis,
     Grayscale,
 }
 

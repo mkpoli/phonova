@@ -93,6 +93,13 @@ pub enum FigureColormap {
     Viridis,
     /// Perceptually uniform black→purple→orange ramp.
     Magma,
+    /// Perceptually uniform black→purple→orange→pale-yellow ramp.
+    Inferno,
+    /// Perceptually uniform dark-blue→purple→orange→yellow ramp.
+    Plasma,
+    /// Perceptually uniform dark-blue→gray→yellow ramp for color-vision
+    /// deficiency.
+    Cividis,
     /// Achromatic ramp for grayscale print.
     Grayscale,
 }
@@ -102,6 +109,9 @@ impl From<FigureColormap> for Colormap {
         match colormap {
             FigureColormap::Viridis => Colormap::Viridis,
             FigureColormap::Magma => Colormap::Magma,
+            FigureColormap::Inferno => Colormap::Inferno,
+            FigureColormap::Plasma => Colormap::Plasma,
+            FigureColormap::Cividis => Colormap::Cividis,
             FigureColormap::Grayscale => Colormap::Grayscale,
         }
     }

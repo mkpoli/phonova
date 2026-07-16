@@ -94,6 +94,9 @@
   >
     <option value="Viridis">Viridis</option>
     <option value="Magma">Magma</option>
+    <option value="Inferno">Inferno</option>
+    <option value="Plasma">Plasma</option>
+    <option value="Cividis">Cividis</option>
     <option value="Grayscale">Gray</option>
   </select>
 

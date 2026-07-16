@@ -154,6 +154,9 @@ pub(crate) fn colormap_name(cm: Colormap) -> &'static str {
     match cm {
         Colormap::Viridis => "viridis",
         Colormap::Magma => "magma",
+        Colormap::Inferno => "inferno",
+        Colormap::Plasma => "plasma",
+        Colormap::Cividis => "cividis",
         Colormap::Grayscale => "gray",
     }
 }

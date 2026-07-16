@@ -22,6 +22,13 @@ pub enum WasmColormap {
     Viridis,
     /// Perceptually uniform black→purple→orange→pale-yellow ramp.
     Magma,
+    /// Perceptually uniform black→purple→orange→pale-yellow ramp.
+    Inferno,
+    /// Perceptually uniform dark-blue→purple→orange→yellow ramp.
+    Plasma,
+    /// Perceptually uniform dark-blue→gray→yellow ramp for color-vision
+    /// deficiency.
+    Cividis,
     /// Achromatic ramp, tuned separately per theme.
     Grayscale,
 }
@@ -31,6 +38,9 @@ impl From<WasmColormap> for EngineColormap {
         match value {
             WasmColormap::Viridis => EngineColormap::Viridis,
             WasmColormap::Magma => EngineColormap::Magma,
+            WasmColormap::Inferno => EngineColormap::Inferno,
+            WasmColormap::Plasma => EngineColormap::Plasma,
+            WasmColormap::Cividis => EngineColormap::Cividis,
             WasmColormap::Grayscale => EngineColormap::Grayscale,
         }
     }

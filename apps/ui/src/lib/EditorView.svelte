@@ -464,6 +464,27 @@
       run: () => onColormapChange('Magma')
     },
     {
+      id: 'colormapInferno',
+      title: 'Spectrogram palette: Inferno',
+      group: 'Appearance',
+      keywords: ['colormap', 'color'],
+      run: () => onColormapChange('Inferno')
+    },
+    {
+      id: 'colormapPlasma',
+      title: 'Spectrogram palette: Plasma',
+      group: 'Appearance',
+      keywords: ['colormap', 'color'],
+      run: () => onColormapChange('Plasma')
+    },
+    {
+      id: 'colormapCividis',
+      title: 'Spectrogram palette: Cividis',
+      group: 'Appearance',
+      keywords: ['colormap', 'color', 'color-blind', 'cvd', 'accessible'],
+      run: () => onColormapChange('Cividis')
+    },
+    {
       id: 'colormapGrayscale',
       title: 'Spectrogram palette: Grayscale',
       group: 'Appearance',

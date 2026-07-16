@@ -63,6 +63,60 @@ fn magma_dark_matches_golden() {
 }
 
 #[test]
+fn inferno_light_matches_golden() {
+    check(
+        Colormap::Inferno,
+        Theme::Light,
+        include_bytes!("golden/inferno_light.rgba"),
+    );
+}
+
+#[test]
+fn inferno_dark_matches_golden() {
+    check(
+        Colormap::Inferno,
+        Theme::Dark,
+        include_bytes!("golden/inferno_dark.rgba"),
+    );
+}
+
+#[test]
+fn plasma_light_matches_golden() {
+    check(
+        Colormap::Plasma,
+        Theme::Light,
+        include_bytes!("golden/plasma_light.rgba"),
+    );
+}
+
+#[test]
+fn plasma_dark_matches_golden() {
+    check(
+        Colormap::Plasma,
+        Theme::Dark,
+        include_bytes!("golden/plasma_dark.rgba"),
+    );
+}
+
+#[test]
+fn cividis_light_matches_golden() {
+    check(
+        Colormap::Cividis,
+        Theme::Light,
+        include_bytes!("golden/cividis_light.rgba"),
+    );
+}
+
+#[test]
+fn cividis_dark_matches_golden() {
+    check(
+        Colormap::Cividis,
+        Theme::Dark,
+        include_bytes!("golden/cividis_dark.rgba"),
+    );
+}
+
+#[test]
 fn grayscale_light_matches_golden() {
     check(
         Colormap::Grayscale,

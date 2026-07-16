@@ -1,6 +1,9 @@
 //! Colormap selection and dB→color sampling.
 
-use crate::data::{magma::MAGMA_DATA, viridis::VIRIDIS_DATA};
+use crate::data::{
+    cividis::CIVIDIS_DATA, inferno::INFERNO_DATA, magma::MAGMA_DATA, plasma::PLASMA_DATA,
+    viridis::VIRIDIS_DATA,
+};
 use crate::theme::Theme;
 
 /// Perceptual colormap used to render a normalized dB tile.
@@ -12,6 +15,16 @@ pub enum Colormap {
     /// Perceptually uniform black→purple→orange→pale-yellow ramp.
     /// Monotonically increasing in relative luminance.
     Magma,
+    /// Perceptually uniform black→purple→orange→pale-yellow ramp, a warmer
+    /// sibling of magma. Monotonically increasing in relative luminance.
+    Inferno,
+    /// Perceptually uniform dark-blue→purple→orange→yellow ramp.
+    /// Monotonically increasing in relative luminance.
+    Plasma,
+    /// Perceptually uniform dark-blue→gray→yellow ramp optimized for
+    /// color-vision deficiency. Monotonically increasing in relative
+    /// luminance.
+    Cividis,
     /// Achromatic ramp, tuned separately per [`Theme`] rather than
     /// inverted.
     Grayscale,
@@ -25,6 +38,9 @@ impl Colormap {
         match self {
             Colormap::Viridis => sample_lut(&VIRIDIS_DATA, t),
             Colormap::Magma => sample_lut(&MAGMA_DATA, t),
+            Colormap::Inferno => sample_lut(&INFERNO_DATA, t),
+            Colormap::Plasma => sample_lut(&PLASMA_DATA, t),
+            Colormap::Cividis => sample_lut(&CIVIDIS_DATA, t),
             Colormap::Grayscale => sample_grayscale(t, theme),
         }
     }
@@ -117,6 +133,51 @@ mod tests {
     fn magma_endpoints_match_published_hex() {
         assert_eq!(sample_lut(&MAGMA_DATA, 0.0), [0, 0, 4]);
         assert_eq!(sample_lut(&MAGMA_DATA, 1.0), [252, 253, 191]);
+    }
+
+    #[test]
+    fn inferno_endpoints_match_published_hex() {
+        assert_eq!(sample_lut(&INFERNO_DATA, 0.0), [0, 0, 4]);
+        assert_eq!(sample_lut(&INFERNO_DATA, 1.0), [252, 255, 164]);
+    }
+
+    #[test]
+    fn plasma_endpoints_match_published_hex() {
+        assert_eq!(sample_lut(&PLASMA_DATA, 0.0), [13, 8, 135]);
+        assert_eq!(sample_lut(&PLASMA_DATA, 1.0), [240, 249, 33]);
+    }
+
+    #[test]
+    fn cividis_endpoints_match_published_hex() {
+        assert_eq!(sample_lut(&CIVIDIS_DATA, 0.0), [0, 34, 78]);
+        assert_eq!(sample_lut(&CIVIDIS_DATA, 1.0), [254, 232, 56]);
+    }
+
+    fn assert_monotonic_luminance(data: &[[f32; 3]; 256], name: &str) {
+        let mut prev = relative_luminance_linear(data[0]);
+        for (i, &stop) in data.iter().enumerate().skip(1) {
+            let lum = relative_luminance_linear(stop);
+            assert!(
+                lum + 1e-12 >= prev,
+                "{name} luminance decreased at stop {i}: {prev} -> {lum}"
+            );
+            prev = lum;
+        }
+    }
+
+    #[test]
+    fn inferno_luminance_is_monotonic() {
+        assert_monotonic_luminance(&INFERNO_DATA, "inferno");
+    }
+
+    #[test]
+    fn plasma_luminance_is_monotonic() {
+        assert_monotonic_luminance(&PLASMA_DATA, "plasma");
+    }
+
+    #[test]
+    fn cividis_luminance_is_monotonic() {
+        assert_monotonic_luminance(&CIVIDIS_DATA, "cividis");
     }
 
     #[test]

@@ -17,7 +17,7 @@ export interface MinMaxPyramidSlice {
   data: Float32Array;
 }
 
-export type WasmColormapName = 'Viridis' | 'Magma' | 'Grayscale';
+export type WasmColormapName = 'Viridis' | 'Magma' | 'Inferno' | 'Plasma' | 'Cividis' | 'Grayscale';
 export type WasmThemeName = 'Light' | 'Dark';
 
 export interface SpectrogramTileRequest {
@@ -369,7 +369,13 @@ export interface CoreClientLike extends AnnotationClientLike {
 
 export type FigureLengthUnit = 'cm' | 'in' | 'pt';
 export type FigureThemeName = 'light' | 'dark';
-export type FigureColormapName = 'viridis' | 'magma' | 'grayscale';
+export type FigureColormapName =
+  | 'viridis'
+  | 'magma'
+  | 'inferno'
+  | 'plasma'
+  | 'cividis'
+  | 'grayscale';
 export type FigurePitchUnitName = 'hertz' | 'semitones';
 export type FigureExportFormat =
   | 'svg'
