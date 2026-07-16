@@ -1,0 +1,46 @@
+{
+  "audio": "tests/fixtures/audio/arctic_bdl_a0001.wav",
+  "case": "voice-report-defaults",
+  "measure": "voice",
+  "params": {
+    "ceiling_hz": 600.0,
+    "floor_hz": 75.0,
+    "max_candidates": 15,
+    "octave_cost": 0.01,
+    "octave_jump_cost": 0.35,
+    "silence_threshold": 0.03,
+    "time_step": null,
+    "very_accurate": false,
+    "voiced_unvoiced_cost": 0.14,
+    "voicing_threshold": 0.45
+  },
+  "parselmouth_version": "0.4.7",
+  "praat_version": "6.1.38",
+  "praat_version_date": "2 January 2021",
+  "report": {
+    "jitter": {
+      "ddp": 0.015535,
+      "local": 0.011554,
+      "ppq5": 0.005971,
+      "rap": 0.005178
+    },
+    "mean_hnr_db": 12.082789,
+    "pitch": {
+      "max_hz": 142.569479,
+      "mean_hz": 138.080739,
+      "median_hz": 140.034323,
+      "min_hz": 129.966161
+    },
+    "shimmer": {
+      "apq11": 0.029247,
+      "apq3": 0.017034,
+      "apq5": 0.019912,
+      "dda": 0.051102,
+      "local": 0.051412
+    }
+  },
+  "span": {
+    "end": 0.943,
+    "start": 0.723
+  }
+}

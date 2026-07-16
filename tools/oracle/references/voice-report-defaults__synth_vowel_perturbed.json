@@ -1,0 +1,46 @@
+{
+  "audio": "tests/fixtures/audio/synth_vowel_perturbed.wav",
+  "case": "voice-report-defaults",
+  "measure": "voice",
+  "params": {
+    "ceiling_hz": 600.0,
+    "floor_hz": 75.0,
+    "max_candidates": 15,
+    "octave_cost": 0.01,
+    "octave_jump_cost": 0.35,
+    "silence_threshold": 0.03,
+    "time_step": null,
+    "very_accurate": false,
+    "voiced_unvoiced_cost": 0.14,
+    "voicing_threshold": 0.45
+  },
+  "parselmouth_version": "0.4.7",
+  "praat_version": "6.1.38",
+  "praat_version_date": "2 January 2021",
+  "report": {
+    "jitter": {
+      "ddp": 0.059467,
+      "local": 0.029754,
+      "ppq5": 0.01187,
+      "rap": 0.019822
+    },
+    "mean_hnr_db": 4.328456,
+    "pitch": {
+      "max_hz": 110.819027,
+      "mean_hz": 109.99724,
+      "median_hz": 109.951701,
+      "min_hz": 109.183144
+    },
+    "shimmer": {
+      "apq11": 0.018483,
+      "apq3": 0.0226,
+      "apq5": 0.013578,
+      "dda": 0.067801,
+      "local": 0.033885
+    }
+  },
+  "span": {
+    "end": 2.0,
+    "start": 0.0
+  }
+}

@@ -24,3 +24,15 @@ FORMANT_TRACKED_SLOTS = (1, 2, 3)  # F1-F3 only; validation.md gives no band for
 
 # Intensity: absolute dB tolerance.
 INTENSITY_ABSOLUTE_DB = 1.0
+
+# Voice-report scalars (validation.md § Tolerance bands, "Jitter/shimmer"
+# and "HNR" rows -- those rows already name these exact measures; the
+# voice-report case aggregates them into span-level scalars instead of
+# per-frame/per-period values, so the same bands apply directly).
+JITTER_SHIMMER_RELATIVE = 0.10  # <=10% relative on sustained vowels
+VOICE_HNR_ABSOLUTE_DB = 1.0  # <=1 dB on well-voiced spans
+
+# F0 summary scalars (mean/median/min/max) in a voice report reuse the
+# frame-level F0 band above: same measure, aggregated rather than
+# per-frame, over a span both sides already agree is voiced.
+VOICE_F0_RELATIVE = F0_FINE_RELATIVE

@@ -1,19 +1,23 @@
 //! Rust-side oracle bridge.
 //!
-//! Runs `phx-pitch`, `phx-formant`, and `phx-intensity` against the fixture
-//! WAVs under `tests/fixtures/audio/` with the same parameters
+//! Runs `phx-pitch`, `phx-formant`, `phx-intensity`, and `phx-voice` against
+//! the fixture WAVs under `tests/fixtures/audio/` with the same parameters
 //! `tools/oracle/src/oracle/cases.py` defines for `pitch-defaults`,
-//! `formant-defaults`, and `intensity-defaults`, then writes measured JSON in
-//! the shape `tools/oracle/src/oracle/diff.py` expects:
-//! `{case, measure, audio, params, frames}`, same naming scheme as
+//! `formant-defaults`, `intensity-defaults`, and `voice-report-defaults`,
+//! then writes measured JSON in the shape `tools/oracle/src/oracle/diff.py`
+//! expects: `{case, measure, audio, params, frames}` for the frame-track
+//! measures, `{case, measure, audio, params, span, report}` for
+//! `voice-report-defaults`. Both shapes use the same naming scheme as
 //! `tools/oracle/references/` (`<case>__<audio-stem>.json`), so
 //! `uv run oracle diff-all --measured-dir <out-dir>` can compare them
 //! directly against the committed parselmouth references.
 //!
-//! Case -> phx crate mapping (`docs/plan/tasks/phase-2.md` T2.1-T2.3):
-//!   - `pitch-defaults`     -> `phx_pitch::pitch_track`
-//!   - `formant-defaults`   -> `phx_formant::formant_track`
-//!   - `intensity-defaults` -> `phx_intensity::intensity_track`
+//! Case -> phx crate mapping (`docs/plan/tasks/phase-2.md` T2.1-T2.3,
+//! `docs/plan/tasks/phase-4.md` T4.2/T4.5):
+//!   - `pitch-defaults`         -> `phx_pitch::pitch_track`
+//!   - `formant-defaults`       -> `phx_formant::formant_track`
+//!   - `intensity-defaults`     -> `phx_intensity::intensity_track`
+//!   - `voice-report-defaults`  -> `phx_voice::voice_report`
 //!
 //! Frames are emitted exactly as each crate's own [`phx_dsp::FrameGrid`]
 //! places them; this bridge performs no resampling, trimming, or
@@ -36,21 +40,33 @@ use std::process::ExitCode;
 use phx_audio::{Audio, AudioView};
 use phx_formant::{FormantParams, formant_track};
 use phx_intensity::{IntensityParams, intensity_track};
-use phx_pitch::{PitchParams, pitch_track};
+use phx_pitch::{PitchParams, TimeSpan, pitch_track};
+use phx_voice::voice_report;
 
 use json::Json;
 
 /// The oracle cases this bridge covers, in the order `cases.py` declares
 /// them. `spectrogram-slice-defaults` is intentionally absent (see the
 /// module doc comment).
-const CASES: [&str; 3] = ["pitch-defaults", "formant-defaults", "intensity-defaults"];
+const CASES: [&str; 4] = [
+    "pitch-defaults",
+    "formant-defaults",
+    "intensity-defaults",
+    "voice-report-defaults",
+];
 
-/// `oracle.cases.SPEECH_AND_VOWEL_CORPUS`, copied verbatim.
-const AUDIO_CORPUS: [&str; 4] = [
+/// `oracle.cases.SPEECH_AND_VOWEL_CORPUS` plus `synth_vowel_perturbed.wav`
+/// (`oracle.cases.VOICE_REPORT_CORPUS`'s addition over that corpus), copied
+/// verbatim. A case/audio pair with no committed reference is skipped by the
+/// main loop before any payload function runs, so having every case's audio
+/// set share one array is harmless even though `voice-report-defaults` is
+/// the only case scored on `synth_vowel_perturbed.wav`.
+const AUDIO_CORPUS: [&str; 5] = [
     "arctic_bdl_a0001.wav",
     "arctic_slt_a0001.wav",
     "librispeech_2277-149896-0005.wav",
     "synth_vowel_a.wav",
+    "synth_vowel_perturbed.wav",
 ];
 
 fn main() -> ExitCode {
@@ -120,6 +136,7 @@ fn main() -> ExitCode {
                 "pitch-defaults" => pitch_payload(view.clone(), audio_filename),
                 "formant-defaults" => formant_payload(view.clone(), audio_filename),
                 "intensity-defaults" => intensity_payload(view.clone(), audio_filename),
+                "voice-report-defaults" => voice_payload(view.clone(), audio_filename),
                 other => {
                     eprintln!("error: unknown case {other:?}");
                     return ExitCode::from(2);
@@ -338,6 +355,105 @@ fn intensity_params_json(params: &IntensityParams) -> Json {
             params.time_step.map_or(Json::Null, Json::number),
         ),
         ("subtract_mean", Json::Bool(params.subtract_mean)),
+    ])
+}
+
+/// `oracle.cases.VOICE_REPORT_SPANS`, copied verbatim: the stable-voicing
+/// span each voice-report fixture is scored over -- the whole domain for
+/// both synthetic sustained-vowel fixtures, one contiguous voiced run inside
+/// the ARCTIC utterance for the real-speech case. Only called for a
+/// `(case, audio)` pair that already has a committed reference (the main
+/// loop's skip check runs first), so every reachable filename is covered.
+fn voice_report_span(audio_filename: &str) -> TimeSpan {
+    match audio_filename {
+        "synth_vowel_a.wav" | "synth_vowel_perturbed.wav" => TimeSpan::new(0.0, 2.0),
+        "arctic_bdl_a0001.wav" => TimeSpan::new(0.723, 0.943),
+        other => panic!(
+            "no voice-report span configured for {other:?}; add one to \
+             oracle.cases.VOICE_REPORT_SPANS and mirror it here"
+        ),
+    }
+}
+
+/// Runs `phx_voice::voice_report` with `PitchParams::default()` -- the same
+/// pitch parameters `oracle.params.PitchParams()` declares -- over the span
+/// `voice_report_span` names for this fixture, and builds the
+/// `voice-report-defaults` measured payload from the comparable scalar
+/// subset of [`phx_voice::VoiceReport`]: jitter local/rap/ppq5/ddp, shimmer
+/// local/apq3/apq5/apq11/dda, mean HNR, and F0 mean/median/min/max. CPP/CPPS
+/// and voice breaks are computed by `voice_report` but have no Praat oracle
+/// counterpart wired up on the Python side, so they are not part of this
+/// payload.
+fn voice_payload(view: AudioView<'_>, audio_filename: &str) -> Json {
+    let pitch_params = PitchParams::default();
+    let span = voice_report_span(audio_filename);
+    let report = voice_report(view, span, &pitch_params);
+
+    let pitch = Json::object(vec![
+        (
+            "mean_hz",
+            report.pitch.mean_hz.map_or(Json::Null, Json::number),
+        ),
+        (
+            "median_hz",
+            report.pitch.median_hz.map_or(Json::Null, Json::number),
+        ),
+        (
+            "min_hz",
+            report.pitch.min_hz.map_or(Json::Null, Json::number),
+        ),
+        (
+            "max_hz",
+            report.pitch.max_hz.map_or(Json::Null, Json::number),
+        ),
+    ]);
+    let jitter = Json::object(vec![
+        (
+            "local",
+            report.jitter.local.map_or(Json::Null, Json::number),
+        ),
+        ("rap", report.jitter.rap.map_or(Json::Null, Json::number)),
+        ("ppq5", report.jitter.ppq5.map_or(Json::Null, Json::number)),
+        ("ddp", report.jitter.ddp.map_or(Json::Null, Json::number)),
+    ]);
+    let shimmer = Json::object(vec![
+        (
+            "local",
+            report.shimmer.local.map_or(Json::Null, Json::number),
+        ),
+        ("apq3", report.shimmer.apq3.map_or(Json::Null, Json::number)),
+        ("apq5", report.shimmer.apq5.map_or(Json::Null, Json::number)),
+        (
+            "apq11",
+            report.shimmer.apq11.map_or(Json::Null, Json::number),
+        ),
+        ("dda", report.shimmer.dda.map_or(Json::Null, Json::number)),
+    ]);
+
+    Json::object(vec![
+        ("case", Json::String("voice-report-defaults".to_string())),
+        ("measure", Json::String("voice".to_string())),
+        ("audio", audio_field(audio_filename)),
+        ("params", pitch_params_json(&pitch_params)),
+        (
+            "span",
+            Json::object(vec![
+                ("start", Json::number(span.start)),
+                ("end", Json::number(span.end)),
+            ]),
+        ),
+        (
+            "report",
+            Json::object(vec![
+                ("pitch", pitch),
+                ("jitter", jitter),
+                ("shimmer", shimmer),
+                (
+                    "mean_hnr_db",
+                    report.mean_hnr_db.map_or(Json::Null, Json::number),
+                ),
+            ]),
+        ),
     ])
 }
 

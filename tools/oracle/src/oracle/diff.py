@@ -17,6 +17,24 @@ to frame `i` in the other. A length mismatch is reported as a hard failure
 rather than a best-effort alignment, since it usually means the FrameGrid
 itself disagrees, which is the more important bug.
 
+The `voice` measure (case `voice-report-defaults`) carries a `report`
+scalar object instead of `frames` -- it is a span-level aggregate, not a
+per-frame track -- compared field-by-field instead of positionally:
+
+    {
+      "case": "voice-report-defaults",
+      "measure": "voice",
+      "audio": "tests/fixtures/audio/....wav",
+      "params": {...},
+      "span": {"start": ..., "end": ...},
+      "report": {
+        "pitch": {"mean_hz": ..., "median_hz": ..., "min_hz": ..., "max_hz": ...},
+        "jitter": {"local": ..., "rap": ..., "ppq5": ..., "ddp": ...},
+        "shimmer": {"local": ..., "apq3": ..., "apq5": ..., "apq11": ..., "dda": ...},
+        "mean_hnr_db": ...
+      }
+    }
+
 Gross errors (octave/voicing-class disagreement) are separated from fine
 errors (small numeric deviation where both sides already agree on
 voicing/octave), per the GPE/MFPE methodology
@@ -242,10 +260,124 @@ def diff_intensity(reference: dict, measured: dict) -> DiffReport:
     )
 
 
+_VOICE_F0_FIELDS = ("mean_hz", "median_hz", "min_hz", "max_hz")
+_VOICE_JITTER_FIELDS = ("local", "rap", "ppq5", "ddp")
+_VOICE_SHIMMER_FIELDS = ("local", "apq3", "apq5", "apq11", "dda")
+
+
+def _compare_voice_scalar(
+    label: str,
+    reference_value: float | None,
+    measured_value: float | None,
+    tolerance: float,
+    violations: list[dict],
+    notes: list[str],
+) -> None:
+    """Relative-tolerance comparison for one voice-report scalar field."""
+    if reference_value is None or measured_value is None:
+        if reference_value != measured_value:
+            notes.append(
+                f"{label}: one side is null (reference={reference_value}, "
+                f"measured={measured_value})"
+            )
+        return
+    denominator = abs(reference_value) if reference_value != 0 else 1.0
+    relative_diff = abs(measured_value - reference_value) / denominator
+    if relative_diff > tolerance:
+        violations.append(
+            {
+                "field": label,
+                "reference": reference_value,
+                "measured": measured_value,
+                "relative_diff": relative_diff,
+                "tolerance": tolerance,
+            }
+        )
+
+
+def diff_voice(reference: dict, measured: dict) -> DiffReport:
+    ref_report = reference["report"]
+    meas_report = measured["report"]
+
+    violations: list[dict] = []
+    notes: list[str] = []
+    checked = 0
+
+    for field in _VOICE_F0_FIELDS:
+        checked += 1
+        _compare_voice_scalar(
+            f"pitch.{field}",
+            ref_report["pitch"].get(field),
+            meas_report["pitch"].get(field),
+            tol.VOICE_F0_RELATIVE,
+            violations,
+            notes,
+        )
+
+    for field in _VOICE_JITTER_FIELDS:
+        checked += 1
+        _compare_voice_scalar(
+            f"jitter.{field}",
+            ref_report["jitter"].get(field),
+            meas_report["jitter"].get(field),
+            tol.JITTER_SHIMMER_RELATIVE,
+            violations,
+            notes,
+        )
+
+    for field in _VOICE_SHIMMER_FIELDS:
+        checked += 1
+        _compare_voice_scalar(
+            f"shimmer.{field}",
+            ref_report["shimmer"].get(field),
+            meas_report["shimmer"].get(field),
+            tol.JITTER_SHIMMER_RELATIVE,
+            violations,
+            notes,
+        )
+
+    checked += 1
+    r_hnr = ref_report.get("mean_hnr_db")
+    m_hnr = meas_report.get("mean_hnr_db")
+    if r_hnr is None or m_hnr is None:
+        if r_hnr != m_hnr:
+            notes.append(
+                f"mean_hnr_db: one side is null (reference={r_hnr}, measured={m_hnr})"
+            )
+    else:
+        diff_db = abs(m_hnr - r_hnr)
+        if diff_db > tol.VOICE_HNR_ABSOLUTE_DB:
+            violations.append(
+                {
+                    "field": "mean_hnr_db",
+                    "reference": r_hnr,
+                    "measured": m_hnr,
+                    "diff_db": diff_db,
+                    "tolerance_db": tol.VOICE_HNR_ABSOLUTE_DB,
+                }
+            )
+
+    passed = not violations
+    return DiffReport(
+        measure="voice",
+        passed=passed,
+        summary={
+            "checked_scalars": checked,
+            "violations": len(violations),
+            "jitter_shimmer_tolerance_relative": tol.JITTER_SHIMMER_RELATIVE,
+            "f0_tolerance_relative": tol.VOICE_F0_RELATIVE,
+            "hnr_tolerance_db": tol.VOICE_HNR_ABSOLUTE_DB,
+        },
+        violations=violations,
+        notes=notes,
+    )
+
+
 _DIFFERS = {
     "pitch": diff_pitch,
     "formant": diff_formant,
     "intensity": diff_intensity,
+    "voice": diff_voice,
 }
 
 

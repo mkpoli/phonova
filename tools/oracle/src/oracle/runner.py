@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from oracle import measures
-from oracle.cases import CASES, Case
+from oracle.cases import CASES, VOICE_REPORT_SPANS, Case
 from oracle.paths import fixtures_audio_dir
 
 
@@ -68,6 +68,17 @@ def run_case(case: Case, audio_filename: str, parselmouth_module=None) -> dict[s
 
     if case.measure == "spectrogram":
         payload["slice"] = measures.spectrogram_slice(sound, at=1.0)
+        return payload
+
+    if case.measure == "voice":
+        span = VOICE_REPORT_SPANS.get(audio_filename)
+        if span is None:
+            raise KeyError(
+                f"no voice-report span configured for {audio_filename!r} "
+                "in oracle.cases.VOICE_REPORT_SPANS"
+            )
+        payload["span"] = {"start": span[0], "end": span[1]}
+        payload["report"] = measures.voice_report(sound, case.params, span)
         return payload
 
     frame_fn = _MEASURE_FN[case.measure]

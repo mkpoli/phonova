@@ -600,6 +600,7 @@ dependencies = [
  "phx-formant",
  "phx-intensity",
  "phx-pitch",
+ "phx-voice",
 ]
 
 [[package]]
