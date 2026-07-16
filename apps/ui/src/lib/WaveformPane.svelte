@@ -1,6 +1,14 @@
 <script lang="ts">
   import type { AudioInfo, CoreClientLike, Selection, ViewportState } from './types';
-  import { cssVar, FrameTimeMonitor, hexToRgb01, makeProgram, resizeCanvas } from './rendering';
+  import {
+    cssVar,
+    FrameTimeMonitor,
+    hexToRgb01,
+    makeProgram,
+    resizeCanvas,
+    slippyTransform,
+    type DrawnViewport
+  } from './rendering';
   import SelectionLayer from './SelectionLayer.svelte';
 
   interface Props {
@@ -28,32 +36,65 @@
   let notice = $state('');
   let usingCanvas2d = $state(false);
   let renderToken = $state(0);
+  // Advances on every transform draw, stamped straight onto the canvas rather
+  // than through reactive state (the viewport effect calls it synchronously). The
+  // e2e reads these to assert the waveform tracks the viewport in step with the
+  // other panes.
+  let drawGen = 0;
 
   const cache = new Map<string, Float32Array>();
   const monitor = new FrameTimeMonitor();
   const tileSeconds = 2;
 
+  // The viewport the current pixels were rasterized for; the vertical anchor is
+  // the amplitude scale. Null until the first slice lands.
+  let base: DrawnViewport | null = null;
+  let reqGen = 0;
+  let fetchScheduled = false;
+
+  function liveViewport(): DrawnViewport {
+    return { t0: viewport.t0, t1: viewport.t1, vLo: viewport.ampScale, vHi: 0 };
+  }
+
+  function applyTransform() {
+    if (!canvas) return;
+    canvas.style.transform = base ? slippyTransform(base, liveViewport(), 'amp') : 'none';
+    drawGen += 1;
+    canvas.setAttribute('data-draw-generation', String(drawGen));
+    canvas.setAttribute('data-draw-time', performance.now().toFixed(2));
+  }
+
+  function scheduleFetch() {
+    if (fetchScheduled) return;
+    fetchScheduled = true;
+    requestAnimationFrame(() => {
+      fetchScheduled = false;
+      void fetchFreshSlice();
+    });
+  }
+
+  $effect(() => {
+    audio?.id;
+    base = null;
+    if (canvas) canvas.style.transform = 'none';
+  });
+
   $effect(() => {
     if (!canvas) return;
-    const observer = new ResizeObserver(() => scheduleDraw());
+    const observer = new ResizeObserver(() => scheduleFetch());
     observer.observe(canvas);
-    scheduleDraw();
+    scheduleFetch();
     return () => observer.disconnect();
   });
 
   $effect(() => {
-    audio?.id;
     viewport.t0;
     viewport.t1;
     viewport.ampScale;
-    cursorTime;
     theme;
-    scheduleDraw();
+    applyTransform();
+    scheduleFetch();
   });
-
-  function scheduleDraw() {
-    requestAnimationFrame(() => void draw());
-  }
 
   async function getWaveform(width: number) {
     if (!client || !audio) return null;
@@ -68,32 +109,59 @@
     return slice.data;
   }
 
-  async function draw() {
+  // The slice currently on the canvas and the pixel size it was drawn at, so a
+  // pan that reuses the same slice skips the re-raster and lets the CSS
+  // transform carry the motion.
+  let displayed: Float32Array | null = null;
+  let displayedW = 0;
+  let displayedH = 0;
+
+  async function fetchFreshSlice() {
     if (!canvas) return;
-    const start = performance.now();
+    const gen = ++reqGen;
+    const requested = liveViewport();
     const { width, height, dpr } = resizeCanvas(canvas);
     const data = await getWaveform(width);
+    if (gen !== reqGen || !canvas) return;
     if (!data) {
       drawEmpty(width, height);
+      displayed = null;
       return;
     }
+    if (data === displayed && width === displayedW && height === displayedH) return;
+    drawSlice(width, height, dpr, data, requested);
+    displayed = data;
+    displayedW = width;
+    displayedH = height;
+    base = requested;
+    applyTransform();
+    renderToken += 1;
+  }
+
+  function drawSlice(
+    width: number,
+    height: number,
+    dpr: number,
+    data: Float32Array,
+    vp: DrawnViewport
+  ) {
     if (usingCanvas2d) {
-      drawCanvas2d(width, height, dpr, data);
-    } else {
-      try {
-        drawWebgl(width, height, data);
-      } catch {
-        usingCanvas2d = true;
-        notice = 'Canvas fallback active';
-        drawCanvas2d(width, height, dpr, data);
-      }
+      drawCanvas2d(width, height, dpr, data, vp);
+      return;
+    }
+    const start = performance.now();
+    try {
+      drawWebgl(width, height, data, vp);
+    } catch {
+      usingCanvas2d = true;
+      notice = 'Canvas fallback active';
+      drawCanvas2d(width, height, dpr, data, vp);
     }
     const elapsed = performance.now() - start;
     if (!usingCanvas2d && monitor.record(elapsed)) {
       usingCanvas2d = true;
       notice = 'Canvas fallback active';
     }
-    renderToken += 1;
   }
 
   function drawEmpty(width: number, height: number) {
@@ -103,7 +171,13 @@
     ctx.fillRect(0, 0, width, height);
   }
 
-  function drawCanvas2d(width: number, height: number, dpr: number, data: Float32Array) {
+  function drawCanvas2d(
+    width: number,
+    height: number,
+    dpr: number,
+    data: Float32Array,
+    vp: DrawnViewport
+  ) {
     const ctx = canvas?.getContext('2d');
     if (!ctx) return;
     ctx.fillStyle = cssVar('--canvas', '#f8fafc');
@@ -111,7 +185,7 @@
     ctx.strokeStyle = cssVar('--accent', '#0f766e');
     ctx.lineWidth = Math.max(1, dpr);
     const mid = height / 2;
-    const scale = height * 0.44 * viewport.ampScale;
+    const scale = height * 0.44 * vp.vLo;
     const buckets = data.length / 2;
     ctx.beginPath();
     for (let i = 0; i < buckets; i += 1) {
@@ -120,12 +194,17 @@
       ctx.lineTo(x, mid - data[i * 2] * scale);
     }
     ctx.stroke();
-    drawCursor2d(ctx, width, height);
+    drawCursor2d(ctx, width, height, vp);
   }
 
-  function drawCursor2d(ctx: CanvasRenderingContext2D, width: number, height: number) {
-    if (!audio || cursorTime < viewport.t0 || cursorTime > viewport.t1) return;
-    const x = ((cursorTime - viewport.t0) / (viewport.t1 - viewport.t0)) * width;
+  function drawCursor2d(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    vp: DrawnViewport
+  ) {
+    if (!audio || cursorTime < vp.t0 || cursorTime > vp.t1) return;
+    const x = ((cursorTime - vp.t0) / (vp.t1 - vp.t0)) * width;
     ctx.strokeStyle = cssVar('--warn', '#b45309');
     ctx.beginPath();
     ctx.moveTo(x, 0);
@@ -133,7 +212,7 @@
     ctx.stroke();
   }
 
-  function drawWebgl(width: number, height: number, data: Float32Array) {
+  function drawWebgl(width: number, height: number, data: Float32Array, vp: DrawnViewport) {
     const gl = canvas?.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true });
     if (!gl) throw new Error('WebGL2 unavailable');
     const vertex = `#version 300 es
@@ -158,7 +237,7 @@
     const vertices = new Float32Array(data.length * 2);
     const buckets = data.length / 2;
     for (let i = 0; i < buckets; i += 1) {
-      const time = viewport.t0 + ((i + 0.5) / buckets) * (viewport.t1 - viewport.t0);
+      const time = vp.t0 + ((i + 0.5) / buckets) * (vp.t1 - vp.t0);
       vertices[i * 4] = time;
       vertices[i * 4 + 1] = data[i * 2];
       vertices[i * 4 + 2] = time;
@@ -179,9 +258,9 @@
     gl.enableVertexAttribArray(ampLoc);
     gl.vertexAttribPointer(timeLoc, 1, gl.FLOAT, false, 8, 0);
     gl.vertexAttribPointer(ampLoc, 1, gl.FLOAT, false, 8, 4);
-    gl.uniform1f(gl.getUniformLocation(program, 'u_t0'), viewport.t0);
-    gl.uniform1f(gl.getUniformLocation(program, 'u_t1'), viewport.t1);
-    gl.uniform1f(gl.getUniformLocation(program, 'u_amp_scale'), viewport.ampScale);
+    gl.uniform1f(gl.getUniformLocation(program, 'u_t0'), vp.t0);
+    gl.uniform1f(gl.getUniformLocation(program, 'u_t1'), vp.t1);
+    gl.uniform1f(gl.getUniformLocation(program, 'u_amp_scale'), vp.vLo);
     gl.uniform3f(gl.getUniformLocation(program, 'u_color'), color[0], color[1], color[2]);
     gl.drawArrays(gl.LINES, 0, buckets * 2);
     gl.deleteBuffer(buffer);
@@ -195,7 +274,14 @@
     <div class="notice">{notice}</div>
   {/if}
   {#key usingCanvas2d}
-    <canvas bind:this={canvas} class="canvas" data-testid="waveform-canvas" data-render-token={renderToken}></canvas>
+    <canvas
+      bind:this={canvas}
+      class="canvas"
+      data-testid="waveform-canvas"
+      data-render-token={renderToken}
+      data-draw-generation="0"
+      data-draw-time="0"
+    ></canvas>
   {/key}
   {#if audio && onSelectionChange}
     <SelectionLayer
@@ -214,6 +300,7 @@
     min-height: 11rem;
     border-bottom: 1px solid var(--chrome-strong);
     background: var(--canvas);
+    overflow: hidden;
   }
 
   .canvas {
@@ -221,6 +308,8 @@
     width: 100%;
     height: 100%;
     min-height: 11rem;
+    transform-origin: 0 0;
+    will-change: transform;
   }
 
   .pane-label,

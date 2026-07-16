@@ -17,10 +17,13 @@ async function viewport(page: Page) {
   }));
 }
 
-async function renderToken(page: Page, testId: string) {
+// The draw generation advances on every transform draw — the instant CSS remap
+// on a viewport change as well as a fresh raster. It is the signal that a pane
+// tracked the shared viewport, whether or not the underlying tile changed.
+async function drawGeneration(page: Page, testId: string) {
   return page
     .getByTestId(testId)
-    .evaluate((node) => Number(node.getAttribute('data-render-token')));
+    .evaluate((node) => Number(node.getAttribute('data-draw-generation')));
 }
 
 /**
@@ -56,8 +59,8 @@ test('trackpad pinch drives synced time zoom, not frequency zoom', async ({ page
   await expect(page.getByTestId('spectrogram-canvas')).toHaveAttribute('data-render-token', /[1-9]/);
 
   const before = await viewport(page);
-  const waveTokenBefore = await renderToken(page, 'waveform-canvas');
-  const spectroTokenBefore = await renderToken(page, 'spectrogram-canvas');
+  const waveTokenBefore = await drawGeneration(page, 'waveform-canvas');
+  const spectroTokenBefore = await drawGeneration(page, 'spectrogram-canvas');
 
   // A pinch-in: Ctrl wheel with a negative delta. It must zoom time in, leaving
   // the frequency ceiling untouched.
@@ -66,13 +69,13 @@ test('trackpad pinch drives synced time zoom, not frequency zoom', async ({ page
   const afterPinch = await viewport(page);
   expect(afterPinch.freq).toBeCloseTo(before.freq, 3);
 
-  // Both panes re-rendered off the one shared viewport, so they stay locked to
-  // the same time axis rather than drifting apart.
+  // Both panes remapped off the one shared viewport, so they stay locked to the
+  // same time axis rather than drifting apart.
   await expect
-    .poll(() => renderToken(page, 'waveform-canvas'))
+    .poll(() => drawGeneration(page, 'waveform-canvas'))
     .toBeGreaterThan(waveTokenBefore);
   await expect
-    .poll(() => renderToken(page, 'spectrogram-canvas'))
+    .poll(() => drawGeneration(page, 'spectrogram-canvas'))
     .toBeGreaterThan(spectroTokenBefore);
 
   // Frequency / amplitude zoom now lives on Alt+wheel: it moves the ceiling and

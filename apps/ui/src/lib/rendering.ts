@@ -62,6 +62,54 @@ export function resizeCanvas(canvas: HTMLCanvasElement) {
   return { width, height, dpr };
 }
 
+/**
+ * A viewport a canvas's pixels were last rasterized for. Panes keep this
+ * alongside the live viewport so a pan or zoom can redraw the existing pixels
+ * with a CSS transform immediately, before fresh imagery streams in.
+ */
+export interface DrawnViewport {
+  t0: number;
+  t1: number;
+  /** Vertical anchor: frequency floor/ceiling (spectrogram) or amplitude scale (waveform). */
+  vLo: number;
+  vHi: number;
+}
+
+/**
+ * CSS transform (origin `0 0`) that maps imagery rasterized for `base` onto the
+ * `live` viewport, so waveform, spectrogram, and overlays move as one rigid
+ * sheet. `vertical` selects how the vertical axis is interpreted: `'freq'` maps
+ * a value range increasing upward, `'amp'` scales symmetrically about the
+ * mid-line. Returns `'none'` when `base` matches `live` (the settled state).
+ */
+export function slippyTransform(
+  base: DrawnViewport,
+  live: DrawnViewport,
+  vertical: 'freq' | 'amp'
+): string {
+  const timeSpan = live.t1 - live.t0;
+  const sx = timeSpan !== 0 ? (base.t1 - base.t0) / timeSpan : 1;
+  const tx = timeSpan !== 0 ? ((base.t0 - live.t0) / timeSpan) * 100 : 0;
+
+  let sy = 1;
+  let ty = 0;
+  if (vertical === 'freq') {
+    const vSpan = live.vHi - live.vLo;
+    if (vSpan !== 0) {
+      sy = (base.vHi - base.vLo) / vSpan;
+      ty = (1 - (base.vHi - live.vLo) / vSpan) * 100;
+    }
+  } else {
+    sy = base.vLo !== 0 ? live.vLo / base.vLo : 1;
+    ty = 50 * (1 - sy);
+  }
+
+  if (sx === 1 && tx === 0 && sy === 1 && ty === 0) return 'none';
+  // Percentages resolve against the element box, so the transform is
+  // resolution-independent and needs no pixel dimensions.
+  return `translate(${tx}%, ${ty}%) scale(${sx}, ${sy})`;
+}
+
 export function cssVar(name: string, fallback: string) {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return value || fallback;

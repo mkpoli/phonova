@@ -9,7 +9,15 @@
     ViewportState,
     WasmColormapName
   } from './types';
-  import { cssVar, FrameTimeMonitor, hexToRgb01, makeProgram, resizeCanvas } from './rendering';
+  import {
+    cssVar,
+    FrameTimeMonitor,
+    hexToRgb01,
+    makeProgram,
+    resizeCanvas,
+    slippyTransform,
+    type DrawnViewport
+  } from './rendering';
   import SelectionLayer from './SelectionLayer.svelte';
   import TrackOverlay from './TrackOverlay.svelte';
 
@@ -44,34 +52,75 @@
   let notice = $state('');
   let usingCanvas2d = $state(false);
   let renderToken = $state(0);
+  // Advances on every transform draw (instant CSS remap or fresh raster). Stamped
+  // straight onto the canvas rather than through reactive state: the viewport
+  // effect calls it synchronously, and a tracked read-modify-write here would
+  // retrigger the effect. The e2e reads these to assert the pane tracks the
+  // viewport within the frame budget and stays in step with the other panes.
+  let drawGen = 0;
 
   const cache = new Map<string, ImageBitmap>();
   const monitor = new FrameTimeMonitor();
   const tileSeconds = 2;
 
+  // The viewport the current canvas pixels were rasterized for. Null until the
+  // first tile lands, when the canvas carries no transform.
+  let base: DrawnViewport | null = null;
+  // Generation of the most recent fetch; a tile resolved from an older
+  // generation is dropped so a superseded pan never overwrites fresh imagery.
+  let reqGen = 0;
+  let fetchScheduled = false;
+
+  function liveViewport(): DrawnViewport {
+    return { t0: viewport.t0, t1: viewport.t1, vLo: viewport.f0, vHi: viewport.f1 };
+  }
+
+  // Redraw the existing pixels immediately by remapping them with a CSS
+  // transform: waveform, spectrogram, and overlays all follow the one shared
+  // viewport, so they move as a single rigid sheet with no worker round-trip.
+  function applyTransform() {
+    if (!canvas) return;
+    canvas.style.transform = base ? slippyTransform(base, liveViewport(), 'freq') : 'none';
+    drawGen += 1;
+    canvas.setAttribute('data-draw-generation', String(drawGen));
+    canvas.setAttribute('data-draw-time', performance.now().toFixed(2));
+  }
+
+  function scheduleFetch() {
+    if (fetchScheduled) return;
+    fetchScheduled = true;
+    requestAnimationFrame(() => {
+      fetchScheduled = false;
+      void fetchFreshTile();
+    });
+  }
+
+  // A new recording invalidates the transform anchor: the old bitmap belongs to
+  // a different signal and must not be stretched over the new viewport.
+  $effect(() => {
+    audio?.id;
+    base = null;
+    if (canvas) canvas.style.transform = 'none';
+  });
+
   $effect(() => {
     if (!canvas) return;
-    const observer = new ResizeObserver(() => scheduleDraw());
+    const observer = new ResizeObserver(() => scheduleFetch());
     observer.observe(canvas);
-    scheduleDraw();
+    scheduleFetch();
     return () => observer.disconnect();
   });
 
   $effect(() => {
-    audio?.id;
     viewport.t0;
     viewport.t1;
     viewport.f0;
     viewport.f1;
-    cursorTime;
     theme;
     colormap;
-    scheduleDraw();
+    applyTransform();
+    scheduleFetch();
   });
-
-  function scheduleDraw() {
-    requestAnimationFrame(() => void draw());
-  }
 
   async function getTile(width: number, height: number) {
     if (!client || !audio) return null;
@@ -110,32 +159,58 @@
     return bitmap;
   }
 
-  async function draw() {
+  // The bitmap currently on the canvas and the pixel size it was drawn at, so a
+  // pan that reuses the same tile skips the re-raster and lets the CSS transform
+  // carry the motion — the crisp draw runs only when the tile itself changes.
+  let displayed: ImageBitmap | null = null;
+  let displayedW = 0;
+  let displayedH = 0;
+
+  async function fetchFreshTile() {
     if (!canvas) return;
-    const start = performance.now();
+    const gen = ++reqGen;
+    const requested = liveViewport();
     const { width, height, dpr } = resizeCanvas(canvas);
     const bitmap = await getTile(width, height);
+    // Dropped: a newer pan or zoom already superseded this request.
+    if (gen !== reqGen || !canvas) return;
     if (!bitmap) {
       drawEmpty(width, height);
+      displayed = null;
       return;
     }
+    // Same tile and canvas size: the current pixels are already correct for
+    // `base`, and the transform maps them onto the live viewport. Nothing to do.
+    if (bitmap === displayed && width === displayedW && height === displayedH) return;
+    drawBitmap(width, height, dpr, bitmap);
+    displayed = bitmap;
+    displayedW = width;
+    displayedH = height;
+    // The fresh pixels represent the viewport at request time; re-apply the
+    // transform so any motion since then still shows without a flash.
+    base = requested;
+    applyTransform();
+    renderToken += 1;
+  }
+
+  function drawBitmap(width: number, height: number, dpr: number, bitmap: ImageBitmap) {
     if (usingCanvas2d) {
       drawCanvas2d(width, height, dpr, bitmap);
-    } else {
-      try {
-        drawWebgl(width, height, bitmap);
-      } catch {
-        usingCanvas2d = true;
-        notice = 'Canvas fallback active';
-        drawCanvas2d(width, height, dpr, bitmap);
-      }
+      return;
+    }
+    const start = performance.now();
+    try {
+      drawWebgl(width, height, bitmap);
+    } catch {
+      usingCanvas2d = true;
+      notice = 'Canvas fallback active';
+      drawCanvas2d(width, height, dpr, bitmap);
     }
     const elapsed = performance.now() - start;
     if (!usingCanvas2d && monitor.record(elapsed)) {
       usingCanvas2d = true;
       notice = 'Canvas fallback active';
     }
-    renderToken += 1;
   }
 
   function drawEmpty(width: number, height: number) {
@@ -215,7 +290,14 @@
 
 <section class="pane">
   {#key usingCanvas2d}
-    <canvas bind:this={canvas} class="canvas" data-testid="spectrogram-canvas" data-render-token={renderToken}></canvas>
+    <canvas
+      bind:this={canvas}
+      class="canvas"
+      data-testid="spectrogram-canvas"
+      data-render-token={renderToken}
+      data-draw-generation="0"
+      data-draw-time="0"
+    ></canvas>
   {/key}
   <TrackOverlay {client} {audio} {viewport} {theme} params={overlayParams} onStats={onOverlayStats} />
   {#if audio && onSelectionChange}
@@ -239,6 +321,7 @@
     min-height: 16rem;
     border-bottom: 1px solid var(--chrome-strong);
     background: var(--canvas);
+    overflow: hidden;
   }
 
   .canvas {
@@ -246,6 +329,8 @@
     width: 100%;
     height: 100%;
     min-height: 16rem;
+    transform-origin: 0 0;
+    will-change: transform;
   }
 
   .pane-label,
