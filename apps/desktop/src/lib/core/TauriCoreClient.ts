@@ -293,6 +293,11 @@ export class TauriCoreClient implements CoreClientLike {
     return big(await invoke<string>('state_hash'));
   }
 
+  async listAnnotations(audioId: AudioId): Promise<AnnotationId[]> {
+    const ids = await invoke<number[]>('list_annotations', { audioId: num(audioId) });
+    return ids.map(big);
+  }
+
   async annotationTiers(annotationId: AnnotationId): Promise<TierInfo[]> {
     const tiers = await invoke<{ id: number; name: string; kind: 'interval' | 'point' }[]>(
       'annotation_tiers',

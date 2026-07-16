@@ -258,6 +258,10 @@ export class WasmCoreClient implements CoreClient {
     return this.#call({ method: 'stateHash' });
   }
 
+  listAnnotations(audioId: AudioId): Promise<AnnotationId[]> {
+    return this.#call({ method: 'listAnnotations', audioId });
+  }
+
   annotationTiers(annotationId: AnnotationId): Promise<TierInfo[]> {
     return this.#call({ method: 'annotationTiers', annotationId });
   }

@@ -125,6 +125,7 @@ type RequestMessage =
   | { id: number; method: 'undoDepth' }
   | { id: number; method: 'redoDepth' }
   | { id: number; method: 'stateHash' }
+  | { id: number; method: 'listAnnotations'; audioId: AudioId }
   | { id: number; method: 'annotationTiers'; annotationId: AnnotationId }
   | {
       id: number;
@@ -530,6 +531,11 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
       }
       case 'stateHash': {
         postMessage({ id: message.id, ok: true, result: wasm.stateHash() } satisfies ResponseMessage);
+        return;
+      }
+      case 'listAnnotations': {
+        const result = Array.from(wasm.listAnnotations(message.audioId));
+        postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
         return;
       }
       case 'annotationTiers': {

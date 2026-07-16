@@ -1488,6 +1488,26 @@ impl WasmEngine {
         self.inner.state_hash()
     }
 
+    /// Returns every live annotation document attached to `audioId`, ascending
+    /// by id.
+    ///
+    /// Ids climb monotonically and are never reused, so ascending order also
+    /// puts the most recently attached document last. A frontend reconciling
+    /// its current document against an undo or redo of an attach takes the
+    /// last entry as "the" document for this audio, or falls back to the
+    /// no-annotation state when the list is empty.
+    #[wasm_bindgen(js_name = listAnnotations)]
+    #[must_use]
+    pub fn list_annotations(&self, audio_id: u64) -> Vec<u64> {
+        let audio = AudioId::from_u64(audio_id);
+        self.inner
+            .annotation_ids()
+            .into_iter()
+            .filter(|id| self.inner.annotation_audio(*id) == Ok(audio))
+            .map(AnnotationId::as_u64)
+            .collect()
+    }
+
     /// Returns the tiers of a document as parallel arrays: ids, names, and a
     /// kind flag per tier (`0` interval, `1` point), in document order.
     ///
@@ -2248,6 +2268,38 @@ mod tests {
             .intervals_in_range(reimported, tiers.ids()[0], 0.0, info.duration())
             .unwrap();
         assert_eq!(reintervals.labels()[0], "aː");
+    }
+
+    #[wasm_bindgen_test]
+    fn list_annotations_tracks_attach_undo_redo() {
+        let mut engine = WasmEngine::new();
+        let audio = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let info = engine.audio_info(audio).unwrap();
+
+        assert!(engine.list_annotations(audio).is_empty());
+
+        let first = engine
+            .create_annotation(audio, 0.0, info.duration())
+            .unwrap();
+        assert_eq!(engine.list_annotations(audio), vec![first]);
+
+        let bytes = engine.export_text_grid(first).unwrap().to_vec();
+        let second = engine.import_text_grid(audio, &bytes).unwrap();
+        assert_eq!(engine.list_annotations(audio), vec![first, second]);
+
+        // Undo the import: the second document detaches and the first, older
+        // document is what a frontend should repoint to.
+        let undone = engine.undo().unwrap().unwrap();
+        assert_eq!(undone.kind(), "annotationDetached");
+        assert_eq!(undone.annotation(), Some(second));
+        assert_eq!(engine.list_annotations(audio), vec![first]);
+
+        // Redo restores the second document under its original id.
+        let redone = engine.redo().unwrap().unwrap();
+        assert_eq!(redone.kind(), "annotationAttached");
+        assert_eq!(redone.annotation(), Some(second));
+        assert_eq!(redone.audio(), Some(audio));
+        assert_eq!(engine.list_annotations(audio), vec![first, second]);
     }
 
     #[wasm_bindgen_test]

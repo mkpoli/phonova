@@ -143,6 +143,8 @@ export interface AnnotationClientLike {
   undoDepth(): Promise<number>;
   redoDepth(): Promise<number>;
   stateHash(): Promise<bigint>;
+  /** Every live document attached to `audioId`, ascending by id (most recently attached last). */
+  listAnnotations(audioId: AudioId): Promise<AnnotationId[]>;
   annotationTiers(annotationId: AnnotationId): Promise<TierInfo[]>;
   intervalsInRange(
     annotationId: AnnotationId,

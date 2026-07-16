@@ -598,6 +598,20 @@ pub fn state_hash(state: State<AppState>) -> Result<String, String> {
     Ok(lock(&state)?.state_hash().to_string())
 }
 
+/// Every live document attached to `audio_id`, ascending by id (most recently
+/// attached last), mirroring `WasmEngine::list_annotations`.
+#[tauri::command]
+pub fn list_annotations(state: State<AppState>, audio_id: u64) -> Result<Vec<u64>, String> {
+    let engine = lock(&state)?;
+    let audio = AudioId::from_u64(audio_id);
+    Ok(engine
+        .annotation_ids()
+        .into_iter()
+        .filter(|id| engine.annotation_audio(*id) == Ok(audio))
+        .map(AnnotationId::as_u64)
+        .collect())
+}
+
 #[tauri::command]
 pub fn annotation_tiers(
     state: State<AppState>,

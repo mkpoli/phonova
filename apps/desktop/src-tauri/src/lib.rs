@@ -69,6 +69,7 @@ pub fn run() {
             engine_cmds::undo_depth,
             engine_cmds::redo_depth,
             engine_cmds::state_hash,
+            engine_cmds::list_annotations,
             engine_cmds::annotation_tiers,
             engine_cmds::intervals_in_range,
             engine_cmds::points_in_range,
