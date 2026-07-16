@@ -12,6 +12,7 @@ phx-spectrogram = { workspace = true }
 phx-pitch = { workspace = true }
 phx-formant = { workspace = true }
 phx-intensity = { workspace = true }
+phx-voice = { workspace = true }
 phx-annot = { workspace = true }
 phx-render = { workspace = true }
 phx-figure = { workspace = true }

@@ -45,11 +45,46 @@ pub use phx_annot::{
 pub use phx_figure::Figure;
 pub use phx_formant::{FormantFrame, FormantParams, FormantPoint, FormantTrack};
 pub use phx_intensity::{IntensityParams, IntensityTrack};
-pub use phx_pitch::{PitchFrame, PitchParams, PitchTrack};
+pub use phx_pitch::{PitchFrame, PitchParams, PitchTrack, TimeSpan};
 pub use phx_render::{Colormap, DisplayMapping, Theme};
 pub use phx_spectrogram::{SpectrogramParams, Tile, TileRequest};
+pub use phx_voice::{
+    CppParams, HarmonicityParams, JitterMeasures, Moments, PitchSummary, PointProcess, PulseParams,
+    ShimmerMeasures, VoiceBreaks, VoiceReport,
+};
 pub use pyramid::MinMax;
 pub use store::{AudioId, AudioInfo, AudioStore};
+
+/// The measurement readout for a time–frequency selection.
+///
+/// Geometry (`t0`/`t1`/`f0`/`f1`/`duration`) is the box in signal coordinates;
+/// the remaining fields are engine queries over it, so a selection bar built
+/// from this struct shows exactly what a script reading the same API would.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SelectionReadout {
+    /// Selection start time in seconds.
+    pub t0: f64,
+    /// Selection end time in seconds.
+    pub t1: f64,
+    /// Selection low frequency in hertz.
+    pub f0: f64,
+    /// Selection high frequency in hertz.
+    pub f1: f64,
+    /// Selection duration in seconds.
+    pub duration: f64,
+    /// Mean voiced fundamental over the span, in hertz.
+    pub f0_mean_hz: Option<f64>,
+    /// Minimum voiced fundamental over the span, in hertz.
+    pub f0_min_hz: Option<f64>,
+    /// Maximum voiced fundamental over the span, in hertz.
+    pub f0_max_hz: Option<f64>,
+    /// Mean raw band energy inside the box, in decibels.
+    pub band_energy_db: f64,
+    /// Mean intensity over the span, in dB SPL, absent when the span is empty.
+    pub intensity_mean_db: Option<f64>,
+    /// Mean harmonics-to-noise ratio over the span, in decibels.
+    pub hnr_mean_db: Option<f64>,
+}
 
 /// Session engine: the audio store plus the pure functions that read it.
 ///
@@ -313,6 +348,277 @@ impl Engine {
         let audio = self.store.audio(id)?;
         let view = audio.slice_samples(0..audio.frames());
         Ok(phx_intensity::intensity_track(view, params))
+    }
+
+    /// Returns the mean raw power spectral density inside a time–frequency box,
+    /// in decibels.
+    ///
+    /// The box is the spectrogram selection: `[t0, t1]` seconds by `[f0, f1]`
+    /// hertz, each pair accepted in either order and clamped to the signal. The
+    /// value is the analysis grid's raw PSD (no display pre-emphasis), averaged
+    /// as linear power over every snapped cell that falls inside the box, then
+    /// converted back to decibels — a function of the signal and the box alone,
+    /// so the readout equals this query at identical coordinates (the
+    /// batch-equals-GUI invariant, `docs/plan/tasks/phase-4.md` T4.4).
+    ///
+    /// Returns `f64::NEG_INFINITY` for an empty box (no analysis cell falls
+    /// inside it).
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` does not name a live
+    /// store entry, and [`EngineError::InvalidRequest`] when a bound is not
+    /// finite.
+    pub fn band_energy(
+        &self,
+        id: AudioId,
+        t0: f64,
+        t1: f64,
+        f0: f64,
+        f1: f64,
+    ) -> Result<f64, EngineError> {
+        if ![t0, t1, f0, f1].iter().all(|value| value.is_finite()) {
+            return Err(EngineError::InvalidRequest {
+                reason: "band_energy bounds must be finite".to_string(),
+            });
+        }
+        let audio = self.store.audio(id)?;
+        let duration = audio.duration();
+        let (lo, hi) = ordered_clamped(t0, t1, 0.0, duration);
+        let (flo, fhi) = ordered_clamped(f0, f1, 0.0, f64::INFINITY);
+        if hi - lo <= 0.0 || fhi - flo <= 0.0 {
+            return Ok(f64::NEG_INFINITY);
+        }
+        let params = SpectrogramParams {
+            max_frequency: fhi.max(SpectrogramParams::default().max_frequency),
+            ..SpectrogramParams::default()
+        };
+        // Match the tile resolution to the analysis grid so every snapped
+        // frame and frequency bin inside the box contributes about once.
+        let time_step = phx_spectrogram::effective_time_step(&params);
+        let frequency_step = phx_spectrogram::effective_frequency_step(&params);
+        let width = (((hi - lo) / time_step).ceil() as u32).clamp(1, 4096);
+        let height = (((fhi - flo) / frequency_step).ceil() as u32).clamp(1, 4096);
+        let req = TileRequest {
+            t0: lo,
+            t1: hi,
+            f0: flo,
+            f1: fhi,
+            width_px: width,
+            height_px: height,
+            params,
+        };
+        let view = audio.slice_samples(0..audio.frames());
+        let tile = phx_spectrogram::compute_tile(view, &req);
+        if tile.db.is_empty() {
+            return Ok(f64::NEG_INFINITY);
+        }
+        let mut sum = 0.0;
+        for &db in &tile.db {
+            sum += 10.0_f64.powf(f64::from(db) / 10.0);
+        }
+        Ok(10.0 * (sum / tile.db.len() as f64).log10())
+    }
+
+    /// Computes the measurement readout for a selection: its geometry plus the
+    /// span statistics the selection bar shows.
+    ///
+    /// Every number is an engine query over the selection, so the bar displays
+    /// exactly what a script reading this API would get for the same box (the
+    /// batch-equals-GUI invariant). Pitch statistics cover voiced frames inside
+    /// the span; band energy comes from [`Engine::band_energy`]; mean intensity
+    /// and mean HNR are frame means over the span, absent when the span holds no
+    /// frame.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` does not name a live
+    /// store entry, and [`EngineError::InvalidRequest`] when a bound is not
+    /// finite.
+    #[allow(clippy::too_many_arguments)]
+    pub fn selection_readout(
+        &self,
+        id: AudioId,
+        t0: f64,
+        t1: f64,
+        f0: f64,
+        f1: f64,
+        pitch_floor_hz: f64,
+        pitch_ceiling_hz: f64,
+        intensity_floor_hz: f64,
+    ) -> Result<SelectionReadout, EngineError> {
+        if ![t0, t1, f0, f1].iter().all(|value| value.is_finite()) {
+            return Err(EngineError::InvalidRequest {
+                reason: "selection_readout bounds must be finite".to_string(),
+            });
+        }
+        let audio = self.store.audio(id)?;
+        let duration = audio.duration();
+        let (lo, hi) = ordered_clamped(t0, t1, 0.0, duration);
+        let (flo, fhi) = ordered_clamped(f0, f1, 0.0, f64::INFINITY);
+        let span = TimeSpan::new(lo, hi);
+        let view = audio.slice_samples(0..audio.frames());
+
+        let pitch_params = PitchParams {
+            floor_hz: pitch_floor_hz,
+            ceiling_hz: pitch_ceiling_hz,
+            ..PitchParams::default()
+        };
+        let pitch = phx_pitch::pitch_track(view.clone(), &pitch_params);
+
+        let intensity_params = IntensityParams {
+            pitch_floor_hz: intensity_floor_hz,
+            ..IntensityParams::default()
+        };
+        let intensity = phx_intensity::intensity_track(view.clone(), &intensity_params);
+        let intensity_mean_db = mean_in_span(intensity.iter(), span);
+
+        let harmonicity_params = HarmonicityParams {
+            floor_hz: pitch_floor_hz,
+            ..HarmonicityParams::default()
+        };
+        let hnr = phx_voice::hnr_track(view, &harmonicity_params);
+        let hnr_mean_db = hnr.mean_db(span);
+
+        Ok(SelectionReadout {
+            t0: lo,
+            t1: hi,
+            f0: flo,
+            f1: fhi,
+            duration: hi - lo,
+            f0_mean_hz: pitch.mean_hz(span),
+            f0_min_hz: pitch.min_hz(span),
+            f0_max_hz: pitch.max_hz(span),
+            band_energy_db: self.band_energy(id, lo, hi, flo, fhi)?,
+            intensity_mean_db,
+            hnr_mean_db,
+        })
+    }
+
+    /// Returns the mean frequency of each formant slot over a time span, in
+    /// hertz.
+    ///
+    /// Slot `j` is the `j`-th lowest candidate of each frame; its mean is taken
+    /// over the frames inside `[t0, t1]` that carry that slot, or `None` when no
+    /// frame does. These are the provisional tracked-formant means the readout
+    /// marks while the tracking weights stay unvalidated
+    /// (`docs/plan/tasks/phase-4.md`).
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` does not name a live
+    /// store entry, and [`EngineError::InvalidRequest`] when a formant parameter
+    /// is outside the range the analysis accepts, or a bound is not finite.
+    pub fn formant_span_means(
+        &self,
+        id: AudioId,
+        params: &FormantParams,
+        smoothed: bool,
+        t0: f64,
+        t1: f64,
+    ) -> Result<Vec<Option<f64>>, EngineError> {
+        if !t0.is_finite() || !t1.is_finite() {
+            return Err(EngineError::InvalidRequest {
+                reason: "formant_span_means t0/t1 must be finite".to_string(),
+            });
+        }
+        let track = if smoothed {
+            self.formant_track_smoothed(id, params)?
+        } else {
+            self.formant_track(id, params)?
+        };
+        let (lo, hi) = (t0.min(t1), t0.max(t1));
+        let mut sums = vec![0.0; params.max_formants];
+        let mut counts = vec![0usize; params.max_formants];
+        for frame in &track.frames {
+            if frame.time < lo || frame.time > hi {
+                continue;
+            }
+            for (slot, formant) in frame.formants.iter().enumerate().take(params.max_formants) {
+                sums[slot] += formant.frequency;
+                counts[slot] += 1;
+            }
+        }
+        Ok(sums
+            .into_iter()
+            .zip(counts)
+            .map(|(sum, count)| (count > 0).then(|| sum / count as f64))
+            .collect())
+    }
+
+    /// Computes power-weighted spectral moments at the midpoint of a span.
+    ///
+    /// The slice is the raw spectrogram frame nearest `(t0 + t1) / 2`, its dB
+    /// PSD converted to linear power before weighting. `power` is the moment
+    /// weighting exponent (`2.0` weights by power, Praat's default).
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` does not name a live
+    /// store entry, and [`EngineError::InvalidRequest`] when a bound is not
+    /// finite.
+    pub fn spectral_moments_in_span(
+        &self,
+        id: AudioId,
+        t0: f64,
+        t1: f64,
+        power: f64,
+    ) -> Result<Moments, EngineError> {
+        if !t0.is_finite() || !t1.is_finite() {
+            return Err(EngineError::InvalidRequest {
+                reason: "spectral_moments_in_span t0/t1 must be finite".to_string(),
+            });
+        }
+        let audio = self.store.audio(id)?;
+        let midpoint = 0.5 * (t0.min(t1) + t0.max(t1));
+        let view = audio.slice_samples(0..audio.frames());
+        let slice = phx_spectrogram::spectral_slice(view, midpoint, &SpectrogramParams::default());
+        let values = slice
+            .db
+            .iter()
+            .map(|&db| 10.0_f64.powf(f64::from(db) / 10.0))
+            .collect();
+        let spectrum = phx_voice::SpectrumSlice {
+            frequencies_hz: slice.f_axis,
+            values,
+        };
+        Ok(phx_voice::spectral_moments(&spectrum, power))
+    }
+
+    /// Computes the aggregate voice report over a selection span.
+    ///
+    /// Wraps [`phx_voice::voice_report`]: it tracks pitch, extracts pulses, and
+    /// aggregates the jitter, shimmer, HNR, CPP, and voice-break measures over
+    /// `[t0, t1]`, embedding the parameters used. The pitch floor and ceiling
+    /// come from the selection's analysis parameters.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` does not name a live
+    /// store entry, and [`EngineError::InvalidRequest`] when a bound is not
+    /// finite.
+    pub fn voice_report(
+        &self,
+        id: AudioId,
+        t0: f64,
+        t1: f64,
+        pitch_floor_hz: f64,
+        pitch_ceiling_hz: f64,
+    ) -> Result<VoiceReport, EngineError> {
+        if !t0.is_finite() || !t1.is_finite() {
+            return Err(EngineError::InvalidRequest {
+                reason: "voice_report t0/t1 must be finite".to_string(),
+            });
+        }
+        let audio = self.store.audio(id)?;
+        let duration = audio.duration();
+        let (lo, hi) = ordered_clamped(t0, t1, 0.0, duration);
+        let view = audio.slice_samples(0..audio.frames());
+        let pitch_params = PitchParams {
+            floor_hz: pitch_floor_hz,
+            ceiling_hz: pitch_ceiling_hz,
+            ..PitchParams::default()
+        };
+        Ok(phx_voice::voice_report(
+            view,
+            TimeSpan::new(lo, hi),
+            &pitch_params,
+        ))
     }
 
     /// Applies one command through the journal and reports what changed.
@@ -889,6 +1195,26 @@ fn hash_annotation<H: Hasher>(annotation: &Annotation, hasher: &mut H) {
     }
 }
 
+/// Orders a pair and clamps it to `[min, max]`, returning `(low, high)`.
+fn ordered_clamped(a: f64, b: f64, min: f64, max: f64) -> (f64, f64) {
+    let lo = a.min(b).clamp(min, max);
+    let hi = a.max(b).clamp(min, max);
+    (lo, hi)
+}
+
+/// Mean of the values whose time falls inside `span`, or `None` when none do.
+fn mean_in_span(frames: impl Iterator<Item = (f64, f64)>, span: TimeSpan) -> Option<f64> {
+    let mut sum = 0.0;
+    let mut count = 0usize;
+    for (time, value) in frames {
+        if span.contains(time) {
+            sum += value;
+            count += 1;
+        }
+    }
+    (count > 0).then(|| sum / count as f64)
+}
+
 /// Validates a [`FormantParams`] before it reaches `phx_formant`.
 ///
 /// `phx_formant::formant_track` asserts these same properties and panics on
@@ -969,6 +1295,7 @@ mod tests {
     use std::f64::consts::PI;
 
     const FIXTURE_WAV: &[u8] = include_bytes!("../../../tests/fixtures/audio/arctic_bdl_a0001.wav");
+    const VOWEL_WAV: &[u8] = include_bytes!("../../../tests/fixtures/audio/synth_vowel_a.wav");
 
     fn sine_wav_bytes(sample_rate: u32, seconds: f64, frequency: f64) -> Vec<u8> {
         let frames = (sample_rate as f64 * seconds).round() as u32;
@@ -989,6 +1316,65 @@ mod tests {
             writer.finalize().unwrap();
         }
         cursor.into_inner()
+    }
+
+    #[test]
+    fn band_energy_is_finite_over_a_voiced_box_and_errors_on_nan() {
+        let mut engine = Engine::new();
+        let id = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let info = engine.audio_info(id).unwrap();
+        let value = engine
+            .band_energy(id, info.duration * 0.3, info.duration * 0.6, 0.0, 4000.0)
+            .unwrap();
+        assert!(value.is_finite(), "band energy over a vowel box is finite");
+        // Order-independence: swapping the bounds names the same box.
+        let swapped = engine
+            .band_energy(id, info.duration * 0.6, info.duration * 0.3, 4000.0, 0.0)
+            .unwrap();
+        assert_eq!(value.to_bits(), swapped.to_bits());
+        assert!(matches!(
+            engine.band_energy(id, f64::NAN, 0.1, 0.0, 4000.0),
+            Err(EngineError::InvalidRequest { .. })
+        ));
+    }
+
+    #[test]
+    fn selection_readout_band_energy_equals_the_direct_query() {
+        let mut engine = Engine::new();
+        let id = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let info = engine.audio_info(id).unwrap();
+        let (t0, t1, f0, f1) = (info.duration * 0.3, info.duration * 0.6, 0.0, 4000.0);
+        let readout = engine
+            .selection_readout(id, t0, t1, f0, f1, 75.0, 600.0, 100.0)
+            .unwrap();
+        let direct = engine.band_energy(id, t0, t1, f0, f1).unwrap();
+        // The batch-equals-GUI invariant: the readout's band energy is the same
+        // engine query a script would run for the same box.
+        assert_eq!(readout.band_energy_db.to_bits(), direct.to_bits());
+        assert!((readout.duration - (t1 - t0)).abs() < 1.0e-12);
+        assert!(readout.f0_mean_hz.is_some(), "vowel span should be voiced");
+    }
+
+    #[test]
+    fn voice_report_on_clean_vowel_has_low_perturbation_and_high_hnr() {
+        let mut engine = Engine::new();
+        let id = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let info = engine.audio_info(id).unwrap();
+        let report = engine
+            .voice_report(id, info.duration * 0.2, info.duration * 0.8, 75.0, 600.0)
+            .unwrap();
+        let jitter = report.jitter.local.expect("local jitter over the vowel");
+        let shimmer = report.shimmer.local.expect("local shimmer over the vowel");
+        let hnr = report.mean_hnr_db.expect("mean HNR over the vowel");
+        assert!(
+            jitter < 0.05,
+            "clean vowel local jitter {jitter} should be small"
+        );
+        assert!(
+            shimmer < 0.2,
+            "clean vowel local shimmer {shimmer} should be small"
+        );
+        assert!(hnr > 10.0, "clean vowel HNR {hnr} dB should be high");
     }
 
     #[test]

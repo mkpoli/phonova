@@ -652,6 +652,7 @@ dependencies = [
  "phx-pitch",
  "phx-render",
  "phx-spectrogram",
+ "phx-voice",
  "serde",
 ]
 
