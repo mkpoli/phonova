@@ -65,6 +65,7 @@ impl CandidateContext<'_> {
                 self.sample_rate,
                 self.params,
                 self.physical_window_seconds,
+                self.params.max_candidates - 1,
             );
             voiced.sort_by(|a, b| b.strength.total_cmp(&a.strength));
             voiced.truncate(self.params.max_candidates - 1);
@@ -114,8 +115,9 @@ fn voiced_candidates(
     sample_rate: f64,
     params: &PitchParams,
     physical_window_seconds: f64,
+    max_voiced: usize,
 ) -> Vec<PitchCandidate> {
-    if rx.len() < 3 {
+    if rx.len() < 3 || max_voiced == 0 {
         return Vec::new();
     }
     let min_lag = (sample_rate / params.ceiling_hz).ceil().max(1.0) as usize;
@@ -127,7 +129,16 @@ fn voiced_candidates(
         return Vec::new();
     }
 
-    let mut out = Vec::new();
+    // Rank the integer-lag ACF maxima by their unrefined strength and refine
+    // only the strongest `max_voiced`. A transient or near-silent frame can
+    // raise hundreds of low ripples, and depth-30 sinc refinement per maximum
+    // dominates the whole analysis; scoring the raw sample first keeps the cost
+    // proportional to the candidates the frame can actually retain. The raw
+    // score uses the same eq. 24 form (`voiced_strength`) that ranks the
+    // refined candidates, so on any frame with at most `max_voiced` maxima the
+    // retained set is identical to refining every maximum. Sub-sample position
+    // and height still come from the sinc interpolation for each kept lag.
+    let mut ranked: Vec<(usize, f64)> = Vec::new();
     for lag in start..=end {
         if !(rx[lag - 1] < rx[lag] && rx[lag] > rx[lag + 1]) {
             continue;
@@ -137,6 +148,19 @@ fn voiced_candidates(
         if !rw.is_finite() || rw.abs() < WINDOW_ACF_EPSILON {
             continue;
         }
+        ranked.push((
+            lag,
+            voiced_strength(params, rx[lag], lag as f64 / sample_rate),
+        ));
+    }
+
+    if ranked.len() > max_voiced {
+        ranked.select_nth_unstable_by(max_voiced, |a, b| b.1.total_cmp(&a.1));
+        ranked.truncate(max_voiced);
+    }
+
+    let mut out = Vec::with_capacity(ranked.len());
+    for (lag, _) in ranked {
         // §1.2 eq. 22 uses windowed-sinc lag interpolation; depth 30 balances
         // speed and sub-percent peak accuracy.
         let (position, value) = sinc_interpolate_max(rx, lag, SINC_DEPTH);
