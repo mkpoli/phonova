@@ -9,6 +9,7 @@
   import { registerCommands } from './commands.svelte';
   import type {
     AnnotationClientLike,
+    AppliedChange,
     IntervalData,
     LabelHit,
     PointData,
@@ -352,40 +353,50 @@
   }
 
   /**
-   * Reconciles the current document against the engine's live state for this
-   * audio, after an undo or redo may have detached or reattached one.
-   *
-   * Rather than pattern-matching the journal step's kind, this always asks
-   * the engine which documents remain attached to the audio: if the pane's
-   * current document is still among them, nothing changes; otherwise the
-   * pane repoints to the most recently attached survivor, or to the
-   * no-annotation state when none remain. The caller's own `onAnnotationChange`
-   * propagates the new id up so the rest of the editor (export, the audio
-   * store) stays in sync, and the resolved id is returned so the pane can
-   * refresh itself immediately rather than waiting on that round trip.
+   * Reconciles the current document against an undo or redo that attached or
+   * detached one, using the change the engine reports rather than guessing
+   * from the live list. An attach can add a fresh document on top of one the
+   * pane still legitimately points at (importing a TextGrid never replaces
+   * the recording's earlier document, so both stay attached at once) — so
+   * "is my current document still live" can't tell the pane whether it
+   * should follow a document that was just reattached above it. The applied
+   * change names exactly which annotation was attached or detached, so the
+   * pane follows an attach unconditionally and only re-derives a fallback on
+   * a detach of the document it was showing. The caller's own
+   * `onAnnotationChange` propagates the new id up so the rest of the editor
+   * (export, the audio store) stays in sync, and the resolved id is returned
+   * so the pane can refresh itself immediately rather than waiting on that
+   * round trip.
    */
-  async function reconcileAnnotation(): Promise<bigint | null> {
+  async function reconcileAnnotation(applied: AppliedChange | null): Promise<bigint | null> {
     if (!client || audioId === null) return annotationId;
-    const live = await client.listAnnotations(audioId);
-    if (annotationId !== null && live.includes(annotationId)) return annotationId;
-    const next = live.length > 0 ? live[live.length - 1] : null;
-    if (next !== annotationId) onAnnotationChange?.(next);
-    return next;
+    if (applied?.kind === 'annotationAttached' && applied.audio === audioId && applied.annotation !== undefined) {
+      const next = applied.annotation;
+      if (next !== annotationId) onAnnotationChange?.(next);
+      return next;
+    }
+    if (applied?.kind === 'annotationDetached' && applied.annotation === annotationId) {
+      const live = await client.listAnnotations(audioId);
+      const next = live.length > 0 ? live[live.length - 1] : null;
+      if (next !== annotationId) onAnnotationChange?.(next);
+      return next;
+    }
+    return annotationId;
   }
 
   async function undo() {
     if (!client) return;
     editing = null;
-    await client.undo();
-    const next = await reconcileAnnotation();
+    const applied = await client.undo();
+    const next = await reconcileAnnotation(applied);
     await refresh(next);
   }
 
   async function redo() {
     if (!client) return;
     editing = null;
-    await client.redo();
-    const next = await reconcileAnnotation();
+    const applied = await client.redo();
+    const next = await reconcileAnnotation(applied);
     await refresh(next);
   }
 
