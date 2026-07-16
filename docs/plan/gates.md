@@ -52,6 +52,41 @@ duration as n·(1/fs)).
   cited literature); raw Burg is the display default and the smoothed track
   is labeled provisional in the inspector.
 
+## T3.6 — phase 3 gate (annotation): CLOSED
+
+- TextGrid round-trip: every text-format fixture (long/short × UTF-8/UTF-16/
+  Latin-1, IPA labels, points, empty intervals) imports and re-exports with
+  structural equality and byte-stable canonical output; malformed inputs
+  return typed errors under fuzzing. The undocumented binary variant is
+  detected and rejected with a typed error; read support stays on the backlog
+  with oracle-generated samples available for format derivation.
+- Keyboard-only annotation: Playwright covers the full loop (tier creation,
+  splits at the cursor, label entry including IPA, merge, boundary nudge by
+  pixel and by sample) with no pointer use.
+- Undo: the journal's 50-mixed-operation random test holds hash stability
+  through full undo/redo cycles; point commands, tier relations, and reorder
+  are journaled with id-stable inverses.
+- Screenshots in both themes reviewed; tier panes align with the spectrogram
+  and labels stay legible.
+
+## T4.6 — phase 4 gate (project & voice): CLOSED, accept-with-documentation
+
+- Project: save/load round-trip, kill-and-recover via the autosave sidecar
+  (page reload restores unsaved edits behind a recovery prompt), folder-drop
+  corpus import with matching-stem TextGrid attachment, hash-based media
+  re-linking. Container format documented in `docs/formats/project.md`.
+- Selection tooling: box selection readout values equal direct engine queries
+  bit-for-bit (asserted at engine, WASM, and end-to-end levels).
+- Voice report vs the Praat oracle: both sustained-vowel cases pass 0/14
+  (including a closed-form perturbed vowel at 3% jitter / 6% shimmer).
+  On running speech, pulse placement follows the manual's documented
+  cross-correlation method (parabolic refinement, 0.3/0.7 thresholds), which
+  cut jitter-local disagreement from 191% to 12% relative; the remaining
+  12–33% on perturbation quotients traces to sub-sample placement detail the
+  public documentation does not specify. Voice reports are defined on
+  sustained phonation; the running-speech residual is recorded here and in
+  the crate documentation rather than tuned.
+
 ## T2.4 UI review
 
 Overlay screenshots in light and dark reviewed
