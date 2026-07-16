@@ -137,6 +137,28 @@ test('voice report on the sustained vowel reports plausible values', async ({ pa
   expect(hnr).toBeGreaterThan(10);
 });
 
+test('F fits the selection, 0 fits the file', async ({ page }) => {
+  await openEditorWithFixture(page, vowelFixture);
+  const editor = page.getByTestId('editor');
+
+  await dragSpectrogramBox(page);
+  const selT0 = Number(await spectrogramBox(page).getAttribute('data-sel-t0'));
+  expect(selT0).toBeGreaterThan(0);
+
+  // F frames the selection: the viewport start moves onto the box start. The
+  // window keydown handler reaches the editor without a focused control.
+  await page.keyboard.press('f');
+  await expect
+    .poll(() => editor.getAttribute('data-visible-start').then(Number))
+    .toBeGreaterThan(0.01);
+
+  // 0 fits the whole file: the viewport start returns to the signal origin.
+  await page.keyboard.press('0');
+  await expect
+    .poll(() => editor.getAttribute('data-visible-start').then(Number))
+    .toBeLessThan(0.01);
+});
+
 test('selection and voice report: light and dark screenshots', async ({ page }) => {
   await openEditorWithFixture(page, vowelFixture);
   await dragSpectrogramBox(page);

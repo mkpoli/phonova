@@ -210,6 +210,13 @@
     setViewport(defaultViewport(audio.duration));
   }
 
+  // `F` frames the current selection when one is set, and otherwise falls back
+  // to the whole file, so a single key serves both the DAW "fit" gestures.
+  function fitSelectionOrFile() {
+    if (selection) zoomToSelection();
+    else fitFile();
+  }
+
   function zoomHorizontal(factor: number, anchorRatio: number) {
     if (!audio) return;
     const span = viewport.t1 - viewport.t0;
@@ -268,9 +275,12 @@
     if (event.code === 'Space') {
       event.preventDefault();
       onPlayToggle();
-    } else if (event.key === '0' || event.key.toLowerCase() === 'f') {
+    } else if (event.key === '0') {
       event.preventDefault();
       fitFile();
+    } else if (event.key.toLowerCase() === 'f') {
+      event.preventDefault();
+      fitSelectionOrFile();
     } else if (event.key.toLowerCase() === 'i') {
       event.preventDefault();
       inspectorOpen = !inspectorOpen;
@@ -306,6 +316,7 @@
       id: 'zoomToSelection',
       title: 'Zoom to selection',
       group: 'View',
+      shortcut: 'F',
       keywords: ['fit selection'],
       enabled: hasSelection,
       run: zoomToSelection
