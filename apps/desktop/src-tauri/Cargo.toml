@@ -1,0 +1,33 @@
+[package]
+name = "phonix-desktop"
+version = "0.0.1"
+description = "Phonix desktop shell: the shared UI over a native phx-engine core"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.85"
+
+# The desktop app is its own workspace so the pure-Rust core crates never pull
+# the WebKitGTK / wry dependency tree into their builds.
+[workspace]
+
+[lib]
+name = "phonix_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+
+phx-engine = { path = "../../../crates/phx-engine", features = ["figure-raster", "figure-pdf"] }
+phx-project = { path = "../../../crates/phx-project" }
+phx-textgrid = { path = "../../../crates/phx-textgrid" }
+
+[features]
+# Larger binary but the default Tauri custom-protocol path; enabled for release.
+custom-protocol = ["tauri/custom-protocol"]

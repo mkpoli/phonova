@@ -1,0 +1,235 @@
+//! Native project storage: audio import into the engine, the project-container
+//! round trip, and a flat filesystem surface the desktop project store drives.
+//!
+//! The store keeps one directory per project under the app data root — the
+//! container, its autosave sidecar, and the referenced `audio/` files — exactly
+//! as the web store keeps them under OPFS, so the two shells share the store
+//! logic and differ only in the byte transport. Real file I/O happens here in
+//! Rust; the dialog plugin only ever hands the frontend paths.
+
+use std::path::{Path, PathBuf};
+
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use phx_engine::AnnotationId;
+use phx_project::{ContentHash, FsStore, MediaId, MediaRef, Project, Storage};
+use tauri::State;
+use tauri::ipc::{InvokeBody, Request, Response};
+
+use crate::state::{AppState, AudioInfoDto, LoadProjectMedia, LoadProjectResult, SaveProjectSpec};
+
+fn store(state: &State<AppState>) -> FsStore {
+    FsStore::new(state.root.clone())
+}
+
+/// Resolves a `/`-separated relative path beneath the projects root.
+fn resolve(root: &Path, rel: &str) -> PathBuf {
+    let mut full = root.to_path_buf();
+    for part in rel.split('/').filter(|p| !p.is_empty()) {
+        full.push(part);
+    }
+    full
+}
+
+fn raw_body(request: &Request<'_>) -> Result<Vec<u8>, String> {
+    match request.body() {
+        InvokeBody::Raw(bytes) => Ok(bytes.clone()),
+        InvokeBody::Json(_) => Err("expected a raw byte body".into()),
+    }
+}
+
+/// Decodes RIFF/WAVE bytes into the engine, returning metadata and the BLAKE3
+/// content hash the project manifest records. Bytes cross as a raw request body.
+#[tauri::command]
+pub fn import_audio(state: State<AppState>, request: Request<'_>) -> Result<AudioInfoDto, String> {
+    let bytes = raw_body(&request)?;
+    let hash = ContentHash::of(&bytes).to_hex();
+    let mut engine = state
+        .engine
+        .lock()
+        .map_err(|_| "engine lock poisoned".to_string())?;
+    let id = engine.import_wav_bytes(&bytes).map_err(|e| e.to_string())?;
+    let info = engine.audio_info(id).map_err(|e| e.to_string())?;
+    Ok(AudioInfoDto {
+        id: id.as_u64(),
+        duration: info.duration,
+        sample_rate: info.sample_rate,
+        channels: info.channels,
+        name: info.name,
+        hash,
+    })
+}
+
+/// Serializes a project container from the spec plus the live documents it
+/// names, returning the versioned ZIP bytes.
+#[tauri::command]
+pub fn save_project_container(
+    state: State<AppState>,
+    spec_json: String,
+) -> Result<Vec<u8>, String> {
+    let spec: SaveProjectSpec =
+        serde_json::from_str(&spec_json).map_err(|e| format!("invalid project spec: {e}"))?;
+    let engine = state
+        .engine
+        .lock()
+        .map_err(|_| "engine lock poisoned".to_string())?;
+    let mut project = Project::new(spec.name);
+    project.saved_at = spec.saved_at;
+    project.view = spec.view;
+    for media in spec.media {
+        let hash = ContentHash::from_hex(&media.hash).map_err(|e| e.to_string())?;
+        let media_id = MediaId::new(media.media_id);
+        project.media.push(MediaRef {
+            id: media_id,
+            relative_path: media.relative_path,
+            hash,
+            duration: media.duration,
+            sample_rate: media.sample_rate,
+            channels: media.channels,
+        });
+        if let Some(annotation_id) = media.annotation {
+            let annotation = engine
+                .annotation(AnnotationId::from_u64(annotation_id))
+                .map_err(|e| e.to_string())?
+                .clone();
+            project.annotations.insert(media_id, annotation);
+        }
+    }
+    Ok(phx_project::save(&project))
+}
+
+/// Parses a project container into the metadata the session restores from, with
+/// each annotated recording's document serialized inline.
+#[tauri::command]
+pub fn load_project_container(bytes: Vec<u8>) -> Result<LoadProjectResult, String> {
+    let project = phx_project::load(&bytes).map_err(|e| e.to_string())?;
+    let mut media = Vec::with_capacity(project.media.len());
+    for reference in &project.media {
+        let annotation_json = match project.annotations.get(&reference.id) {
+            Some(annotation) => Some(serde_json::to_string(annotation).map_err(|e| e.to_string())?),
+            None => None,
+        };
+        media.push(LoadProjectMedia {
+            media_id: reference.id.get(),
+            relative_path: reference.relative_path.clone(),
+            hash: reference.hash.to_hex(),
+            duration: reference.duration,
+            sample_rate: reference.sample_rate,
+            channels: reference.channels,
+            annotation_json,
+        });
+    }
+    Ok(LoadProjectResult {
+        name: project.name,
+        saved_at: project.saved_at,
+        view: project.view,
+        media,
+    })
+}
+
+/// Rewrites a container's name, preserving media, annotations, and timestamp.
+#[tauri::command]
+pub fn rename_project_container(bytes: Vec<u8>, name: String) -> Result<Vec<u8>, String> {
+    let mut project = phx_project::load(&bytes).map_err(|e| e.to_string())?;
+    project.name = name;
+    Ok(phx_project::save(&project))
+}
+
+// --- Flat filesystem surface (rooted at the projects directory) ------------
+
+/// Reads a stored file as raw bytes.
+#[tauri::command]
+pub fn fs_read(state: State<AppState>, path: String) -> Result<Response, String> {
+    let bytes = store(&state).read(&path).map_err(|e| e.to_string())?;
+    Ok(Response::new(bytes))
+}
+
+/// Writes raw bytes to `path` (base64 in the `path` header), creating parents.
+#[tauri::command]
+pub fn fs_write(state: State<AppState>, request: Request<'_>) -> Result<(), String> {
+    let header = request
+        .headers()
+        .get("path")
+        .ok_or_else(|| "missing path header".to_string())?
+        .to_str()
+        .map_err(|e| e.to_string())?;
+    let decoded = BASE64.decode(header).map_err(|e| e.to_string())?;
+    let path = String::from_utf8(decoded).map_err(|e| e.to_string())?;
+    let bytes = raw_body(&request)?;
+    store(&state)
+        .write(&path, &bytes)
+        .map_err(|e| e.to_string())
+}
+
+/// Reports whether a file exists at `path`.
+#[tauri::command]
+pub fn fs_exists(state: State<AppState>, path: String) -> bool {
+    store(&state).exists(&path)
+}
+
+/// Removes the file at `path`; absence is not an error.
+#[tauri::command]
+pub fn fs_remove(state: State<AppState>, path: String) -> Result<(), String> {
+    store(&state).remove(&path).map_err(|e| e.to_string())
+}
+
+/// Lists the immediate file entries of `dir`.
+#[tauri::command]
+pub fn fs_list(state: State<AppState>, dir: String) -> Result<Vec<String>, String> {
+    store(&state).list_dir(&dir).map_err(|e| e.to_string())
+}
+
+/// Removes a directory and everything under it; absence is not an error.
+#[tauri::command]
+pub fn fs_remove_dir(state: State<AppState>, path: String) -> Result<(), String> {
+    let full = resolve(&state.root, &path);
+    match std::fs::remove_dir_all(&full) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Copies a directory tree from `from` to `to`.
+#[tauri::command]
+pub fn fs_copy_dir(state: State<AppState>, from: String, to: String) -> Result<(), String> {
+    let src = resolve(&state.root, &from);
+    let dst = resolve(&state.root, &to);
+    copy_dir(&src, &dst).map_err(|e| e.to_string())
+}
+
+fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let target = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
+/// Lists the immediate subdirectory names of the projects root.
+#[tauri::command]
+pub fn fs_list_dirs(state: State<AppState>, dir: String) -> Result<Vec<String>, String> {
+    let full = resolve(&state.root, &dir);
+    let mut out = Vec::new();
+    let entries = match std::fs::read_dir(&full) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+        Err(e) => return Err(e.to_string()),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if entry.file_type().map_err(|e| e.to_string())?.is_dir()
+            && let Some(name) = entry.file_name().to_str()
+        {
+            out.push(name.to_string());
+        }
+    }
+    Ok(out)
+}
