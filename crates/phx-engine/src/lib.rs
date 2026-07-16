@@ -22,8 +22,14 @@ mod journal;
 mod pyramid;
 mod recording;
 mod store;
+mod tile_cache;
 
 use std::hash::{Hash, Hasher};
+use std::sync::Mutex;
+
+use phx_spectrogram::{analysis_axes, compute_column_block, select_axis_indices};
+
+use tile_cache::{BlockKey, TILE_COLS, TileCache, params_hash};
 
 use phx_audio::{Audio, BitDepth};
 use phx_dsp::Window;
@@ -102,6 +108,7 @@ pub struct Engine {
     documents: DocumentStore,
     journal: Journal,
     recordings: RecordingStore,
+    tiles: Mutex<TileCache>,
 }
 
 impl Engine {
@@ -259,18 +266,16 @@ impl Engine {
         theme: Theme,
     ) -> Result<Vec<u8>, EngineError> {
         validate_tile_request(req)?;
-        let audio = self.store.audio(id)?;
-        let view = audio.slice_samples(0..audio.frames());
-        let tile = phx_spectrogram::compute_tile(view, req);
+        let tile_db = self.spectrogram_tile_db(id, req)?;
 
         let expected_len = req.width_px as usize * req.height_px as usize;
-        if tile.db.len() != expected_len {
+        if tile_db.len() != expected_len {
             return Err(EngineError::InvalidRequest {
                 reason: format!(
                     "tile produced {} values for a {}x{} request; the audio is likely too \
                      short, or the time/frequency range too narrow, to fit a single analysis \
                      frame",
-                    tile.db.len(),
+                    tile_db.len(),
                     req.width_px,
                     req.height_px
                 ),
@@ -278,13 +283,98 @@ impl Engine {
         }
 
         Ok(phx_render::colorize(
-            &tile.db,
+            &tile_db,
             req.width_px,
             req.height_px,
             display,
             colormap,
             theme,
         ))
+    }
+
+    /// Assembles the raw dB values for a tile from the block cache, in the
+    /// row-major, lowest-frequency-first order [`phx_render::colorize`] expects.
+    ///
+    /// The frame columns the request selects are grouped into fixed
+    /// [`tile_cache`] blocks aligned to the object-level frame grid; each block's
+    /// STFT is computed once and reused, so a colormap, theme, or dynamic-range
+    /// change re-colorizes cached dB without recomputing the transform. The
+    /// values are bit-for-bit identical to a direct `compute_tile`, since both
+    /// read the same frame centres off the same grid.
+    fn spectrogram_tile_db(&self, id: AudioId, req: &TileRequest) -> Result<Vec<f32>, EngineError> {
+        let audio = self.store.audio(id)?;
+        let view = audio.slice_samples(0..audio.frames());
+        let axes = analysis_axes(view.clone(), &req.params);
+        let freq_len = axes.frequencies.len();
+
+        let time_indices = select_axis_indices(
+            &axes.times,
+            req.t0.min(req.t1),
+            req.t0.max(req.t1),
+            req.width_px as usize,
+        );
+        let freq_indices = select_axis_indices(
+            &axes.frequencies,
+            req.f0.min(req.f1),
+            req.f0.max(req.f1),
+            req.height_px as usize,
+        );
+        if time_indices.is_empty() || freq_indices.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let hash = params_hash(&req.params);
+        let mut needed: Vec<usize> = time_indices.iter().map(|&t| t / TILE_COLS).collect();
+        needed.sort_unstable();
+        needed.dedup();
+
+        let mut blocks: std::collections::HashMap<usize, phx_spectrogram::ColumnBlock> =
+            std::collections::HashMap::with_capacity(needed.len());
+        for &block_index in &needed {
+            let key = BlockKey {
+                audio: id.as_u64(),
+                params_hash: hash,
+                block_index,
+            };
+            let hit = self.tiles.lock().expect("tile cache poisoned").get(key);
+            let block = match hit {
+                Some(block) => block,
+                None => {
+                    let block = compute_column_block(
+                        view.clone(),
+                        &req.params,
+                        block_index * TILE_COLS,
+                        TILE_COLS,
+                    );
+                    self.tiles
+                        .lock()
+                        .expect("tile cache poisoned")
+                        .insert(key, block.clone());
+                    block
+                }
+            };
+            blocks.insert(block_index, block);
+        }
+
+        let mut db = Vec::with_capacity(freq_indices.len() * time_indices.len());
+        for &f in &freq_indices {
+            for &t in &time_indices {
+                let block = &blocks[&(t / TILE_COLS)];
+                let local = t - block.first_col;
+                db.push(block.db[local * freq_len + f]);
+            }
+        }
+        Ok(db)
+    }
+
+    /// Number of raw dB spectrogram blocks currently held in the tile cache.
+    ///
+    /// Exposed for the frontend perf probe: a colormap or theme change must
+    /// leave this count unchanged, since it re-colorizes cached dB rather than
+    /// recomputing the STFT.
+    #[must_use]
+    pub fn spectrogram_cached_block_count(&self) -> usize {
+        self.tiles.lock().expect("tile cache poisoned").len()
     }
 
     /// Computes the autocorrelation pitch track of `id` over its whole signal.
@@ -1424,6 +1514,79 @@ mod tests {
         assert_eq!(readout.band_energy_db.to_bits(), direct.to_bits());
         assert!((readout.duration - (t1 - t0)).abs() < 1.0e-12);
         assert!(readout.f0_mean_hz.is_some(), "vowel span should be voiced");
+    }
+
+    #[test]
+    fn colormap_change_recolorizes_cached_db_without_recomputing() {
+        let mut engine = Engine::new();
+        let id = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let info = engine.audio_info(id).unwrap();
+        let req = TileRequest {
+            t0: 0.0,
+            t1: info.duration,
+            f0: 0.0,
+            f1: 5000.0,
+            width_px: 220,
+            height_px: 128,
+            params: SpectrogramParams::default(),
+        };
+        let display = DisplayMapping::default();
+        let viridis = engine
+            .spectrogram_tile_rgba(id, &req, &display, Colormap::Viridis, Theme::Dark)
+            .unwrap();
+        let after_first = engine.spectrogram_cached_block_count();
+        assert!(after_first > 0, "first tile populates the block cache");
+
+        let magma = engine
+            .spectrogram_tile_rgba(id, &req, &display, Colormap::Magma, Theme::Dark)
+            .unwrap();
+        // Re-colorizing the same viewport reuses every cached block: no new STFT.
+        assert_eq!(engine.spectrogram_cached_block_count(), after_first);
+        assert_ne!(
+            viridis, magma,
+            "different palettes produce different pixels"
+        );
+
+        // Deterministic through the cache: the same request twice is identical.
+        let viridis_again = engine
+            .spectrogram_tile_rgba(id, &req, &display, Colormap::Viridis, Theme::Dark)
+            .unwrap();
+        assert_eq!(viridis, viridis_again);
+    }
+
+    #[test]
+    fn changing_analysis_params_keys_new_blocks() {
+        let mut engine = Engine::new();
+        let id = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let info = engine.audio_info(id).unwrap();
+        let display = DisplayMapping::default();
+        let base = TileRequest {
+            t0: 0.0,
+            t1: info.duration,
+            f0: 0.0,
+            f1: 5000.0,
+            width_px: 200,
+            height_px: 120,
+            params: SpectrogramParams::default(),
+        };
+        engine
+            .spectrogram_tile_rgba(id, &base, &display, Colormap::Viridis, Theme::Dark)
+            .unwrap();
+        let after_base = engine.spectrogram_cached_block_count();
+
+        let widened = TileRequest {
+            params: SpectrogramParams {
+                window_length: 0.01,
+                ..SpectrogramParams::default()
+            },
+            ..base.clone()
+        };
+        engine
+            .spectrogram_tile_rgba(id, &widened, &display, Colormap::Viridis, Theme::Dark)
+            .unwrap();
+        // A different analysis parameter hashes to a different key, so the new
+        // blocks sit alongside the old rather than colliding with them.
+        assert!(engine.spectrogram_cached_block_count() > after_base);
     }
 
     #[test]

@@ -220,6 +220,83 @@ pub fn spectral_slice(audio: AudioView<'_>, at: f64, params: &SpectrogramParams)
     }
 }
 
+/// The global analysis axes for an audio view and parameters.
+///
+/// `times` are the frame-centre seconds of the object-level [`FrameGrid`];
+/// `frequencies` are the snapped frequency-row centres in hertz. Both depend
+/// only on the signal duration, sample rate, and `params`, so identical
+/// coordinates land on identical indices no matter which tile requests them.
+/// Building them runs no FFT.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnalysisAxes {
+    /// Frame-centre time of each column, in seconds.
+    pub times: Vec<f64>,
+    /// Snapped frequency-row centre of each row, in hertz.
+    pub frequencies: Vec<f64>,
+}
+
+/// A contiguous block of global frame columns in raw PSD-derived decibels.
+///
+/// Storage is column-major: the value at `(local_col, row)` is at
+/// `db[local_col * freq_len + row]`, where `local_col` counts up from
+/// `first_col`. The dB values are bit-for-bit identical to the matching cells
+/// of [`compute_tile`], which is what lets a cache keyed by column block serve
+/// any viewport that overlaps it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColumnBlock {
+    /// Column-major raw PSD in `10·log10(Pa²/Hz)`.
+    pub db: Vec<f32>,
+    /// Global index of the first column present.
+    pub first_col: usize,
+    /// Number of columns present (may be shorter than requested at the grid end).
+    pub col_count: usize,
+    /// Number of frequency rows per column.
+    pub freq_len: usize,
+}
+
+/// Returns the global time and frequency axes without running any FFT.
+#[must_use]
+pub fn analysis_axes(audio: AudioView<'_>, params: &SpectrogramParams) -> AnalysisAxes {
+    let analysis = Analysis::new(audio.sample_rate(), audio.duration(), params);
+    AnalysisAxes {
+        times: analysis.frame_grid.centers().collect(),
+        frequencies: analysis.frequencies,
+    }
+}
+
+/// Computes raw PSD dB for a contiguous block of global frame columns.
+///
+/// Columns are `[first_col, first_col + col_count)` intersected with the
+/// object-level frame grid; every frequency row is included. Frame centres come
+/// from the same whole-audio grid [`compute_tile`] uses, so the block's values
+/// match a tile that overlaps it bit for bit.
+#[must_use]
+pub fn compute_column_block(
+    audio: AudioView<'_>,
+    params: &SpectrogramParams,
+    first_col: usize,
+    col_count: usize,
+) -> ColumnBlock {
+    let mono = audio.mono_mix();
+    let analysis = Analysis::new(audio.sample_rate(), audio.duration(), params);
+    let centers: Vec<f64> = analysis.frame_grid.centers().collect();
+    let freq_len = analysis.frequencies.len();
+    let start = first_col.min(centers.len());
+    let end = first_col.saturating_add(col_count).min(centers.len());
+    let mut fft = RealFftPlan::new();
+    let mut db = Vec::with_capacity(end.saturating_sub(start) * freq_len);
+    for &center in &centers[start..end] {
+        let spectrum = analysis.frame_db(mono.as_ref(), center, &mut fft);
+        db.extend(spectrum.iter().map(|&v| v as f32));
+    }
+    ColumnBlock {
+        db,
+        first_col: start,
+        col_count: end.saturating_sub(start),
+        freq_len,
+    }
+}
+
 struct Analysis {
     sample_rate: f64,
     frame_grid: FrameGrid,
@@ -333,7 +410,15 @@ fn frequency_grid(
     (bins, frequencies)
 }
 
-fn select_axis_indices(axis: &[f64], start: f64, end: f64, pixels: usize) -> Vec<usize> {
+/// Selects the axis indices a tile column or row range maps to.
+///
+/// Returns the snapped indices of `axis` that fall inside `[start, end]`, nearest
+/// index-resampled to exactly `pixels` entries when the natural count differs.
+/// The result is empty when no axis point lies in the range. Both a tile request
+/// and a cached column block resolve their coordinates through this function, so
+/// identical `(axis, start, end, pixels)` inputs always pick identical indices.
+#[must_use]
+pub fn select_axis_indices(axis: &[f64], start: f64, end: f64, pixels: usize) -> Vec<usize> {
     if axis.is_empty() || pixels == 0 {
         return Vec::new();
     }
@@ -540,6 +625,61 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn column_block_matches_compute_tile_cells_bit_for_bit() {
+        let audio = sine_audio(16_000.0, 0.16, 1000.0);
+        let params = SpectrogramParams {
+            window_length: 0.01,
+            max_frequency: 2400.0,
+            time_step: 0.004,
+            frequency_step: 80.0,
+            ..SpectrogramParams::default()
+        };
+        let view = audio.slice_samples(0..audio.frames());
+        let axes = analysis_axes(view.clone(), &params);
+        let n_time = axes.times.len();
+        let n_freq = axes.frequencies.len();
+        assert!(n_time > 4 && n_freq > 2);
+
+        // A tile spanning the whole grid: every cell must match the column block.
+        let tile = compute_tile(
+            view.clone(),
+            &TileRequest {
+                t0: axes.times[0],
+                t1: *axes.times.last().unwrap(),
+                f0: axes.frequencies[0],
+                f1: *axes.frequencies.last().unwrap(),
+                width_px: n_time as u32,
+                height_px: n_freq as u32,
+                params,
+            },
+        );
+        let block = compute_column_block(view, &params, 0, n_time);
+        assert_eq!(block.col_count, n_time);
+        assert_eq!(block.freq_len, n_freq);
+        for (t, _) in axes.times.iter().enumerate() {
+            for (f, _) in axes.frequencies.iter().enumerate() {
+                let tile_v = tile.db[f * n_time + t];
+                let block_v = block.db[t * n_freq + f];
+                assert_eq!(tile_v.to_bits(), block_v.to_bits());
+            }
+        }
+    }
+
+    #[test]
+    fn column_block_clamps_at_the_grid_end() {
+        let audio = sine_audio(16_000.0, 0.05, 800.0);
+        let params = SpectrogramParams::default();
+        let view = audio.slice_samples(0..audio.frames());
+        let axes = analysis_axes(view.clone(), &params);
+        let n_time = axes.times.len();
+        // Requesting far past the end yields only the frames that exist.
+        let block = compute_column_block(view, &params, n_time.saturating_sub(2), 512);
+        assert_eq!(block.first_col, n_time.saturating_sub(2));
+        assert_eq!(block.col_count, n_time - n_time.saturating_sub(2));
+        assert_eq!(block.db.len(), block.col_count * block.freq_len);
     }
 
     #[test]

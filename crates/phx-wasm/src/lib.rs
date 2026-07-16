@@ -836,6 +836,17 @@ impl WasmEngine {
         Ok(Uint8Array::from(rgba.as_slice()))
     }
 
+    /// Number of raw dB spectrogram blocks currently held in the tile cache.
+    ///
+    /// A colormap, theme, or dynamic-range change must leave this unchanged: the
+    /// engine re-colorizes cached dB rather than recomputing the STFT. The perf
+    /// probe reads it to prove that property.
+    #[wasm_bindgen(js_name = spectrogramCachedBlockCount)]
+    #[must_use]
+    pub fn spectrogram_cached_block_count(&self) -> usize {
+        self.inner.spectrogram_cached_block_count()
+    }
+
     /// Computes the pitch contour of `id` over its whole signal.
     ///
     /// `floor_hz`/`ceiling_hz` are the two [`phx_engine::PitchParams`] fields

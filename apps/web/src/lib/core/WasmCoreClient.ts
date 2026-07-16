@@ -104,6 +104,24 @@ export class WasmCoreClient implements CoreClient {
     return createImageBitmap(image);
   }
 
+  /**
+   * Times an isolated STFT+colorize against a recolor-only pass over the same
+   * viewport, and reports the raw-dB block count before and after the recolor.
+   * A recolor must not grow the count. Used by the perf probe; not part of the
+   * rendering path.
+   */
+  spectrogramProbe(
+    id: AudioId,
+    req: SpectrogramTileRequest
+  ): Promise<{
+    stftMs: number;
+    recolorMs: number;
+    blocksAfterStft: number;
+    blocksAfterRecolor: number;
+  }> {
+    return this.#call({ method: 'spectrogramProbe', audioId: id, req });
+  }
+
   pitchTrack(id: AudioId, floorHz: number, ceilingHz: number): Promise<PitchTrackData> {
     return this.#call({ method: 'pitchTrack', audioId: id, floorHz, ceilingHz });
   }

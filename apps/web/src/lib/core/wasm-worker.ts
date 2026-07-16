@@ -31,6 +31,7 @@ type RequestMessage =
   | { id: number; method: 'abortRecording'; recordingId: bigint }
   | { id: number; method: 'waveformSlice'; audioId: AudioId; t0: number; t1: number; px: number }
   | { id: number; method: 'spectrogramTile'; audioId: AudioId; req: SpectrogramTileRequest }
+  | { id: number; method: 'spectrogramProbe'; audioId: AudioId; req: SpectrogramTileRequest }
   | { id: number; method: 'pitchTrack'; audioId: AudioId; floorHz: number; ceilingHz: number }
   | {
       id: number;
@@ -352,6 +353,45 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
           { id: message.id, ok: true, result: { width: req.widthPx, height: req.heightPx, rgba: copy } },
           { transfer: [copy.buffer] }
         );
+        return;
+      }
+      case 'spectrogramProbe': {
+        // Isolated engine timing for the perf report: the first colorize warms
+        // the raw-dB block cache (STFT + colorize), the second re-colorizes the
+        // same cached dB under a different palette (no STFT). The cached-block
+        // count must not grow between them.
+        const req = message.req;
+        const run = (cm: SpectrogramTileRequest['colormap']) =>
+          wasm.spectrogramTileRgba(
+            message.audioId,
+            req.t0,
+            req.t1,
+            req.f0,
+            req.f1,
+            req.widthPx,
+            req.heightPx,
+            req.windowLength,
+            req.maxFrequency,
+            req.timeStep,
+            req.frequencyStep,
+            req.dynamicRangeDb,
+            req.maxDb,
+            colormap(cm),
+            theme(req.theme)
+          );
+        const cold0 = performance.now();
+        run('Viridis');
+        const stftMs = performance.now() - cold0;
+        const blocksAfterStft = wasm.spectrogramCachedBlockCount();
+        const warm0 = performance.now();
+        run('Magma');
+        const recolorMs = performance.now() - warm0;
+        const blocksAfterRecolor = wasm.spectrogramCachedBlockCount();
+        postMessage({
+          id: message.id,
+          ok: true,
+          result: { stftMs, recolorMs, blocksAfterStft, blocksAfterRecolor }
+        } satisfies ResponseMessage);
         return;
       }
       case 'pitchTrack': {
