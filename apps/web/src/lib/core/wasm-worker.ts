@@ -25,6 +25,10 @@ import type {
 
 type RequestMessage =
   | { id: number; method: 'importAudio'; bytes: ArrayBuffer; name: string }
+  | { id: number; method: 'beginRecording'; sampleRate: number; channels: number }
+  | { id: number; method: 'appendSamples'; recordingId: bigint; samples: ArrayBuffer }
+  | { id: number; method: 'finishRecording'; recordingId: bigint; name: string }
+  | { id: number; method: 'abortRecording'; recordingId: bigint }
   | { id: number; method: 'waveformSlice'; audioId: AudioId; t0: number; t1: number; px: number }
   | { id: number; method: 'spectrogramTile'; audioId: AudioId; req: SpectrogramTileRequest }
   | { id: number; method: 'pitchTrack'; audioId: AudioId; floorHz: number; ceilingHz: number }
@@ -271,6 +275,41 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
           hash
         };
         postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'beginRecording': {
+        const result = wasm.beginRecording(message.sampleRate, message.channels);
+        postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'appendSamples': {
+        const samples = new Float32Array(message.samples);
+        wasm.appendSamples(message.recordingId, samples);
+        postMessage({ id: message.id, ok: true, result: undefined } satisfies ResponseMessage);
+        return;
+      }
+      case 'finishRecording': {
+        const finished = wasm.finishRecording(message.recordingId, message.name);
+        const audioId = finished.audio;
+        const source = finished.wav;
+        const wav = new Uint8Array(source.length);
+        wav.set(source);
+        const hash = wasmContentHash(wav);
+        const info = wasm.audioInfo(audioId);
+        const result = {
+          audioId,
+          duration: info.duration,
+          sampleRate: info.sampleRate,
+          channels: info.channels,
+          hash,
+          wav
+        };
+        postMessage({ id: message.id, ok: true, result }, { transfer: [wav.buffer] });
+        return;
+      }
+      case 'abortRecording': {
+        wasm.abortRecording(message.recordingId);
+        postMessage({ id: message.id, ok: true, result: undefined } satisfies ResponseMessage);
         return;
       }
       case 'waveformSlice': {

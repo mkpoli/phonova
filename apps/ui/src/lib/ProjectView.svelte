@@ -17,6 +17,10 @@
     onBack: () => void;
     onSave: () => void;
     onThemeChange: (theme: 'light' | 'dark') => void;
+    /** Starts a microphone recording; absent when the browser cannot capture. */
+    onStartRecording?: () => void;
+    /** Whether a take is currently being captured. */
+    recording?: boolean;
   }
 
   let {
@@ -31,7 +35,9 @@
     onImportFiles,
     onBack,
     onSave,
-    onThemeChange
+    onThemeChange,
+    onStartRecording,
+    recording = false
   }: Props = $props();
 
   let dragging = $state(false);
@@ -103,6 +109,17 @@
         {dirty ? 'Unsaved changes' : 'All changes saved'}
       </span>
       <button type="button" onclick={onSave} data-testid="save-project" disabled={!dirty}>Save</button>
+      {#if onStartRecording}
+        <button
+          type="button"
+          class="record"
+          data-testid="record"
+          disabled={recording}
+          onclick={() => onStartRecording?.()}
+        >
+          Record
+        </button>
+      {/if}
       <button
         type="button"
         class="ghost"
@@ -132,9 +149,22 @@
           Drop WAV files here, or choose them. A TextGrid beside a WAV of the same name attaches as
           its annotation.
         </p>
-        <button type="button" class="empty-action" data-testid="corpus-choose-files" onclick={() => fileInput?.click()}>
-          Choose files
-        </button>
+        <div class="empty-actions">
+          <button type="button" class="empty-action" data-testid="corpus-choose-files" onclick={() => fileInput?.click()}>
+            Choose files
+          </button>
+          {#if onStartRecording}
+            <button
+              type="button"
+              class="empty-action record"
+              data-testid="empty-record"
+              disabled={recording}
+              onclick={() => onStartRecording?.()}
+            >
+              Record
+            </button>
+          {/if}
+        </div>
       </div>
     {:else}
       <table class="corpus">
@@ -295,8 +325,28 @@
     font-size: 0.9rem;
   }
 
-  .empty-action {
+  .empty-actions {
+    display: flex;
+    gap: 0.5rem;
     margin-top: 0.4rem;
+  }
+
+  .record {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .record::before {
+    content: '';
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: #dc2626;
+  }
+
+  .record:disabled {
+    opacity: 0.5;
   }
 
   .hidden-input {

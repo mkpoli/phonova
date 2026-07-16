@@ -17,6 +17,10 @@
     onDeleteProject: (id: string) => void;
     onDuplicateProject: (id: string) => void;
     onThemeChange: (theme: 'light' | 'dark') => void;
+    /** Starts a microphone recording; absent when the browser cannot capture. */
+    onStartRecording?: () => void;
+    /** Whether a take is currently being captured. */
+    recording?: boolean;
   }
 
   let {
@@ -31,7 +35,9 @@
     onRenameProject,
     onDeleteProject,
     onDuplicateProject,
-    onThemeChange
+    onThemeChange,
+    onStartRecording,
+    recording = false
   }: Props = $props();
 
   let dragging = $state(false);
@@ -135,6 +141,17 @@
       <button type="button" class="ghost" onclick={() => fileInput?.click()} data-testid="choose-files">
         Choose files
       </button>
+      {#if onStartRecording}
+        <button
+          type="button"
+          class="ghost record"
+          data-testid="record"
+          disabled={recording}
+          onclick={() => onStartRecording?.()}
+        >
+          Record
+        </button>
+      {/if}
       <button
         type="button"
         class="ghost"
@@ -173,6 +190,17 @@
           <button type="button" class="ghost" data-testid="empty-choose-files" onclick={() => fileInput?.click()}>
             Choose files
           </button>
+          {#if onStartRecording}
+            <button
+              type="button"
+              class="ghost record"
+              data-testid="empty-record"
+              disabled={recording}
+              onclick={() => onStartRecording?.()}
+            >
+              Record
+            </button>
+          {/if}
         </div>
         {#if onOpenSample}
           <p class="empty-note">
@@ -290,6 +318,25 @@
 
   .ghost {
     color: var(--muted);
+  }
+
+  .record {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text);
+  }
+
+  .record::before {
+    content: '';
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: #dc2626;
+  }
+
+  .record:disabled {
+    opacity: 0.5;
   }
 
   .hidden-input {

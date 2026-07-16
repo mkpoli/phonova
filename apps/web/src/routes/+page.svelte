@@ -6,6 +6,7 @@
     EditorView,
     HomeView,
     ProjectView,
+    RecordingStrip,
     provideCommandRegistry,
     registerCommands,
     type AudioInfo,
@@ -15,6 +16,7 @@
   } from '@phonix/ui';
   import { WasmCoreClient } from '$lib/core/WasmCoreClient';
   import { WebAudioPlayback } from '$lib/playback/WebAudioPlayback';
+  import { MicRecorder, canRecord, type RecorderDevice, type RecorderLevel } from '$lib/audio/MicRecorder';
   import {
     AUTOSAVE_DEBOUNCE_MS,
     AUTOSAVE_MAX_WAIT_MS,
@@ -45,6 +47,23 @@
   let dirty = $state(false);
   let recovery = $state<{ id: string; name: string } | null>(null);
 
+  // Microphone recording. The recorder lives on the main thread and forwards
+  // planar chunks to the engine worker; the strip reads the meter and elapsed
+  // time. `recordingSupported` gates the Record controls so the desktop shell
+  // (no getUserMedia) simply never shows them.
+  let recordingSupported = $state(false);
+  let recorder: MicRecorder | null = null;
+  let capturing = $state(false);
+  let recordingId: bigint | null = null;
+  let recordingName = '';
+  let recordStartMs = 0;
+  let recordDevices = $state<RecorderDevice[]>([]);
+  let recordDeviceId = $state('');
+  let recordLevel = $state<RecorderLevel>({ rms: 0, peak: 0, clipped: false });
+  let recordClipLatched = $state(false);
+  let recordElapsed = $state(0);
+  let recordSampleRate = $state(0);
+
   const commands = provideCommandRegistry();
 
   // Autosave debounce, driven from a coarse tick against the engine state hash.
@@ -69,11 +88,15 @@
     applyTheme(theme);
     void refreshProjects();
 
+    recordingSupported = canRecord();
+    if (recordingSupported) recorder = new MicRecorder(`${base}/recorder-worklet.js`);
+
     const tick = () => {
       if (playback) {
         cursorTime = playback.position;
         isPlaying = playback.playing;
       }
+      if (capturing) recordElapsed = (performance.now() - recordStartMs) / 1000;
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
@@ -82,6 +105,7 @@
     return () => {
       cancelAnimationFrame(frame);
       if (saveTimer) clearInterval(saveTimer);
+      recorder?.cancel();
       client?.destroy();
       playback?.close();
     };
@@ -430,6 +454,167 @@
     }
   }
 
+  function timestampName(): string {
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return (
+      `Recording ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
+      `${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`
+    );
+  }
+
+  function handleRecordLevel(level: RecorderLevel) {
+    recordLevel = level;
+    if (level.clipped) recordClipLatched = true;
+  }
+
+  async function startRecording() {
+    if (!client || !store || !recorder || capturing) return;
+    error = '';
+    try {
+      // Recording always lands in a project; make one on the home screen.
+      if (!project) {
+        const created = await store.create('Recordings');
+        project = created;
+        route = 'project';
+        resetAutosaveBaseline();
+        await refreshProjects();
+      }
+      recordingName = timestampName();
+      recordClipLatched = false;
+      recordLevel = { rms: 0, peak: 0, clipped: false };
+      recordElapsed = 0;
+      recordSampleRate = 0;
+
+      // Buffer chunks that arrive before the engine take is open, then forward
+      // in arrival order so no leading audio is lost to the startup race.
+      let recId: bigint | null = null;
+      const buffered: Float32Array[] = [];
+      const forward = (samples: Float32Array) => {
+        if (recId === null) buffered.push(samples);
+        else void client?.appendSamples(recId, samples);
+      };
+
+      const started = await recorder.start({
+        deviceId: recordDeviceId || undefined,
+        onChunk: (chunk) => forward(chunk.samples),
+        onLevel: handleRecordLevel
+      });
+      recordSampleRate = started.sampleRate;
+      recId = await client.beginRecording(started.sampleRate, started.channels);
+      for (const samples of buffered) void client.appendSamples(recId, samples);
+      recordingId = recId;
+      recordStartMs = performance.now();
+      capturing = true;
+
+      // Device labels are readable now that permission is granted.
+      recordDevices = await recorder.listDevices();
+      if (!recordDeviceId && recordDevices.length > 0) recordDeviceId = recordDevices[0].deviceId;
+    } catch (caught) {
+      recorder?.cancel();
+      capturing = false;
+      recordingId = null;
+      report(caught);
+    }
+  }
+
+  async function stopRecording() {
+    if (!client || !store || !recorder || !capturing || recordingId === null || !project) return;
+    const current = project;
+    const recId = recordingId;
+    const name = recordingName;
+    try {
+      await recorder.stop();
+      const finished = await client.finishRecording(recId, name);
+      const entry = await store.addRecording(current, name, finished);
+      project = { ...current };
+      capturing = false;
+      recordingId = null;
+      resetAutosaveBaseline();
+      await refreshProjects();
+      await openRecording(entry);
+    } catch (caught) {
+      capturing = false;
+      recordingId = null;
+      report(caught);
+    }
+  }
+
+  async function cancelRecording() {
+    if (!recorder || !capturing) return;
+    const recId = recordingId;
+    recorder.cancel();
+    capturing = false;
+    recordingId = null;
+    try {
+      if (recId !== null) await client?.abortRecording(recId);
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  function toggleRecording() {
+    if (capturing) void stopRecording();
+    else void startRecording();
+  }
+
+  async function selectRecordDevice(deviceId: string) {
+    recordDeviceId = deviceId;
+    // Switching devices mid-take restarts the capture graph on the new input
+    // while the same engine take keeps accumulating.
+    if (!capturing || !recorder || recordingId === null) return;
+    const recId = recordingId;
+    try {
+      recorder.cancel();
+      const started = await recorder.start({
+        deviceId: deviceId || undefined,
+        onChunk: (chunk) => void client?.appendSamples(recId, chunk.samples),
+        onLevel: handleRecordLevel
+      });
+      recordSampleRate = started.sampleRate;
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  registerCommands([
+    {
+      id: 'startRecording',
+      title: 'Start recording',
+      group: 'Project',
+      api: ['beginRecording'],
+      shortcut: 'R',
+      keywords: ['microphone', 'capture', 'mic', 'record'],
+      enabled: () => recordingSupported && !capturing,
+      run: () => void startRecording()
+    },
+    {
+      id: 'stopRecording',
+      title: 'Stop recording',
+      group: 'Project',
+      api: ['finishRecording'],
+      shortcut: 'R',
+      keywords: ['microphone', 'capture', 'mic', 'finish'],
+      enabled: () => capturing,
+      run: () => void stopRecording()
+    }
+  ]);
+
+  function handleWindowKeydown(event: KeyboardEvent) {
+    if (!recordingSupported) return;
+    if (event.key.toLowerCase() !== 'r' || event.metaKey || event.ctrlKey || event.altKey) return;
+    const target = event.target;
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLSelectElement ||
+      target instanceof HTMLTextAreaElement
+    ) {
+      return;
+    }
+    event.preventDefault();
+    toggleRecording();
+  }
+
   const recordingChoices = $derived(
     project?.recordings.map((entry) => ({ mediaId: entry.mediaId, name: entry.name })) ?? []
   );
@@ -445,6 +630,8 @@
   });
 </script>
 
+<svelte:window onkeydown={handleWindowKeydown} />
+
 {#if route === 'home'}
   <HomeView
     {projects}
@@ -459,6 +646,8 @@
     onDeleteProject={deleteProject}
     onDuplicateProject={duplicateProject}
     onThemeChange={handleThemeChange}
+    onStartRecording={recordingSupported ? startRecording : undefined}
+    recording={capturing}
   />
 {:else if route === 'project' && project}
   <ProjectView
@@ -474,6 +663,8 @@
     onBack={backToHome}
     onSave={saveProject}
     onThemeChange={handleThemeChange}
+    onStartRecording={recordingSupported ? startRecording : undefined}
+    recording={capturing}
   />
 {:else if route === 'editor'}
   <EditorView
@@ -502,6 +693,22 @@
       cursorTime = t0;
       void playback?.playRange(t0, t1);
     }}
+    onStartRecording={recordingSupported ? startRecording : undefined}
+    recording={capturing}
+  />
+{/if}
+
+{#if capturing}
+  <RecordingStrip
+    devices={recordDevices}
+    selectedDeviceId={recordDeviceId}
+    level={recordLevel}
+    clipLatched={recordClipLatched}
+    elapsedSeconds={recordElapsed}
+    sampleRate={recordSampleRate}
+    onSelectDevice={selectRecordDevice}
+    onStop={stopRecording}
+    onCancel={cancelRecording}
   />
 {/if}
 

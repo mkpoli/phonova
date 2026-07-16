@@ -50,6 +50,10 @@
     currentRecordingId?: number | null;
     onSwitchRecording?: (mediaId: number) => void;
     onPlaySelection?: (t0: number, t1: number) => void;
+    /** Starts a microphone recording; absent when the browser cannot capture. */
+    onStartRecording?: () => void;
+    /** Whether a take is currently being captured. */
+    recording?: boolean;
   }
 
   let {
@@ -71,7 +75,9 @@
     recordings,
     currentRecordingId,
     onSwitchRecording,
-    onPlaySelection
+    onPlaySelection,
+    onStartRecording,
+    recording = false
   }: Props = $props();
 
   let viewport = $state<ViewportState>(defaultViewport());
@@ -485,6 +491,17 @@
       {:else}
         <span class="crumb-current">{audio?.name ?? ''}</span>
       {/if}
+      {#if onStartRecording}
+        <button
+          type="button"
+          class="crumb-record"
+          data-testid="record"
+          disabled={recording}
+          onclick={() => onStartRecording?.()}
+        >
+          Record
+        </button>
+      {/if}
     </nav>
 
   <TransportBar
@@ -635,6 +652,33 @@
 
   .crumb-current {
     color: var(--muted);
+  }
+
+  .crumb-record {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid var(--chrome-strong);
+    border-radius: 5px;
+    background: var(--panel-soft);
+    color: var(--text);
+    padding: 0.15rem 0.5rem;
+  }
+
+  .crumb-record::before {
+    content: '';
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: #dc2626;
+  }
+
+  .crumb-record:disabled {
+    opacity: 0.5;
+  }
+
+  .crumb-record:hover:not(:disabled) {
+    background: var(--panel);
   }
 
   .recording-switch {

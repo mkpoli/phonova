@@ -26,6 +26,16 @@ import type {
   VoiceReportData
 } from './types';
 
+/** A finished recording: its live audio id, metadata, and WAV bytes to persist. */
+export interface FinishedRecordingResult {
+  audioId: AudioId;
+  duration: number;
+  sampleRate: number;
+  channels: number;
+  hash: string;
+  wav: Uint8Array;
+}
+
 type Pending = {
   resolve: (value: unknown) => void;
   reject: (reason?: unknown) => void;
@@ -56,6 +66,26 @@ export class WasmCoreClient implements CoreClient {
     const file = typeof src === 'string' ? await fileFromUrl(src) : src;
     const bytes = await file.arrayBuffer();
     return this.#call<AudioInfo>({ method: 'importAudio', bytes, name: file.name }, [bytes]);
+  }
+
+  beginRecording(sampleRate: number, channels: number): Promise<bigint> {
+    return this.#call({ method: 'beginRecording', sampleRate, channels });
+  }
+
+  appendSamples(recordingId: bigint, samples: Float32Array): Promise<void> {
+    const buffer = samples.buffer.slice(
+      samples.byteOffset,
+      samples.byteOffset + samples.byteLength
+    );
+    return this.#call({ method: 'appendSamples', recordingId, samples: buffer }, [buffer]);
+  }
+
+  finishRecording(recordingId: bigint, name: string): Promise<FinishedRecordingResult> {
+    return this.#call({ method: 'finishRecording', recordingId, name });
+  }
+
+  abortRecording(recordingId: bigint): Promise<void> {
+    return this.#call({ method: 'abortRecording', recordingId });
   }
 
   waveformSlice(id: AudioId, t0: number, t1: number, px: number): Promise<MinMaxPyramidSlice> {

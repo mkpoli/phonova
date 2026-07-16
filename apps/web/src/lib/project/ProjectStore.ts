@@ -1,4 +1,4 @@
-import type { WasmCoreClient } from '$lib/core/WasmCoreClient';
+import type { FinishedRecordingResult, WasmCoreClient } from '$lib/core/WasmCoreClient';
 import type { ProjectSummary, RecordingEntry, SaveProjectSpec } from '$lib/core/types';
 
 /** Directory under OPFS that holds one subdirectory per project. */
@@ -219,6 +219,42 @@ export class ProjectStore {
     }
 
     await this.writeProjectFile(project);
+  }
+
+  /**
+   * Persists a finished recording as a corpus entry.
+   *
+   * The take already lives in the session (the engine materialized it on
+   * finish), so this writes only its WAV bytes under `audio/` and appends the
+   * recording — the same OPFS layout and project-file write an import produces,
+   * with the content hash the engine computed. The live audio id is carried
+   * straight in so the editor can open the take without decoding it again.
+   */
+  async addRecording(
+    project: ProjectState,
+    name: string,
+    finished: FinishedRecordingResult
+  ): Promise<RecordingEntry> {
+    const dir = await projectDir(project.id, true);
+    const audioDir = await dir.getDirectoryHandle(AUDIO_DIR, { create: true });
+    const fileName = uniqueName(`${name}.wav`, project.recordings);
+    await writeFileBytes(audioDir, fileName, finished.wav);
+    const recording: RecordingEntry = {
+      mediaId: project.nextMediaId++,
+      name: stem(fileName),
+      fileName,
+      relativePath: `${AUDIO_DIR}/${fileName}`,
+      hash: finished.hash,
+      duration: finished.duration,
+      sampleRate: finished.sampleRate,
+      channels: finished.channels,
+      audioId: finished.audioId,
+      annotationId: null,
+      hasAnnotation: false
+    };
+    project.recordings.push(recording);
+    await this.writeProjectFile(project);
+    return recording;
   }
 
   /**
