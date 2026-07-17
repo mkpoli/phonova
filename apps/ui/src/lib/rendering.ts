@@ -51,15 +51,40 @@ function compileShader(gl: WebGL2RenderingContext, type: number, source: string)
   return shader;
 }
 
-export function resizeCanvas(canvas: HTMLCanvasElement) {
+/**
+ * The backing-store size a canvas's CSS box calls for, without touching the
+ * canvas yet. Mutating `canvas.width`/`height` clears the backing store
+ * immediately, so a caller that must await fresh pixels before redrawing
+ * (a wasm slice or tile fetch) measures first with this, keeps showing the
+ * old bitmap (the browser scales it to the new CSS box like an image) for
+ * the duration of that fetch, and only calls {@link applyCanvasSize} once the
+ * new pixels are ready to draw in the same tick — a resize never shows a
+ * blank frame.
+ */
+export function measureCanvasTarget(canvas: HTMLCanvasElement) {
   const dpr = Math.max(1, window.devicePixelRatio || 1);
   const width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
   const height = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+  return { width, height, dpr };
+}
+
+/** Resizes the backing store to `width`×`height` device pixels, a no-op if already that size. */
+export function applyCanvasSize(canvas: HTMLCanvasElement, width: number, height: number) {
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
     canvas.height = height;
   }
-  return { width, height, dpr };
+}
+
+/**
+ * Measures and immediately applies the backing-store size. Safe for a caller
+ * that redraws synchronously right after (no `await` between this call and
+ * the draw), since there's no window where the canvas sits cleared.
+ */
+export function resizeCanvas(canvas: HTMLCanvasElement) {
+  const target = measureCanvasTarget(canvas);
+  applyCanvasSize(canvas, target.width, target.height);
+  return target;
 }
 
 /**

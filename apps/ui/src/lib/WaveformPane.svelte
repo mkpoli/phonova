@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { AudioInfo, CoreClientLike, Selection, ViewportState } from './types';
   import {
+    applyCanvasSize,
     cssVar,
     FrameTimeMonitor,
     hexToRgb01,
     makeProgram,
-    resizeCanvas,
+    measureCanvasTarget,
     slippyTransform,
     type DrawnViewport
   } from './rendering';
@@ -120,15 +121,24 @@
     if (!canvas) return;
     const gen = ++reqGen;
     const requested = liveViewport();
-    const { width, height, dpr } = resizeCanvas(canvas);
+    // Measure the target size without touching the backing store yet: a
+    // resize's new CSS box already stretches the still-displayed bitmap (like
+    // an image), so nothing goes blank while this awaits a fresh slice.
+    const { width, height, dpr } = measureCanvasTarget(canvas);
     const data = await getWaveform(width);
     if (gen !== reqGen || !canvas) return;
     if (!data) {
+      applyCanvasSize(canvas, width, height);
       drawEmpty(width, height);
       displayed = null;
+      displayedW = width;
+      displayedH = height;
       return;
     }
     if (data === displayed && width === displayedW && height === displayedH) return;
+    // Resize the backing store only now, in the same tick as the redraw, so
+    // the canvas is never cleared without fresh pixels ready to fill it.
+    applyCanvasSize(canvas, width, height);
     drawSlice(width, height, dpr, data, requested);
     displayed = data;
     displayedW = width;

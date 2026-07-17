@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { AudioInfo, CoreClientLike, ViewportState } from './types';
   import { clampViewport } from './types';
-  import { cssVar, resizeCanvas } from './rendering';
+  import { applyCanvasSize, cssVar, measureCanvasTarget } from './rendering';
 
   interface Props {
     client: CoreClientLike | null;
@@ -46,15 +46,26 @@
 
   async function draw() {
     if (!canvas) return;
-    const { width, height, dpr } = resizeCanvas(canvas);
+    // Measure without resizing the backing store yet: the old bitmap keeps
+    // showing, stretched to the new CSS box by the browser, while this awaits
+    // a fresh slice — a resize never clears the strip to blank first.
+    const { width, height, dpr } = measureCanvasTarget(canvas);
+    if (!audio) {
+      applyCanvasSize(canvas, width, height);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.fillStyle = cssVar('--canvas', '#f8fafc');
+      ctx.fillRect(0, 0, width, height);
+      return;
+    }
+    const data = await getSlice(width);
+    if (!data || !canvas) return;
+    applyCanvasSize(canvas, width, height);
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = cssVar('--canvas', '#f8fafc');
     ctx.fillRect(0, 0, width, height);
-    if (!audio) return;
-    const data = await getSlice(width);
-    if (!data || !canvas) return;
     ctx.strokeStyle = cssVar('--accent', '#0f766e');
     ctx.lineWidth = Math.max(1, dpr);
     ctx.beginPath();

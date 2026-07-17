@@ -10,11 +10,12 @@
     WasmColormapName
   } from './types';
   import {
+    applyCanvasSize,
     cssVar,
     FrameTimeMonitor,
     hexToRgb01,
     makeProgram,
-    resizeCanvas,
+    measureCanvasTarget,
     slippyTransform,
     type DrawnViewport
   } from './rendering';
@@ -170,18 +171,27 @@
     if (!canvas) return;
     const gen = ++reqGen;
     const requested = liveViewport();
-    const { width, height, dpr } = resizeCanvas(canvas);
+    // Measure the target size without touching the backing store yet: a
+    // resize's new CSS box already stretches the still-displayed bitmap (like
+    // an image), so nothing goes blank while this awaits a fresh tile.
+    const { width, height, dpr } = measureCanvasTarget(canvas);
     const bitmap = await getTile(width, height);
     // Dropped: a newer pan or zoom already superseded this request.
     if (gen !== reqGen || !canvas) return;
     if (!bitmap) {
+      applyCanvasSize(canvas, width, height);
       drawEmpty(width, height);
       displayed = null;
+      displayedW = width;
+      displayedH = height;
       return;
     }
     // Same tile and canvas size: the current pixels are already correct for
     // `base`, and the transform maps them onto the live viewport. Nothing to do.
     if (bitmap === displayed && width === displayedW && height === displayedH) return;
+    // Resize the backing store only now, in the same tick as the redraw, so
+    // the canvas is never cleared without fresh pixels ready to fill it.
+    applyCanvasSize(canvas, width, height);
     drawBitmap(width, height, dpr, bitmap);
     displayed = bitmap;
     displayedW = width;
