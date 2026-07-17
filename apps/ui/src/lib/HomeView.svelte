@@ -733,16 +733,21 @@
   .tools {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
     gap: 0.5rem;
+    min-width: 0;
   }
 
   .create {
     display: flex;
     gap: 0.4rem;
+    min-width: 0;
   }
 
   .create input {
-    min-width: 12rem;
+    min-width: 8rem;
+    flex: 1 1 12rem;
     padding: 0.4rem 0.65rem;
     border: 1px solid var(--chrome-strong);
     border-radius: var(--radius-md);
@@ -763,6 +768,8 @@
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
+    flex: none;
+    white-space: nowrap;
     border: 1px solid var(--chrome-strong);
     border-radius: var(--radius-md);
     background: var(--panel-soft);
@@ -800,7 +807,7 @@
   .action {
     border-color: var(--action);
     background: var(--action);
-    color: #fff;
+    color: var(--on-accent);
   }
 
   .action:hover:not(:disabled) {
