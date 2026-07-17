@@ -7,9 +7,14 @@
     selection: Selection | null;
     onChange: (selection: Selection | null) => void;
     onSeek?: (time: number) => void;
+    /**
+     * Double-click intent: `zoom` when the second click lands inside the live
+     * selection, `fit` when it lands on empty pane space.
+     */
+    onDoubleZoom?: (intent: 'zoom' | 'fit') => void;
   }
 
-  let { viewport, mode, selection, onChange, onSeek }: Props = $props();
+  let { viewport, mode, selection, onChange, onSeek, onDoubleZoom }: Props = $props();
 
   let root = $state<HTMLDivElement | null>(null);
   let dragging = $state(false);
@@ -18,8 +23,24 @@
   let startY = 0;
   let startT = 0;
   let startF = 0;
+  // Timestamp and place of the last click, to recognise a double-click without
+  // the DOM `dblclick` (which would arrive after the first click already cleared
+  // the selection).
+  let lastClickMs = 0;
+  let lastClickX = 0;
+  let lastClickY = 0;
 
   const CLICK_SLOP_PX = 3;
+  const DOUBLE_CLICK_MS = 350;
+
+  // Whether a signal point falls inside the current selection: time for a
+  // waveform selection, time and frequency for a spectrogram box.
+  function insideSelection(time: number, freq: number): boolean {
+    if (!selection) return false;
+    if (time < selection.t0 || time > selection.t1) return false;
+    if (selection.mode === 'box') return freq >= selection.f0 && freq <= selection.f1;
+    return true;
+  }
 
   function ratios(event: PointerEvent) {
     const rect = root!.getBoundingClientRect();
@@ -84,8 +105,28 @@
     const movedY = Math.abs(event.clientY - startY);
     const isClick = movedX < CLICK_SLOP_PX && (mode === 'time' || movedY < CLICK_SLOP_PX);
     if (isClick) {
-      onChange(null);
-      onSeek?.(startT);
+      const now = performance.now();
+      const isDouble =
+        now - lastClickMs < DOUBLE_CLICK_MS &&
+        Math.abs(event.clientX - lastClickX) < CLICK_SLOP_PX &&
+        Math.abs(event.clientY - lastClickY) < CLICK_SLOP_PX;
+      lastClickMs = now;
+      lastClickX = event.clientX;
+      lastClickY = event.clientY;
+      const inside = insideSelection(startT, startF);
+      if (isDouble) {
+        // Inside the live selection zooms to it; empty space fits the file.
+        onDoubleZoom?.(inside ? 'zoom' : 'fit');
+        lastClickMs = 0;
+        return;
+      }
+      // A click inside the selection seeks but keeps the box, so a following
+      // second click can still zoom to it; a click on empty space clears.
+      if (inside) onSeek?.(startT);
+      else {
+        onChange(null);
+        onSeek?.(startT);
+      }
       return;
     }
     const { rx, ry } = ratios(event);

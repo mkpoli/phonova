@@ -73,6 +73,10 @@
   --overlay-pitch: #9cc4ff;
   --overlay-formant: #ff5a52;
   --overlay-intensity: #ffcc33;
+  /* Ghost waveform stroke, traced over the spectrogram when the waveform pane is
+     hidden. A light neutral reads over any palette; the layer's own low opacity
+     keeps it subordinate to the signal. */
+  --overlay-ghost: #f2f0ea;
 
   --shadow-sm: 0 1px 2px rgba(26, 26, 22, 0.07), 0 1px 1px rgba(26, 26, 22, 0.04);
   --shadow-md: 0 6px 18px rgba(26, 26, 22, 0.09), 0 2px 5px rgba(26, 26, 22, 0.06);
@@ -113,6 +117,7 @@
   --overlay-pitch: #9cc4ff;
   --overlay-formant: #ff5a52;
   --overlay-intensity: #ffcc33;
+  --overlay-ghost: #eceae3;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.46), 0 2px 5px rgba(0, 0, 0, 0.5);

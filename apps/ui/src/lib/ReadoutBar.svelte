@@ -2,6 +2,7 @@
   import IconPlay from '~icons/lucide/play';
   import IconZoomIn from '~icons/lucide/zoom-in';
   import IconActivity from '~icons/lucide/activity';
+  import IconFilter from '~icons/lucide/filter';
   import IconX from '~icons/lucide/x';
   import { formatTime, type Selection, type SelectionReadout } from './types';
 
@@ -10,14 +11,29 @@
     readout: SelectionReadout | null;
     formantMeans: number[] | null;
     showFormants: boolean;
+    /** A band-filtered preview of the box selection is sounding right now. */
+    filteredPlaying?: boolean;
     onPlay: () => void;
     onZoom: () => void;
     onVoiceReport: () => void;
     onClear: () => void;
   }
 
-  let { selection, readout, formantMeans, showFormants, onPlay, onZoom, onVoiceReport, onClear }: Props =
-    $props();
+  let {
+    selection,
+    readout,
+    formantMeans,
+    showFormants,
+    filteredPlaying = false,
+    onPlay,
+    onZoom,
+    onVoiceReport,
+    onClear
+  }: Props = $props();
+
+  // A box selection plays through the engine's band filter, so its Play button
+  // states the band it will render rather than the plain transport.
+  const banded = $derived(selection.mode === 'box');
 
   function hz(value: number | null | undefined, digits = 0): string {
     return value === null || value === undefined || !Number.isFinite(value)
@@ -93,8 +109,18 @@
     {#if showFormants}
       <span class="marker" data-testid="provisional-marker">* provisional tracking</span>
     {/if}
+    {#if filteredPlaying}
+      <span class="filtered" data-testid="filtered-indicator">
+        <IconFilter aria-hidden="true" />
+        <span>filtered {selection.f0.toFixed(0)}–{selection.f1.toFixed(0)} Hz</span>
+      </span>
+    {/if}
     <button type="button" data-testid="selection-play" onclick={onPlay}>
-      <IconPlay aria-hidden="true" /><span>Play</span>
+      {#if banded}
+        <IconFilter aria-hidden="true" /><span>Play band</span>
+      {:else}
+        <IconPlay aria-hidden="true" /><span>Play</span>
+      {/if}
     </button>
     <button type="button" data-testid="selection-zoom" onclick={onZoom}>
       <IconZoomIn aria-hidden="true" /><span>Zoom to</span>
@@ -161,6 +187,20 @@
     color: var(--warn);
     font-size: 0.72rem;
     margin-right: 0.3rem;
+  }
+
+  .filtered {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--accent-strong);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+    margin-right: 0.3rem;
+  }
+
+  .filtered :global(svg) {
+    font-size: 0.8rem;
   }
 
   .actions button {

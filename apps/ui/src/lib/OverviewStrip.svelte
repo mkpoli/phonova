@@ -124,7 +124,9 @@
   .overview {
     display: block;
     width: 100%;
-    height: 4rem;
+    /* Slimmed to 60% of the earlier 4rem: the strip orients without taking
+       vertical room from the data panes. */
+    height: 2.4rem;
     border-bottom: 1px solid var(--chrome-strong);
     background: var(--canvas);
     touch-action: none;

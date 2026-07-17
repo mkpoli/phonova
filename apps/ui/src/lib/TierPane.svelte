@@ -36,6 +36,12 @@
     /** Fires when the pane repoints to a different document, including the
      * no-annotation state (`null`) reached by undoing an import or attach. */
     onAnnotationChange?: (id: bigint | null) => void;
+    /**
+     * Fires when an interval is clicked: the editor sets the time selection to
+     * `[t0, t1]` and plays it. Click never opens the label editor — that stays
+     * on Enter, double-click, and type-to-edit.
+     */
+    onIntervalActivate?: (t0: number, t1: number) => void;
   }
 
   let {
@@ -47,7 +53,8 @@
     viewport,
     cursorTime,
     onSeek,
-    onAnnotationChange
+    onAnnotationChange,
+    onIntervalActivate
   }: Props = $props();
 
   let paneEl = $state<HTMLElement | null>(null);
@@ -192,6 +199,20 @@
     activeTierId = tierId;
     activeIndex = index;
     focusPane();
+  }
+
+  // A click on a lane interval: activate it and hand its span up so the editor
+  // sets the time selection and plays it. Editing stays on Enter/double-click/
+  // type-to-edit, so a plain click never opens the label field.
+  function activateFromLane(tier: TierInfo, index: number) {
+    activateTier(tier.id, index);
+    if (tier.kind === 'interval') {
+      const interval = (intervalsByTier.get(tier.id) ?? [])[index];
+      if (interval) onIntervalActivate?.(interval.xmin, interval.xmax);
+    } else {
+      const point = (pointsByTier.get(tier.id) ?? [])[index];
+      if (point) onSeek?.(point.time);
+    }
   }
 
   function focusTierByDigit(digit: number) {
@@ -741,7 +762,7 @@
           editing={editing && editing.tierId === tier.id ? { targetId: editing.targetId, value: editing.value } : null}
           snapTimes={snapTimes}
           cursorTime={cursorTime}
-          onActivate={(index) => activateTier(tier.id, index)}
+          onActivate={(index) => activateFromLane(tier, index)}
           onEditRequest={(index) => { activateTier(tier.id, index); openEditor(index); }}
           onMoveBoundary={moveBoundaryTo}
           onEditInput={(value) => { if (editing) editing = { ...editing, value }; }}

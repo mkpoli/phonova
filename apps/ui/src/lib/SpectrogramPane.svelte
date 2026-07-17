@@ -20,6 +20,7 @@
     type DrawnViewport
   } from './rendering';
   import FrequencyRuler from './FrequencyRuler.svelte';
+  import GhostWaveform from './GhostWaveform.svelte';
   import SelectionLayer from './SelectionLayer.svelte';
   import TrackOverlay from './TrackOverlay.svelte';
 
@@ -35,6 +36,14 @@
     selection?: Selection | null;
     onSelectionChange?: (selection: Selection | null) => void;
     onSeek?: (time: number) => void;
+    /** Multiplies the frequency ceiling by `factor` (frequency-ruler drag). */
+    onScaleFrequency?: (factor: number) => void;
+    /** Restores the frequency ceiling to its default. */
+    onResetFrequency?: () => void;
+    /** Double-click intent: zoom to the active box, or fit the whole file. */
+    onDoubleZoom?: (intent: 'zoom' | 'fit') => void;
+    /** Traces the waveform envelope over the spectrogram (waveform pane hidden). */
+    ghostWaveform?: boolean;
   }
 
   let {
@@ -48,7 +57,11 @@
     onOverlayStats,
     selection = null,
     onSelectionChange,
-    onSeek
+    onSeek,
+    onScaleFrequency,
+    onResetFrequency,
+    onDoubleZoom,
+    ghostWaveform = false
   }: Props = $props();
   let canvas = $state<HTMLCanvasElement | null>(null);
   let notice = $state('');
@@ -310,8 +323,11 @@
       data-draw-time="0"
     ></canvas>
   {/key}
+  {#if ghostWaveform}
+    <GhostWaveform {client} {audio} {viewport} {theme} />
+  {/if}
   <TrackOverlay {client} {audio} {viewport} {theme} params={overlayParams} onStats={onOverlayStats} />
-  <FrequencyRuler {viewport} />
+  <FrequencyRuler {viewport} onScale={onScaleFrequency} onReset={onResetFrequency} />
   {#if audio && onSelectionChange}
     <SelectionLayer
       {viewport}
@@ -319,6 +335,7 @@
       {selection}
       onChange={onSelectionChange}
       {onSeek}
+      {onDoubleZoom}
     />
   {/if}
   <div class="pane-label">Spectrogram</div>

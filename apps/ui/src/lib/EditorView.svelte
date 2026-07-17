@@ -64,6 +64,9 @@
     onSwitchRecording?: (mediaId: number) => void;
     onRenameRecording?: (mediaId: number, name: string) => void;
     onPlaySelection?: (t0: number, t1: number) => void;
+    /** Plays a box selection through the engine's band filter; resolves when the
+     *  rendered preview finishes sounding. */
+    onPlayFilteredSelection?: (t0: number, t1: number, f0: number, f1: number) => Promise<void> | void;
     /** Starts a microphone recording; absent when the browser cannot capture. */
     onStartRecording?: () => void;
     /** Whether a take is currently being captured. */
@@ -92,11 +95,20 @@
     onSwitchRecording,
     onRenameRecording,
     onPlaySelection,
+    onPlayFilteredSelection,
     onStartRecording,
     recording = false
   }: Props = $props();
 
   let switcher = $state<{ show: () => void } | null>(null);
+
+  // The ceiling and amplitude a reset chip returns to; the chips appear the
+  // instant the live value departs these.
+  const DEFAULT_CEILING = defaultViewport().f1;
+  const DEFAULT_AMP = defaultViewport().ampScale;
+
+  let waveformVisible = $state(true);
+  let filteredPlaying = $state(false);
 
   let viewport = $state<ViewportState>(defaultViewport());
   let overlayParams = $state<OverlayParams>(defaultOverlayParams());
@@ -198,10 +210,85 @@
     });
   }
 
-  function playSelection() {
-    if (!selection) return;
-    onCursorChange?.(selection.t0);
-    onPlaySelection?.(selection.t0, selection.t1);
+  async function playSelection() {
+    const sel = selection;
+    if (!sel) return;
+    // A box plays band-filtered through the engine; a time selection plays the
+    // plain slice from the transport. The band case renders a preview and does
+    // not move the file cursor.
+    if (sel.mode === 'box' && onPlayFilteredSelection) {
+      filteredPlaying = true;
+      try {
+        await onPlayFilteredSelection(sel.t0, sel.t1, sel.f0, sel.f1);
+      } finally {
+        filteredPlaying = false;
+      }
+      return;
+    }
+    onCursorChange?.(sel.t0);
+    onPlaySelection?.(sel.t0, sel.t1);
+  }
+
+  // Transport Play / Space plays what the user is looking at, in priority order:
+  // an active selection's time span, else the visible viewport when zoomed in,
+  // else the whole file from the cursor. A box selection plays its time span
+  // unfiltered here — the band-filtered preview stays on the readout's own
+  // affordance.
+  function handleTransportToggle() {
+    if (isPlaying) {
+      onPlayToggle();
+      return;
+    }
+    if (selection) {
+      onCursorChange?.(selection.t0);
+      onPlaySelection?.(selection.t0, selection.t1);
+      return;
+    }
+    const zoomedIn = !!audio && viewport.t1 - viewport.t0 < audio.duration - 1e-6;
+    if (zoomedIn) {
+      onCursorChange?.(viewport.t0);
+      onPlaySelection?.(viewport.t0, viewport.t1);
+      return;
+    }
+    onPlayToggle();
+  }
+
+  // Double-click on a pane: inside the live selection zooms to it, empty pane
+  // space fits the whole file.
+  function handleDoubleZoom(intent: 'zoom' | 'fit') {
+    if (intent === 'zoom' && selection) zoomToSelection();
+    else fitFile();
+  }
+
+  function scaleFrequencyCeiling(factor: number) {
+    const f1 = Math.max(200, Math.min(20000, viewport.f1 * factor));
+    setViewport({ ...viewport, f1 });
+  }
+
+  function resetFrequencyCeiling() {
+    setViewport({ ...viewport, f1: DEFAULT_CEILING });
+  }
+
+  function scaleAmplitude(factor: number) {
+    setViewport({ ...viewport, ampScale: Math.max(0.25, Math.min(8, viewport.ampScale * factor)) });
+  }
+
+  function resetAmplitude() {
+    setViewport({ ...viewport, ampScale: DEFAULT_AMP });
+  }
+
+  function resetVerticalScale() {
+    setViewport({ ...viewport, f1: DEFAULT_CEILING, ampScale: DEFAULT_AMP });
+  }
+
+  function toggleWaveform() {
+    waveformVisible = !waveformVisible;
+  }
+
+  function handleTierInterval(t0: number, t1: number) {
+    selection = { t0, t1, f0: viewport.f0, f1: viewport.f1, mode: 'time' };
+    onCursorChange?.(t0);
+    onPlaySelection?.(t0, t1);
   }
 
   async function openVoiceReport() {
@@ -301,9 +388,12 @@
       else clearSelection();
       return;
     }
+    // The single-key view shortcuts below never combine with a modifier; a
+    // Ctrl/Cmd chord belongs to the app (UI scale, palette), so let it pass.
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.code === 'Space') {
       event.preventDefault();
-      onPlayToggle();
+      handleTransportToggle();
     } else if (event.key === '0') {
       event.preventDefault();
       fitFile();
@@ -313,6 +403,9 @@
     } else if (event.key.toLowerCase() === 'i') {
       event.preventDefault();
       inspectorOpen = !inspectorOpen;
+    } else if (event.key.toLowerCase() === 'w') {
+      event.preventDefault();
+      toggleWaveform();
     } else if (event.key.toLowerCase() === 'e' && audio) {
       event.preventDefault();
       exportOpen = !exportOpen;
@@ -328,9 +421,9 @@
       title: 'Play / pause',
       group: 'Playback',
       shortcut: 'Space',
-      keywords: ['transport', 'stop'],
+      keywords: ['transport', 'stop', 'play selection', 'play visible'],
       enabled: hasAudio,
-      run: () => onPlayToggle()
+      run: handleTransportToggle
     },
     {
       id: 'fitFile',
@@ -386,6 +479,23 @@
       run: () => {
         inspectorOpen = !inspectorOpen;
       }
+    },
+    {
+      id: 'toggleWaveform',
+      title: 'Toggle waveform pane',
+      group: 'View',
+      shortcut: 'W',
+      keywords: ['waveform', 'ghost', 'overlay', 'envelope', 'hide'],
+      enabled: hasAudio,
+      run: toggleWaveform
+    },
+    {
+      id: 'resetVerticalScale',
+      title: 'Reset vertical scale',
+      group: 'View',
+      keywords: ['amplitude', 'frequency ceiling', 'gain', 'reset zoom'],
+      enabled: hasAudio,
+      run: resetVerticalScale
     },
     {
       id: 'togglePitchTrack',
@@ -576,7 +686,7 @@
     {theme}
     {colormap}
     {onFile}
-    {onPlayToggle}
+    onPlayToggle={handleTransportToggle}
     {onThemeChange}
     {onColormapChange}
   />
@@ -589,6 +699,7 @@
       {readout}
       {formantMeans}
       showFormants={overlayParams.formant.smoothed}
+      {filteredPlaying}
       onPlay={playSelection}
       onZoom={zoomToSelection}
       onVoiceReport={openVoiceReport}
@@ -597,18 +708,33 @@
   {/if}
 
   <div class="workspace">
-    <main class="timeline" data-testid="timeline" onwheel={handleWheel} onpointerdown={handlePointer} onpointermove={handlePointer}>
+    <main
+      class="timeline"
+      data-testid="timeline"
+      data-waveform-visible={waveformVisible}
+      style:grid-template-rows={waveformVisible
+        ? '1.5rem minmax(9rem, 22vh) minmax(12rem, 1fr) minmax(7rem, 32vh)'
+        : '1.5rem minmax(12rem, 1fr) minmax(7rem, 32vh)'}
+      onwheel={handleWheel}
+      onpointerdown={handlePointer}
+      onpointermove={handlePointer}
+    >
       <TimeRuler {viewport} />
-      <WaveformPane
-        {client}
-        {audio}
-        {viewport}
-        {cursorTime}
-        {theme}
-        {selection}
-        onSelectionChange={handleSelectionChange}
-        onSeek={(time) => onCursorChange?.(time)}
-      />
+      {#if waveformVisible}
+        <WaveformPane
+          {client}
+          {audio}
+          {viewport}
+          {cursorTime}
+          {theme}
+          {selection}
+          onSelectionChange={handleSelectionChange}
+          onSeek={(time) => onCursorChange?.(time)}
+          onScaleAmp={scaleAmplitude}
+          onResetAmp={resetAmplitude}
+          onDoubleZoom={handleDoubleZoom}
+        />
+      {/if}
       <SpectrogramPane
         {client}
         {audio}
@@ -621,6 +747,10 @@
         {selection}
         onSelectionChange={handleSelectionChange}
         onSeek={(time) => onCursorChange?.(time)}
+        onScaleFrequency={scaleFrequencyCeiling}
+        onResetFrequency={resetFrequencyCeiling}
+        onDoubleZoom={handleDoubleZoom}
+        ghostWaveform={!waveformVisible}
       />
       <TierPane
         {client}
@@ -632,6 +762,7 @@
         {cursorTime}
         onSeek={(time) => onCursorChange?.(time)}
         {onAnnotationChange}
+        onIntervalActivate={handleTierInterval}
       />
     </main>
 

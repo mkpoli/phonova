@@ -280,14 +280,21 @@
     stroke(PITCH_COLOR, 2.6);
   }
 
+  // Frequency-ruler corner reserves the top band for its units chip; the pitch
+  // ceiling label steps below it so the two right-edge scales never stack.
+  const CORNER_CHIP_PX = 24;
+
   function drawPitchAxis(ctx: CanvasRenderingContext2D, width: number, height: number) {
     const ceiling = Math.max(1, params.pitch.ceilingHz);
     const ticks = [0, ceiling / 2, ceiling];
     ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
+    // The unit is stated once by the frequency ruler's corner chip; the pitch
+    // scale shows numbers only, so its ceiling label no longer collides with a
+    // second "Hz" marker.
     for (const hz of ticks) {
-      const y = Math.min(height - 7, Math.max(7, height * (1 - hz / ceiling)));
+      const y = Math.min(height - 7, Math.max(CORNER_CHIP_PX, height * (1 - hz / ceiling)));
       const label = `${Math.round(hz)}`;
       ctx.lineWidth = 3;
       ctx.strokeStyle = HALO;
@@ -295,12 +302,6 @@
       ctx.fillStyle = PITCH_COLOR;
       ctx.fillText(label, width - 4, y);
     }
-    // Unit marker at the top of the right-hand pitch scale.
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = HALO;
-    ctx.strokeText('Hz', width - 4, 6);
-    ctx.fillStyle = PITCH_COLOR;
-    ctx.fillText('Hz', width - 4, 6);
   }
 
   function drawIntensity(ctx: CanvasRenderingContext2D, width: number, height: number) {
