@@ -1,6 +1,6 @@
 import type { FinishedRecordingResult, WasmCoreClient } from '$lib/core/WasmCoreClient';
+import { flatLibrary, pruneMedia } from '@phonia/ui';
 import type { LibraryNode, ProjectSummary, RecordingEntry, SaveProjectSpec } from '$lib/core/types';
-import { flatLibrary, pruneMedia } from './library';
 
 /** Directory under OPFS that holds one subdirectory per project. */
 const PROJECTS_DIR = 'phonix-projects';

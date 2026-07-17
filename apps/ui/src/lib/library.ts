@@ -1,4 +1,4 @@
-import type { LibraryGroup, LibraryNode } from '$lib/core/types';
+import type { LibraryGroup, LibraryNode } from './types';
 
 /** A library node flattened for display, with its tree position. */
 export interface LibraryRow {

@@ -22,6 +22,20 @@ export { default as WaveThumb } from './WaveThumb.svelte';
 export { default as WaveformPane } from './WaveformPane.svelte';
 export { filesFromDataTransfer } from './dnd';
 export {
+  createGroup,
+  dissolveGroup,
+  flatLibrary,
+  flattenTree,
+  isGroup,
+  mediaIdsOf,
+  moveNode,
+  nextGroupId,
+  nodeKey,
+  pruneMedia,
+  renameGroup,
+  type LibraryRow
+} from './library';
+export {
   CommandRegistry,
   COMMAND_GROUP_ORDER,
   getCommandRegistry,
