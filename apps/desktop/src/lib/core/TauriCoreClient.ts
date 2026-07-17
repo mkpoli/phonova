@@ -114,6 +114,11 @@ export class TauriCoreClient implements CoreClientLike {
     return { t0, t1, px, data: new Float32Array(buffer) };
   }
 
+  async samplesInRange(id: AudioId, t0: number, t1: number): Promise<Float32Array> {
+    const buffer = await invoke<ArrayBuffer>('samples_in_range', { id: num(id), t0, t1 });
+    return new Float32Array(buffer);
+  }
+
   async spectrogramTile(id: AudioId, req: SpectrogramTileRequest): Promise<ImageBitmap> {
     const buffer = await invoke<ArrayBuffer>('spectrogram_tile', { id: num(id), req });
     const clamped = new Uint8ClampedArray(buffer);
@@ -160,6 +165,23 @@ export class TauriCoreClient implements CoreClientLike {
 
   bandEnergy(id: AudioId, t0: number, t1: number, f0: number, f1: number): Promise<number> {
     return invoke('band_energy', { id: num(id), t0, t1, f0, f1 });
+  }
+
+  async bandFilteredSpan(
+    id: AudioId,
+    t0: number,
+    t1: number,
+    fLow: number,
+    fHigh: number
+  ): Promise<Float32Array> {
+    const buffer = await invoke<ArrayBuffer>('band_filtered_span', {
+      id: num(id),
+      t0,
+      t1,
+      fLow,
+      fHigh
+    });
+    return new Float32Array(buffer);
   }
 
   selectionReadout(

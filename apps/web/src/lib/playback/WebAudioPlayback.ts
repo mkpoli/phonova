@@ -73,6 +73,34 @@ export class WebAudioPlayback {
     };
   }
 
+  /**
+   * Plays a raw mono sample buffer once, at `sampleRate`, from the start, and
+   * resolves when it ends. Used for a band-filtered box selection, whose audio
+   * is rendered by the engine rather than sliced from the loaded file. This is a
+   * preview: it does not become the transport's playing state and leaves the
+   * file cursor where it was.
+   */
+  async playBuffer(samples: Float32Array, sampleRate: number): Promise<void> {
+    if (samples.length === 0) return;
+    const context = this.#audioContext();
+    await context.resume();
+    this.stopSource();
+    this.#playing = false;
+    const buffer = context.createBuffer(1, samples.length, sampleRate);
+    buffer.getChannelData(0).set(samples);
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+    this.#source = source;
+    await new Promise<void>((resolve) => {
+      source.onended = () => {
+        if (this.#source === source) this.#source = null;
+        resolve();
+      };
+      source.start(0);
+    });
+  }
+
   pause() {
     this.#offset = this.position;
     this.stopSource();

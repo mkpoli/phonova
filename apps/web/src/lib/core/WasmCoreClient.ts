@@ -106,6 +106,10 @@ export class WasmCoreClient implements CoreClient {
     return this.#call({ method: 'waveformSlice', audioId: id, t0, t1, px });
   }
 
+  samplesInRange(id: AudioId, t0: number, t1: number): Promise<Float32Array> {
+    return this.#call({ method: 'samplesInRange', audioId: id, t0, t1 });
+  }
+
   async spectrogramTile(id: AudioId, req: SpectrogramTileRequest): Promise<ImageBitmap> {
     const result = await this.#call<{ width: number; height: number; rgba: Uint8Array }>({
       method: 'spectrogramTile',
@@ -165,6 +169,16 @@ export class WasmCoreClient implements CoreClient {
 
   bandEnergy(id: AudioId, t0: number, t1: number, f0: number, f1: number): Promise<number> {
     return this.#call({ method: 'bandEnergy', audioId: id, t0, t1, f0, f1 });
+  }
+
+  bandFilteredSpan(
+    id: AudioId,
+    t0: number,
+    t1: number,
+    fLow: number,
+    fHigh: number
+  ): Promise<Float32Array> {
+    return this.#call({ method: 'bandFilteredSpan', audioId: id, t0, t1, fLow, fHigh });
   }
 
   selectionReadout(

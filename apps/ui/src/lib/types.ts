@@ -353,6 +353,18 @@ export interface VoiceReportData {
 
 export interface CoreClientLike extends AnnotationClientLike {
   bandEnergy(id: AudioId, t0: number, t1: number, f0: number, f1: number): Promise<number>;
+  /**
+   * Renders `[t0, t1]` of `id` band-filtered to `[fLow, fHigh]` as a mono
+   * `Float32Array` at the source sample rate, for audible playback of a box
+   * selection.
+   */
+  bandFilteredSpan(
+    id: AudioId,
+    t0: number,
+    t1: number,
+    fLow: number,
+    fHigh: number
+  ): Promise<Float32Array>;
   selectionReadout(
     id: AudioId,
     t0: number,
@@ -384,6 +396,9 @@ export interface CoreClientLike extends AnnotationClientLike {
   loadProjectContainer(bytes: Uint8Array): Promise<LoadedProjectContainer>;
   renameProjectContainer(bytes: Uint8Array, name: string): Promise<Uint8Array>;
   waveformSlice(id: AudioId, t0: number, t1: number, px: number): Promise<MinMaxPyramidSlice>;
+  /** Exact unfiltered mono samples of `[t0, t1]` at the source rate, for the
+   *  waveform pane's sample-accurate polyline at high zoom. */
+  samplesInRange(id: AudioId, t0: number, t1: number): Promise<Float32Array>;
   spectrogramTile(id: AudioId, req: SpectrogramTileRequest): Promise<ImageBitmap>;
   pitchTrack(id: AudioId, floorHz: number, ceilingHz: number): Promise<PitchTrackData>;
   pitchTrackSpan(

@@ -38,6 +38,7 @@ type RequestMessage =
   | { id: number; method: 'finishRecording'; recordingId: bigint; name: string }
   | { id: number; method: 'abortRecording'; recordingId: bigint }
   | { id: number; method: 'waveformSlice'; audioId: AudioId; t0: number; t1: number; px: number }
+  | { id: number; method: 'samplesInRange'; audioId: AudioId; t0: number; t1: number }
   | { id: number; method: 'spectrogramTile'; audioId: AudioId; req: SpectrogramTileRequest }
   | { id: number; method: 'spectrogramProbe'; audioId: AudioId; req: SpectrogramTileRequest }
   | { id: number; method: 'pitchTrack'; audioId: AudioId; floorHz: number; ceilingHz: number }
@@ -67,6 +68,15 @@ type RequestMessage =
       t1: number;
       f0: number;
       f1: number;
+    }
+  | {
+      id: number;
+      method: 'bandFilteredSpan';
+      audioId: AudioId;
+      t0: number;
+      t1: number;
+      fLow: number;
+      fHigh: number;
     }
   | {
       id: number;
@@ -454,6 +464,16 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
         );
         return;
       }
+      case 'samplesInRange': {
+        const data = wasm.samplesInRange(message.audioId, message.t0, message.t1);
+        const copy = new Float32Array(data.length);
+        copy.set(data);
+        postMessage(
+          { id: message.id, ok: true, result: copy },
+          { transfer: [copy.buffer] }
+        );
+        return;
+      }
       case 'spectrogramTile': {
         const req = message.req;
         const data = wasm.spectrogramTileRgba(
@@ -579,6 +599,22 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
           message.f1
         );
         postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'bandFilteredSpan': {
+        const data = wasm.bandFilteredSpan(
+          message.audioId,
+          message.t0,
+          message.t1,
+          message.fLow,
+          message.fHigh
+        );
+        const copy = new Float32Array(data.length);
+        copy.set(data);
+        postMessage(
+          { id: message.id, ok: true, result: copy },
+          { transfer: [copy.buffer] }
+        );
         return;
       }
       case 'selectionReadout': {
