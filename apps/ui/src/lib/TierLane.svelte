@@ -207,11 +207,20 @@
     justify-content: center;
     border-right: 1px solid transparent;
     overflow: hidden;
+    transition: background var(--t-fast);
+  }
+
+  .interval:hover {
+    background: color-mix(in oklab, var(--accent), transparent 92%);
   }
 
   .interval.selected {
     background: color-mix(in oklab, var(--accent), transparent 84%);
     box-shadow: inset 0 0 0 1px var(--accent);
+  }
+
+  .interval.selected:hover {
+    background: color-mix(in oklab, var(--accent), transparent 84%);
   }
 
   .label {
@@ -242,12 +251,21 @@
     width: 2px;
     margin-left: -1px;
     background: var(--accent);
+    transition: background var(--t-fast);
+  }
+
+  .point:hover .point-line {
+    background: var(--accent-strong);
   }
 
   .point.selected .point-line {
     background: var(--accent-strong);
     width: 3px;
     margin-left: -1.5px;
+  }
+
+  .point.selected:hover .point-line {
+    background: var(--accent-strong);
   }
 
   .point-label {

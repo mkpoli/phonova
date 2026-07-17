@@ -159,3 +159,12 @@ label {
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
+
+/* One pressed-state treatment everywhere a button or button-role element can
+   be pressed, mirroring the single shared focus-visible ring above. */
+@media (prefers-reduced-motion: no-preference) {
+  :where(button, [role='button']):not(:disabled):active {
+    transform: scale(0.97);
+    transition: transform 0.1s ease-in-out;
+  }
+}

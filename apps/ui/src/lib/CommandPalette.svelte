@@ -269,9 +269,17 @@
     transition: background var(--t-fast);
   }
 
+  .palette-item:hover {
+    background: var(--panel-soft);
+  }
+
   .palette-item.selected {
     background: var(--accent-tint);
     box-shadow: inset 2px 0 0 var(--accent);
+  }
+
+  .palette-item.selected:hover {
+    background: var(--accent-tint);
   }
 
   .item-main {
@@ -297,7 +305,7 @@
   .item-shortcut {
     flex: none;
     border: 1px solid var(--chrome-strong);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     background: var(--panel-soft);
     color: var(--muted);
     padding: 0.1rem 0.4rem;
