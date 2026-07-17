@@ -87,6 +87,32 @@ duration as n·(1/fs)).
   sustained phonation; the running-speech residual is recorded here and in
   the crate documentation rather than tuned.
 
+## T8.8 — phase 8 gate (library, navigation, interchange): CLOSED
+
+- Container v2 (groups, tags, metadata) round-trips deterministically with v1
+  compatibility; self-contained bundles embed media without a version bump and
+  degrade to references-only in older readers.
+- Library management: group tree with drag reorder, rename on every surface
+  with a split affordance (name edits, row opens), journaled delete with an
+  undo banner, metadata panel, corpus search over names/tags/labels. A write
+  race between consecutive container saves was found and serialized.
+- Navigation: transport playback honors selection → visible viewport → whole
+  file; tier-interval click selects and plays; box selections play band-
+  filtered (raised-cosine skirts, in-band RMS asserted > 2× out-of-band in
+  e2e); double-click zooms to the selection; vertical scaling on both axes
+  carries always-visible reset chips; waveform LOD switches to sample
+  polylines past 1 px/sample; the overview slimmed; the waveform pane toggles
+  into a ghost overlay; UI scale 90–150% persists.
+- Interchange: project bundle export/import across a wiped browser context
+  restores corpus, groups, tags, and tiers; references-only bundles re-link
+  by content hash; audio export covers whole/selection at three bit depths
+  plus band-limited spans. AIFF/FLAC decode investigated and deferred as its
+  own slice (symphonia FLAC is wasm-fit; the import path needs a non-WAV
+  route first).
+- Full e2e suite at the gate: 51 passing, workers=1. Screenshots for every
+  new surface reviewed in both themes; two gate rejections during the phase
+  (corpus thumbnail overlap, dark waveform pane) were fixed and re-verified.
+
 ## T2.4 UI review
 
 Overlay screenshots in light and dark reviewed
