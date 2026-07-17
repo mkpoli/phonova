@@ -26,6 +26,17 @@ fn tokenize(text: &str) -> Result<Vec<Token>, TextGridError> {
     while let Some(&ch) = chars.peek() {
         if ch.is_whitespace() {
             chars.next();
+        } else if ch == '!' {
+            // Everything from `!` to end of line is a comment, wherever a line
+            // break can occur; it never contributes a token, so a number or
+            // word mentioned in comment text cannot be mistaken for the next
+            // field's value. A `!` inside a quoted string is handled by the
+            // string branch below and never reaches this one.
+            for next in chars.by_ref() {
+                if next == '\n' {
+                    break;
+                }
+            }
         } else if ch == '"' {
             chars.next();
             let mut value = String::new();
@@ -274,6 +285,60 @@ mod tests {
             tokenize("\"open"),
             Err(TextGridError::UnterminatedString)
         ));
+    }
+
+    #[test]
+    fn number_inside_a_comment_does_not_leak_into_the_next_field() {
+        let text = "\
+File type = \"ooTextFile\"
+Object class = \"TextGrid\"
+
+xmin = 0
+! comment mentioning 42 apples
+xmax = 1
+tiers? <exists>
+size = 0
+item []:
+";
+        let (doc, _) = parse(text, crate::Encoding::Utf8).expect("parses");
+        assert_eq!(doc.xmax(), 1.0);
+    }
+
+    #[test]
+    fn comment_between_key_and_value_is_skipped() {
+        let tokens = tokenize("xmin\n! a comment sitting between the tag and its value\n= 0.5")
+            .expect("tokenizes");
+        let mut cursor = Cursor::new(&tokens);
+        assert_eq!(cursor.read_number().expect("reads"), 0.5);
+    }
+
+    #[test]
+    fn trailing_comment_after_a_value_is_skipped() {
+        let tokens = tokenize("xmin = 0 ! trailing remark\nxmax = 1").expect("tokenizes");
+        let mut cursor = Cursor::new(&tokens);
+        assert_eq!(cursor.read_number().expect("reads xmin"), 0.0);
+        assert_eq!(cursor.read_number().expect("reads xmax"), 1.0);
+    }
+
+    #[test]
+    fn comment_with_no_trailing_newline_runs_to_end_of_input() {
+        let tokens = tokenize("xmin = 0\n! unterminated comment at eof").expect("tokenizes");
+        let mut cursor = Cursor::new(&tokens);
+        assert_eq!(cursor.read_number().expect("reads"), 0.0);
+        assert!(
+            cursor.read_number().is_err(),
+            "no value follows the comment"
+        );
+    }
+
+    #[test]
+    fn exclamation_mark_inside_a_quoted_string_is_literal() {
+        let tokens = tokenize("\"wow! amazing\"").expect("tokenizes");
+        assert_eq!(tokens.len(), 1);
+        let Token::Str(value) = &tokens[0] else {
+            panic!("expected a string token");
+        };
+        assert_eq!(value, "wow! amazing");
     }
 
     #[test]

@@ -1,0 +1,19 @@
+File type = "ooTextFile"
+Object class = "TextGrid"
+
+xmin = 0
+! comment mentioning 42 apples, which must not become the next field's value
+xmax = 1
+tiers? <exists>
+size = 1
+item []:
+    item [1]:
+        class = "IntervalTier"
+        name = "w" ! trailing comment after a value on the same line
+        xmin = 0
+        xmax = 1
+        intervals: size = 1
+        intervals [1]:
+            xmin = 0
+            xmax = 1
+            text = "wow! amazing"
