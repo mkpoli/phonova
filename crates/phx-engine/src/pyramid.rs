@@ -24,19 +24,19 @@ impl MinMax {
     /// never changes the other operand. Used to pad the pyramid's base level
     /// to a power-of-two length without corrupting any query whose end index
     /// stays within the real sample count (see [`Pyramid::range`]).
-    const NEUTRAL: Self = Self {
+    pub(crate) const NEUTRAL: Self = Self {
         min: f32::INFINITY,
         max: f32::NEG_INFINITY,
     };
 
-    fn from_sample(sample: f32) -> Self {
+    pub(crate) fn from_sample(sample: f32) -> Self {
         Self {
             min: sample,
             max: sample,
         }
     }
 
-    fn combine(self, other: Self) -> Self {
+    pub(crate) fn combine(self, other: Self) -> Self {
         Self {
             min: self.min.min(other.min),
             max: self.max.max(other.max),
@@ -107,16 +107,6 @@ impl Pyramid {
             sample_count,
             sample_rate,
         }
-    }
-
-    /// Returns the real (unpadded) sample count backing this pyramid.
-    pub fn sample_count(&self) -> usize {
-        self.sample_count
-    }
-
-    /// Returns the sample rate in hertz.
-    pub fn sample_rate(&self) -> f64 {
-        self.sample_rate
     }
 
     /// Exact min/max over the half-open real-sample range `[start, end)`.

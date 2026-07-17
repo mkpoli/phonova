@@ -22,6 +22,7 @@ mod journal;
 mod pyramid;
 mod recording;
 mod store;
+mod stream_pyramid;
 mod tile_cache;
 
 use std::hash::{Hash, Hasher};
@@ -31,8 +32,12 @@ use phx_spectrogram::{analysis_axes, compute_column_block, select_axis_indices};
 
 use tile_cache::{BlockKey, TILE_COLS, TileCache, params_hash};
 
-use phx_audio::{Audio, BitDepth};
+use phx_audio::{Audio, BitDepth, StreamingWav};
 use phx_dsp::Window;
+
+use std::sync::Arc;
+
+use stream_pyramid::StreamPyramid;
 
 use document::DocumentStore;
 use journal::{Journal, JournalEntry, Reverse};
@@ -49,6 +54,7 @@ pub use phx_annot::{
     Interval, IntervalId, IntervalTier, LabelPattern, LabelQuery, LabelTarget, MatchSpan, Merged,
     Moved, Point, PointId, PointTier, Tier, TierId, TierKind, TierMerge, TierRelation, TierSlot,
 };
+pub use phx_audio::{ByteReader, BytesReader, StreamSampleFormat, WavStreamInfo};
 pub use phx_figure::Figure;
 pub use phx_formant::{FormantFrame, FormantParams, FormantPoint, FormantTrack};
 pub use phx_intensity::{IntensityParams, IntensityTrack};
@@ -61,9 +67,17 @@ pub use phx_voice::{
 };
 pub use pyramid::MinMax;
 pub use recording::{FinishedRecording, RecordingId};
-pub use store::{AudioId, AudioInfo, AudioStore};
+pub use store::{AudioId, AudioInfo, AudioStore, SampleAccess};
 
 use recording::RecordingStore;
+
+/// Frame count at or below which audio stays on the eager whole-decode path.
+///
+/// Two minutes at 48 kHz. Below it, a per-sample pyramid and a resident buffer
+/// cost little and keep every analysis a borrow away; above it, the streamed
+/// path keeps opening and scrolling bounded. A frontend reads this through
+/// [`Engine::eager_import_frame_limit`].
+const EAGER_MAX_FRAMES: usize = 48_000 * 120;
 
 /// The measurement readout for a time–frequency selection.
 ///
@@ -126,6 +140,45 @@ impl Engine {
     pub fn import_wav_bytes(&mut self, bytes: &[u8]) -> Result<AudioId, EngineError> {
         let audio = Audio::from_wav_bytes(bytes)?;
         Ok(self.store.insert(audio))
+    }
+
+    /// Opens a WAV from a byte reader as a streamed source and returns its id.
+    ///
+    /// The header is parsed and the bounded waveform pyramid built in one
+    /// streaming pass; the decoded signal is never held whole, so metadata is
+    /// ready at header speed and the waveform scrolls without the full-decode
+    /// footprint. This is the path for recordings past the eager comfort
+    /// threshold ([`EAGER_MAX_FRAMES`]) — an hour-long take the desktop shell
+    /// backs with a file handle or the web worker with an OPFS access handle.
+    /// Whole-signal analysis of a streamed source still materializes it on
+    /// demand ([`Engine::pitch_track`] and the other whole-signal contours);
+    /// the streamed win is that opening and scrolling never pay that cost.
+    ///
+    /// `name` is the display name the metadata surface reports.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::Audio`] when the header is malformed, the sample
+    /// format is unsupported, or the backing store fails during the pyramid
+    /// pass.
+    pub fn open_streaming_wav(
+        &mut self,
+        reader: impl ByteReader + Send + Sync + 'static,
+        name: Option<String>,
+    ) -> Result<AudioId, EngineError> {
+        let source = Arc::new(StreamingWav::open(reader)?);
+        let pyramid = StreamPyramid::build(&source)?;
+        Ok(self.store.insert_streamed(source, pyramid, name))
+    }
+
+    /// Frame count at or below which an import stays eager (whole-signal
+    /// decode). Two minutes of 48 kHz audio; longer takes belong on the
+    /// streamed path so their decoded footprint and per-sample pyramid never
+    /// enter memory. Frontends deciding between [`Engine::import_wav_bytes`]
+    /// and [`Engine::open_streaming_wav`] read this bound from
+    /// [`Engine::eager_import_frame_limit`].
+    #[must_use]
+    pub fn eager_import_frame_limit() -> usize {
+        EAGER_MAX_FRAMES
     }
 
     /// Opens a streaming recording and returns its id.
@@ -200,13 +253,7 @@ impl Engine {
     /// Returns [`EngineError::UnknownAudioId`] when `id` does not name a
     /// live store entry.
     pub fn audio_info(&self, id: AudioId) -> Result<AudioInfo, EngineError> {
-        let audio = self.store.audio(id)?;
-        Ok(AudioInfo {
-            duration: audio.duration(),
-            sample_rate: audio.sample_rate(),
-            channels: audio.channel_count(),
-            name: audio.name().map(str::to_owned),
-        })
+        self.store.info(id)
     }
 
     /// Returns `px` [`MinMax`] buckets covering `[t0, t1)` seconds of `id`,
@@ -233,8 +280,7 @@ impl Engine {
                 reason: "waveform_slice t0/t1 must be finite".to_string(),
             });
         }
-        let pyramid = self.store.pyramid(id)?;
-        Ok(pyramid.slice(t0, t1, px))
+        self.store.waveform(id, t0, t1, px)
     }
 
     /// Computes a spectrogram tile for `id` and colorizes it to RGBA bytes.
@@ -302,7 +348,8 @@ impl Engine {
     /// values are bit-for-bit identical to a direct `compute_tile`, since both
     /// read the same frame centres off the same grid.
     fn spectrogram_tile_db(&self, id: AudioId, req: &TileRequest) -> Result<Vec<f32>, EngineError> {
-        let audio = self.store.audio(id)?;
+        let access = self.store.whole(id)?;
+        let audio = access.audio();
         let view = audio.slice_samples(0..audio.frames());
         let axes = analysis_axes(view.clone(), &req.params);
         let freq_len = axes.frequencies.len();
@@ -393,7 +440,8 @@ impl Engine {
         id: AudioId,
         params: &PitchParams,
     ) -> Result<PitchTrack, EngineError> {
-        let audio = self.store.audio(id)?;
+        let access = self.store.whole(id)?;
+        let audio = access.audio();
         let view = audio.slice_samples(0..audio.frames());
         Ok(phx_pitch::pitch_track(view, params))
     }
@@ -428,16 +476,17 @@ impl Engine {
                 reason: "pitch_track_span t0/t1 must be finite".to_string(),
             });
         }
-        let audio = self.store.audio(id)?;
-        let sample_rate = audio.sample_rate();
-        let frames = audio.frames();
-        let duration = audio.duration();
-        let lo = t0.min(t1).clamp(0.0, duration);
-        let hi = t0.max(t1).clamp(0.0, duration);
+        let info = self.store.info(id)?;
+        let sample_rate = info.sample_rate;
+        let frames = (info.duration * sample_rate).round() as usize;
+        let lo = t0.min(t1).clamp(0.0, info.duration);
+        let hi = t0.max(t1).clamp(0.0, info.duration);
         let start = ((lo * sample_rate).floor() as usize).min(frames);
         let end = ((hi * sample_rate).ceil() as usize).clamp(start, frames);
-        let view = audio.slice_samples(start..end);
-        let track = phx_pitch::pitch_track(view, params);
+        // The span is a viewport window; decode only its samples so a streamed
+        // source never materializes the whole signal for a preview.
+        let window = self.store.range_owned(id, start, end)?;
+        let track = phx_pitch::pitch_track(window.slice_samples(0..window.frames()), params);
         Ok((track, start as f64 / sample_rate))
     }
 
@@ -459,7 +508,8 @@ impl Engine {
         params: &FormantParams,
     ) -> Result<FormantTrack, EngineError> {
         validate_formant_params(params)?;
-        let audio = self.store.audio(id)?;
+        let access = self.store.whole(id)?;
+        let audio = access.audio();
         let view = audio.slice_samples(0..audio.frames());
         Ok(phx_formant::formant_track(view, params))
     }
@@ -506,7 +556,8 @@ impl Engine {
                 reason: "intensity pitch_floor_hz must be finite and positive".to_string(),
             });
         }
-        let audio = self.store.audio(id)?;
+        let access = self.store.whole(id)?;
+        let audio = access.audio();
         let view = audio.slice_samples(0..audio.frames());
         Ok(phx_intensity::intensity_track(view, params))
     }
@@ -542,7 +593,8 @@ impl Engine {
                 reason: "band_energy bounds must be finite".to_string(),
             });
         }
-        let audio = self.store.audio(id)?;
+        let access = self.store.whole(id)?;
+        let audio = access.audio();
         let duration = audio.duration();
         let (lo, hi) = ordered_clamped(t0, t1, 0.0, duration);
         let (flo, fhi) = ordered_clamped(f0, f1, 0.0, f64::INFINITY);
@@ -611,7 +663,8 @@ impl Engine {
                 reason: "selection_readout bounds must be finite".to_string(),
             });
         }
-        let audio = self.store.audio(id)?;
+        let access = self.store.whole(id)?;
+        let audio = access.audio();
         let duration = audio.duration();
         let (lo, hi) = ordered_clamped(t0, t1, 0.0, duration);
         let (flo, fhi) = ordered_clamped(f0, f1, 0.0, f64::INFINITY);
@@ -726,7 +779,8 @@ impl Engine {
                 reason: "spectral_moments_in_span t0/t1 must be finite".to_string(),
             });
         }
-        let audio = self.store.audio(id)?;
+        let access = self.store.whole(id)?;
+        let audio = access.audio();
         let midpoint = 0.5 * (t0.min(t1) + t0.max(t1));
         let view = audio.slice_samples(0..audio.frames());
         let slice = phx_spectrogram::spectral_slice(view, midpoint, &SpectrogramParams::default());
@@ -766,7 +820,8 @@ impl Engine {
                 reason: "voice_report t0/t1 must be finite".to_string(),
             });
         }
-        let audio = self.store.audio(id)?;
+        let access = self.store.whole(id)?;
+        let audio = access.audio();
         let duration = audio.duration();
         let (lo, hi) = ordered_clamped(t0, t1, 0.0, duration);
         let view = audio.slice_samples(0..audio.frames());
@@ -2792,5 +2847,119 @@ mod tests {
             .map(|slot| slot.id)
             .collect();
         assert_eq!(restored, order_before);
+    }
+
+    // --- Streamed path: equal to the eager path on the same bytes -----------
+
+    fn eager_and_streamed(bytes: &[u8]) -> (Engine, AudioId, Engine, AudioId) {
+        let mut eager = Engine::new();
+        let eager_id = eager.import_wav_bytes(bytes).unwrap();
+        let mut streamed = Engine::new();
+        let streamed_id = streamed
+            .open_streaming_wav(BytesReader::new(bytes.to_vec()), Some("take".to_string()))
+            .unwrap();
+        (eager, eager_id, streamed, streamed_id)
+    }
+
+    #[test]
+    fn streamed_audio_info_matches_the_eager_decode() {
+        let (eager, eid, streamed, sid) = eager_and_streamed(FIXTURE_WAV);
+        let a = eager.audio_info(eid).unwrap();
+        let b = streamed.audio_info(sid).unwrap();
+        assert_eq!(a.duration.to_bits(), b.duration.to_bits());
+        assert_eq!(a.sample_rate.to_bits(), b.sample_rate.to_bits());
+        assert_eq!(a.channels, b.channels);
+    }
+
+    #[test]
+    fn streamed_waveform_slices_are_bit_identical_to_the_eager_pyramid() {
+        let (eager, eid, streamed, sid) = eager_and_streamed(FIXTURE_WAV);
+        let duration = eager.audio_info(eid).unwrap().duration;
+        for &px in &[1u32, 13, 128, 777, 2000] {
+            for &(a, b) in &[
+                (0.0, duration),
+                (0.0, duration * 0.5),
+                (duration * 0.25, duration * 0.85),
+                (duration * 0.499, duration * 0.501),
+                (0.0, 0.003),
+            ] {
+                let expected = eager.waveform_slice(eid, a, b, px).unwrap();
+                let actual = streamed.waveform_slice(sid, a, b, px).unwrap();
+                assert_eq!(actual.len(), expected.len(), "px {px} span {a}..{b}");
+                for (i, (x, y)) in actual.iter().zip(&expected).enumerate() {
+                    assert_eq!(
+                        x.min.to_bits(),
+                        y.min.to_bits(),
+                        "px {px} {a}..{b} bucket {i}"
+                    );
+                    assert_eq!(
+                        x.max.to_bits(),
+                        y.max.to_bits(),
+                        "px {px} {a}..{b} bucket {i}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn streamed_spectrogram_tile_db_is_bit_identical_to_the_eager_tile() {
+        let (eager, eid, streamed, sid) = eager_and_streamed(FIXTURE_WAV);
+        let duration = eager.audio_info(eid).unwrap().duration;
+        let req = TileRequest {
+            t0: duration * 0.2,
+            t1: duration * 0.7,
+            f0: 0.0,
+            f1: 5000.0,
+            width_px: 220,
+            height_px: 90,
+            params: SpectrogramParams::default(),
+        };
+        let expected = eager.spectrogram_tile_db(eid, &req).unwrap();
+        let actual = streamed.spectrogram_tile_db(sid, &req).unwrap();
+        assert_eq!(actual.len(), expected.len());
+        for (i, (x, y)) in actual.iter().zip(&expected).enumerate() {
+            assert_eq!(x.to_bits(), y.to_bits(), "db cell {i}");
+        }
+    }
+
+    #[test]
+    fn streamed_pitch_track_span_is_bit_identical_to_the_eager_span() {
+        let (eager, eid, streamed, sid) = eager_and_streamed(FIXTURE_WAV);
+        let duration = eager.audio_info(eid).unwrap().duration;
+        let params = PitchParams::default();
+        let (a, at) = eager
+            .pitch_track_span(eid, &params, duration * 0.3, duration * 0.6)
+            .unwrap();
+        let (b, bt) = streamed
+            .pitch_track_span(sid, &params, duration * 0.3, duration * 0.6)
+            .unwrap();
+        assert_eq!(at.to_bits(), bt.to_bits());
+        assert_eq!(a.frames().len(), b.frames().len());
+        for (i, (x, y)) in a.frames().iter().zip(b.frames()).enumerate() {
+            assert_eq!(x.time.to_bits(), y.time.to_bits(), "frame {i} time");
+            match (x.f0, y.f0) {
+                (Some(fx), Some(fy)) => assert_eq!(fx.to_bits(), fy.to_bits(), "frame {i} f0"),
+                (None, None) => {}
+                _ => panic!("frame {i} voicing differs"),
+            }
+        }
+    }
+
+    #[test]
+    fn streamed_whole_signal_pitch_track_matches_eager() {
+        let (eager, eid, streamed, sid) = eager_and_streamed(VOWEL_WAV);
+        let params = PitchParams::default();
+        let a = eager.pitch_track(eid, &params).unwrap();
+        let b = streamed.pitch_track(sid, &params).unwrap();
+        assert_eq!(a.frames().len(), b.frames().len());
+        for (i, (x, y)) in a.frames().iter().zip(b.frames()).enumerate() {
+            assert_eq!(x.time.to_bits(), y.time.to_bits(), "frame {i}");
+            assert_eq!(
+                x.f0.map(f64::to_bits),
+                y.f0.map(f64::to_bits),
+                "frame {i} f0"
+            );
+        }
     }
 }
