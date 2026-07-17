@@ -1076,6 +1076,7 @@ dependencies = [
 name = "phx-wasm"
 version = "0.0.1"
 dependencies = [
+ "blake3",
  "js-sys",
  "phx-engine",
  "phx-project",
