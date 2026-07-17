@@ -2093,13 +2093,15 @@ impl WasmEngine {
     /// line endings, no byte-order mark.
     ///
     /// # Errors
-    /// Rejects when `annotationId` names no live document.
+    /// Rejects when `annotationId` names no live document, or when the
+    /// document carries a non-finite time value.
     #[wasm_bindgen(js_name = exportTextGrid)]
     pub fn export_text_grid(&self, annotation_id: u64) -> Result<Uint8Array, JsError> {
         let annotation = self
             .inner
             .annotation(AnnotationId::from_u64(annotation_id))?;
-        let bytes = phx_textgrid::write(annotation);
+        let bytes =
+            phx_textgrid::write(annotation).map_err(|err| JsError::new(&err.to_string()))?;
         Ok(Uint8Array::from(bytes.as_slice()))
     }
 

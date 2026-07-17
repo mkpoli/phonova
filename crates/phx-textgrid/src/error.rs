@@ -45,6 +45,11 @@ pub enum TextGridError {
     /// identifier that leaves no room to allocate the next one, or a
     /// non-finite time value.
     Annotation(phx_annot::AnnotationError),
+    /// The writer was asked to serialize a NaN or infinite time value.
+    NonFiniteTime {
+        /// The non-finite value found.
+        value: f64,
+    },
 }
 
 impl fmt::Display for TextGridError {
@@ -65,6 +70,9 @@ impl fmt::Display for TextGridError {
             Self::ExpectedNumber => write!(f, "expected a number, found a quoted string"),
             Self::UnexpectedEnd => write!(f, "input ended while reading a field"),
             Self::Annotation(err) => write!(f, "invalid annotation: {err}"),
+            Self::NonFiniteTime { value } => {
+                write!(f, "cannot write non-finite time value {value}")
+            }
         }
     }
 }

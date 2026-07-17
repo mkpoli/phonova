@@ -76,7 +76,7 @@ fn every_fixture_round_trips_to_structural_equality() {
             panic!("reading {} failed: {err}", path.display());
         });
 
-        let written = write(&doc);
+        let written = write(&doc).expect("finite document writes");
         let (reparsed, _) = read(&written).unwrap_or_else(|err| {
             panic!("re-reading written {} failed: {err}", path.display());
         });
@@ -87,7 +87,7 @@ fn every_fixture_round_trips_to_structural_equality() {
             path.display()
         );
 
-        let rewritten = write(&reparsed);
+        let rewritten = write(&reparsed).expect("finite document writes");
         assert_eq!(
             written,
             rewritten,
@@ -102,7 +102,7 @@ fn written_output_is_utf8_without_bom() {
     for path in well_formed_fixtures() {
         let bytes = fs::read(&path).expect("fixture bytes are readable");
         let (doc, _) = read(&bytes).expect("fixture reads");
-        let written = write(&doc);
+        let written = write(&doc).expect("finite document writes");
         assert!(
             std::str::from_utf8(&written).is_ok(),
             "written {} is not valid UTF-8",
@@ -124,7 +124,7 @@ fn utf16_source_reemerges_as_utf8() {
     assert_eq!(info.encoding, Encoding::Utf16Le);
     assert_eq!(info.variant, Variant::Long);
 
-    let written = write(&doc);
+    let written = write(&doc).expect("finite document writes");
     assert!(std::str::from_utf8(&written).is_ok());
     let (reparsed, second) = read(&written).expect("written utf16 source reads");
     assert_eq!(second.encoding, Encoding::Utf8);
@@ -140,7 +140,7 @@ fn latin1_legacy_source_decodes() {
     let bytes = fs::read(&path).expect("latin1 fixture is readable");
     let (doc, info) = read(&bytes).expect("latin1 fixture reads");
     assert_eq!(info.encoding, Encoding::Latin1);
-    let written = write(&doc);
+    let written = write(&doc).expect("finite document writes");
     let (reparsed, _) = read(&written).expect("written latin1 source reads");
     assert_eq!(doc, reparsed);
 }

@@ -791,7 +791,7 @@ pub fn export_text_grid(state: State<AppState>, annotation_id: u64) -> Result<Ve
     let annotation = engine
         .annotation(AnnotationId::from_u64(annotation_id))
         .map_err(err)?;
-    Ok(phx_textgrid::write(annotation))
+    phx_textgrid::write(annotation).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

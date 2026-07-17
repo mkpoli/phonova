@@ -151,14 +151,35 @@ impl Annotation {
     ///
     /// This constructor accepts invalid tier contents so importers can preserve
     /// source data and call `validate` to report every issue. It still rejects
-    /// a raw identifier of [`u64::MAX`], since reseeding the generator that
-    /// mints the next one would overflow.
+    /// a non-finite `xmin`, `xmax`, interval bound, or point time, and a raw
+    /// identifier of [`u64::MAX`], since reseeding the generator that mints the
+    /// next one would overflow.
     ///
     /// # Errors
-    /// Returns [`AnnotationError::IdAllocationOverflow`] when a tier, boundary,
+    /// Returns [`AnnotationError::NonFiniteTime`] when `xmin`, `xmax`, or a
+    /// time carried by a tier in `tiers` is NaN or infinite, and
+    /// [`AnnotationError::IdAllocationOverflow`] when a tier, boundary,
     /// interval, or point in `tiers` already carries the identifier
     /// [`u64::MAX`].
     pub fn from_raw(xmin: f64, xmax: f64, tiers: Vec<TierSlot>) -> Result<Self, AnnotationError> {
+        require_finite(xmin, TimeRole::DomainStart)?;
+        require_finite(xmax, TimeRole::DomainEnd)?;
+        for slot in &tiers {
+            match &slot.tier {
+                Tier::Interval(tier) => {
+                    for interval in &tier.intervals {
+                        require_finite(interval.xmin, TimeRole::IntervalStart)?;
+                        require_finite(interval.xmax, TimeRole::IntervalEnd)?;
+                    }
+                }
+                Tier::Point(tier) => {
+                    for point in &tier.points {
+                        require_finite(point.time, TimeRole::Point)?;
+                    }
+                }
+            }
+        }
+
         let mut annotation = Self {
             xmin,
             xmax,
@@ -2287,6 +2308,14 @@ impl fmt::Display for AnnotationError {
 
 impl std::error::Error for AnnotationError {}
 
+fn require_finite(value: f64, context: TimeRole) -> Result<(), AnnotationError> {
+    if value.is_finite() {
+        Ok(())
+    } else {
+        Err(AnnotationError::NonFiniteTime { value, context })
+    }
+}
+
 fn reject_control_label(text: &str) -> Result<(), AnnotationError> {
     for (index, ch) in text.char_indices() {
         if ch == '\u{7f}' || (ch <= '\u{1f}') {
@@ -2410,27 +2439,76 @@ mod tests {
     }
 
     #[test]
-    fn validation_reports_non_finite_time() {
-        let doc = Annotation::from_raw(
-            0.0,
-            1.0,
-            vec![TierSlot {
-                id: TierId(1),
-                relation: TierRelation::Independent,
-                tier: Tier::Point(PointTier {
-                    name: "points".to_owned(),
-                    points: vec![Point {
-                        id: PointId(1),
-                        time: f64::NAN,
-                        label: String::new(),
-                    }],
-                }),
-            }],
-        )
-        .expect("valid raw document");
-        assert_single_issue(doc.validate(), |issue| {
-            matches!(issue, IntegrityIssue::NonFiniteTime { .. })
-        });
+    fn from_raw_rejects_non_finite_domain_start() {
+        // NaN never equals NaN, so match on shape and check `is_nan` instead
+        // of asserting equality against the error.
+        let err = Annotation::from_raw(f64::NAN, 1.0, Vec::new()).unwrap_err();
+        let AnnotationError::NonFiniteTime { value, context } = err else {
+            panic!("expected NonFiniteTime, got {err:?}");
+        };
+        assert!(value.is_nan());
+        assert_eq!(context, TimeRole::DomainStart);
+    }
+
+    #[test]
+    fn from_raw_rejects_non_finite_domain_end() {
+        let err = Annotation::from_raw(0.0, f64::INFINITY, Vec::new()).unwrap_err();
+        assert_eq!(
+            err,
+            AnnotationError::NonFiniteTime {
+                value: f64::INFINITY,
+                context: TimeRole::DomainEnd
+            }
+        );
+    }
+
+    #[test]
+    fn from_raw_rejects_a_non_finite_point_time() {
+        let slot = TierSlot {
+            id: TierId(1),
+            relation: TierRelation::Independent,
+            tier: Tier::Point(PointTier {
+                name: "points".to_owned(),
+                points: vec![Point {
+                    id: PointId(1),
+                    time: f64::NAN,
+                    label: String::new(),
+                }],
+            }),
+        };
+        let err = Annotation::from_raw(0.0, 1.0, vec![slot]).unwrap_err();
+        let AnnotationError::NonFiniteTime { value, context } = err else {
+            panic!("expected NonFiniteTime, got {err:?}");
+        };
+        assert!(value.is_nan());
+        assert_eq!(context, TimeRole::Point);
+    }
+
+    #[test]
+    fn from_raw_rejects_a_non_finite_interval_time() {
+        let slot = TierSlot {
+            id: TierId(1),
+            relation: TierRelation::Independent,
+            tier: Tier::Interval(IntervalTier {
+                name: "raw".to_owned(),
+                intervals: vec![Interval {
+                    id: IntervalId(1),
+                    start_boundary: BoundaryId(1),
+                    end_boundary: BoundaryId(2),
+                    xmin: 0.0,
+                    xmax: f64::INFINITY,
+                    label: String::new(),
+                }],
+            }),
+        };
+        let err = Annotation::from_raw(0.0, 1.0, vec![slot]).unwrap_err();
+        assert_eq!(
+            err,
+            AnnotationError::NonFiniteTime {
+                value: f64::INFINITY,
+                context: TimeRole::IntervalEnd
+            }
+        );
     }
 
     #[test]
