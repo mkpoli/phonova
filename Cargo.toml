@@ -21,7 +21,10 @@ members = [
 
 [workspace.package]
 edition = "2024"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/mkpoli/phonia"
+homepage = "https://phonia.app"
 
 [workspace.dependencies]
 hound = "3.5"
@@ -47,8 +50,8 @@ phx-pitch = { path = "crates/phx-pitch", version = "0.0.1" }
 phx-formant = { path = "crates/phx-formant", version = "0.0.1" }
 phx-intensity = { path = "crates/phx-intensity", version = "0.0.1" }
 phx-voice = { path = "crates/phx-voice", version = "0.0.1" }
-phx-annot = { path = "crates/phx-annot", version = "0.0.1" }
-phx-textgrid = { path = "crates/phx-textgrid", version = "0.0.1" }
+phx-annot = { path = "crates/phx-annot", version = "0.1.0" }
+phx-textgrid = { path = "crates/phx-textgrid", version = "0.1.0" }
 phx-render = { path = "crates/phx-render", version = "0.0.1" }
 phx-figure = { path = "crates/phx-figure", version = "0.0.1" }
 phx-project = { path = "crates/phx-project", version = "0.0.1" }

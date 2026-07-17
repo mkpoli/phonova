@@ -1,9 +1,16 @@
 [package]
 name = "phx-annot"
-version = "0.0.1"
+version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
-description = "Tiers (interval/point), typed hierarchy (parent/child spans on the ELAN model), validation of cross-tier integrity"
+repository.workspace = true
+homepage.workspace = true
+description = "Speech annotation model: interval and point tiers, typed parent/child and aligned tier relations, integrity validation, and invertible edits"
+documentation = "https://docs.rs/phx-annot"
+readme = "README.md"
+keywords = ["phonetics", "annotation", "linguistics", "tiers", "praat"]
+categories = ["science", "data-structures"]
 
 [dependencies]
 regex = "1"

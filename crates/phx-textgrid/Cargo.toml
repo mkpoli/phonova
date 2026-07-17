@@ -1,9 +1,17 @@
 [package]
 name = "phx-textgrid"
-version = "0.0.1"
+version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
-description = "Praat TextGrid read (long/short/binary text variants; UTF-8/UTF-16/Latin-1) and write (UTF-8 always)"
+repository.workspace = true
+homepage.workspace = true
+description = "Praat TextGrid reader and writer: reads the long and short text formats from UTF-8, UTF-16, or Latin-1 and writes canonical long-format UTF-8"
+documentation = "https://docs.rs/phx-textgrid"
+readme = "README.md"
+keywords = ["praat", "textgrid", "phonetics", "annotation", "linguistics"]
+categories = ["parser-implementations", "science"]
+exclude = ["tests/fixtures.rs"]
 
 [dependencies]
 phx-annot = { workspace = true }
