@@ -72,9 +72,8 @@ service or API integration.
 
 ## Exclusions
 
-- A Notion page on private personal content
-  excluded outright as
-  sensitive personal content unrelated to tooling ideas.
+- One Notion page was excluded as private personal content unrelated to
+  tooling ideas.
 - A Todoist project, "漢字音轉換器" (Middle/Old Chinese character-to-sound
   reconstruction converter), has a large backlog (50+ items) of its own, but
   it is a historical-phonology data-conversion tool, not acoustic phonetics
@@ -86,12 +85,9 @@ service or API integration.
 
 ## Telegram Saved Messages
 
-No Telegram export was found. Searched `~/Downloads`, `~/Documents`,
-`~/<projects>`, `~/projects` (none of the first two exist on this machine) and,
-since this is WSL2, the mounted Windows profile
-`/mnt/c/Users/<user>/{Downloads,Documents,My Documents}` for `ChatExport`
-directories, `result.json`, and `messages*.html` (Telegram Desktop's export
-formats). The only Telegram-named folders found ("Telegram BOT" under the
-Windows Documents folders) contain bot-development source code
-(`mkpoli_bot`, `shiritori_bot`, `sandbox_bot.py`), not a Saved Messages
-export. This source yielded nothing and was not searched further.
+No Telegram export was found. The search covered the usual home directories
+and the mounted Windows user profile for `ChatExport` directories,
+`result.json`, and `messages*.html` (Telegram Desktop's export formats).
+The only Telegram-named folders found contain bot-development source code
+(`mkpoli_bot`, `shiritori_bot`), not a Saved Messages export. This source
+yielded nothing and was not searched further.
