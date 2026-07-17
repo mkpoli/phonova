@@ -1,5 +1,6 @@
 import type { FinishedRecordingResult, WasmCoreClient } from '$lib/core/WasmCoreClient';
-import type { ProjectSummary, RecordingEntry, SaveProjectSpec } from '$lib/core/types';
+import type { LibraryNode, ProjectSummary, RecordingEntry, SaveProjectSpec } from '$lib/core/types';
+import { flatLibrary, pruneMedia } from './library';
 
 /** Directory under OPFS that holds one subdirectory per project. */
 const PROJECTS_DIR = 'phonix-projects';
@@ -29,6 +30,14 @@ export interface ProjectState {
   recordings: RecordingEntry[];
   nextMediaId: number;
   view: unknown;
+  /** Free-form description of the project. Empty when unset. */
+  description: string;
+  /** Contributors credited for the project, in listing order. */
+  authors: string[];
+  /** Free-form tags applied to the project, in listing order. */
+  tags: string[];
+  /** The library tree: the ordered root of a nesting of groups and recordings. */
+  groups: LibraryNode[];
 }
 
 /** The recovery decision made when opening a project. */
@@ -192,7 +201,11 @@ export class ProjectStore {
       savedAt: Date.now(),
       recordings: [],
       nextMediaId: 1,
-      view: null
+      view: null,
+      description: '',
+      authors: [],
+      tags: [],
+      groups: []
     };
     await this.writeProjectFile(project);
     return project;
@@ -235,9 +248,13 @@ export class ProjectStore {
         channels: info.channels,
         audioId: info.id,
         annotationId: null,
-        hasAnnotation: false
+        hasAnnotation: false,
+        description: '',
+        authors: [],
+        tags: []
       };
       project.recordings.push(recording);
+      project.groups.push({ Media: recording.mediaId });
       byStem.set(stem(fileName), recording);
       onRecording?.(recording);
     }
@@ -284,9 +301,13 @@ export class ProjectStore {
       channels: finished.channels,
       audioId: finished.audioId,
       annotationId: null,
-      hasAnnotation: false
+      hasAnnotation: false,
+      description: '',
+      authors: [],
+      tags: []
     };
     project.recordings.push(recording);
+    project.groups.push({ Media: recording.mediaId });
     await this.writeProjectFile(project);
     return recording;
   }
@@ -339,7 +360,10 @@ export class ProjectStore {
         channels: media.channels,
         audioId,
         annotationId,
-        hasAnnotation: Boolean(media.annotationJson)
+        hasAnnotation: Boolean(media.annotationJson),
+        description: media.description,
+        authors: media.authors,
+        tags: media.tags
       });
       nextMediaId = Math.max(nextMediaId, media.mediaId + 1);
     }
@@ -350,7 +374,11 @@ export class ProjectStore {
       savedAt: container.savedAt,
       recordings,
       nextMediaId,
-      view: container.view
+      view: container.view,
+      description: container.description,
+      authors: container.authors,
+      tags: container.tags,
+      groups: container.groups.length > 0 ? container.groups : flatLibrary(recordings.map((r) => r.mediaId))
     };
     // Recovering promotes the sidecar to the project file and clears it, so the
     // recovered state becomes the saved baseline.
@@ -364,6 +392,10 @@ export class ProjectStore {
       name: project.name,
       savedAt,
       view: project.view ?? null,
+      description: project.description,
+      authors: project.authors,
+      tags: project.tags,
+      groups: project.groups,
       media: project.recordings
         .filter((recording) => recording.audioId !== null)
         .map((recording) => ({
@@ -373,7 +405,10 @@ export class ProjectStore {
           duration: recording.duration,
           sampleRate: recording.sampleRate,
           channels: recording.channels,
-          annotation: recording.annotationId === null ? null : Number(recording.annotationId)
+          annotation: recording.annotationId === null ? null : Number(recording.annotationId),
+          description: recording.description,
+          authors: recording.authors,
+          tags: recording.tags
         }))
     };
   }
@@ -411,6 +446,90 @@ export class ProjectStore {
       const renamed = await this.#client.renameProjectContainer(bytes, trimmed);
       await writeFileBytes(dir, file, renamed);
     }
+  }
+
+  /**
+   * Renames an open recording: the engine's session-level name (journaled,
+   * undoable) and the OPFS file it lives in, kept in lockstep since a
+   * recording's display name is its file stem.
+   *
+   * A no-op when the trimmed name is empty or unchanged. Persists the project
+   * file immediately so the new name and path survive a reload.
+   */
+  async renameRecording(project: ProjectState, mediaId: number, name: string): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const entry = project.recordings.find((r) => r.mediaId === mediaId);
+    if (!entry || trimmed === entry.name) return;
+    const dir = await projectDir(project.id, true);
+    const audioDir = await dir.getDirectoryHandle(AUDIO_DIR, { create: true });
+    const ext = extension(entry.fileName) || 'wav';
+    const desired = `${trimmed}.${ext}`;
+    const others = project.recordings.filter((r) => r !== entry);
+    const newFileName = desired === entry.fileName ? entry.fileName : uniqueName(desired, others);
+    if (newFileName !== entry.fileName) {
+      const bytes = await readFileBytes(audioDir, entry.fileName);
+      if (bytes) {
+        await writeFileBytes(audioDir, newFileName, bytes);
+        await removeIfPresent(audioDir, entry.fileName);
+      }
+      entry.fileName = newFileName;
+      entry.relativePath = `${AUDIO_DIR}/${newFileName}`;
+    }
+    entry.name = trimmed;
+    if (entry.audioId !== null) await this.#client.renameAudio(entry.audioId, trimmed);
+    await this.writeProjectFile(project);
+  }
+
+  /** Replaces a recording's description, authors, and tags, then persists. */
+  async updateRecordingMetadata(
+    project: ProjectState,
+    mediaId: number,
+    metadata: { description: string; authors: string[]; tags: string[] }
+  ): Promise<void> {
+    const entry = project.recordings.find((r) => r.mediaId === mediaId);
+    if (!entry) return;
+    entry.description = metadata.description;
+    entry.authors = metadata.authors;
+    entry.tags = metadata.tags;
+    await this.writeProjectFile(project);
+  }
+
+  /** Replaces the project's description, authors, and tags, then persists. */
+  async updateProjectMetadata(
+    project: ProjectState,
+    metadata: { description: string; authors: string[]; tags: string[] }
+  ): Promise<void> {
+    project.description = metadata.description;
+    project.authors = metadata.authors;
+    project.tags = metadata.tags;
+    await this.writeProjectFile(project);
+  }
+
+  /** Replaces the library tree (group create/rename/dissolve/reorder), then persists. */
+  async updateLibrary(project: ProjectState, groups: LibraryNode[]): Promise<void> {
+    project.groups = groups;
+    await this.writeProjectFile(project);
+  }
+
+  /**
+   * Permanently removes recordings previously detached from the engine
+   * session, deleting their OPFS files and pruning them from the library
+   * tree. The engine-side {@link WasmCoreClient.detachAudio} that preceded
+   * this is journaled and undoable; calling this finalizes that removal at
+   * the project level, so it belongs on the save path, after the undo window
+   * for a detach has closed.
+   */
+  async finalizeRemovals(project: ProjectState, mediaIds: number[]): Promise<void> {
+    if (mediaIds.length === 0) return;
+    const remove = new Set(mediaIds);
+    const dir = await projectDir(project.id, true);
+    const audioDir = await dir.getDirectoryHandle(AUDIO_DIR, { create: true });
+    for (const entry of project.recordings) {
+      if (remove.has(entry.mediaId)) await removeIfPresent(audioDir, entry.fileName);
+    }
+    project.recordings = project.recordings.filter((r) => !remove.has(r.mediaId));
+    project.groups = pruneMedia(project.groups, remove);
   }
 
   /** Reads a recording's WAV bytes as a File, for playback decoding. */

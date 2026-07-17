@@ -130,6 +130,8 @@ type RequestMessage =
       pointId: PointId;
       text: string;
     }
+  | { id: number; method: 'renameAudio'; audioId: AudioId; name: string }
+  | { id: number; method: 'detachAudio'; audioId: AudioId }
   | { id: number; method: 'undo' }
   | { id: number; method: 'redo' }
   | { id: number; method: 'undoDepth' }
@@ -675,6 +677,16 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
         const result = appliedToPlain(
           wasm.setPointLabel(message.annotationId, message.tierId, message.pointId, message.text)
         );
+        postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'renameAudio': {
+        const result = appliedToPlain(wasm.renameAudio(message.audioId, message.name));
+        postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'detachAudio': {
+        const result = appliedToPlain(wasm.detachAudio(message.audioId));
         postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
         return;
       }

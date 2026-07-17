@@ -270,6 +270,14 @@ export class WasmCoreClient implements CoreClient {
     return this.#call({ method: 'setPointLabel', annotationId, tierId, pointId, text });
   }
 
+  renameAudio(audioId: AudioId, name: string): Promise<AppliedChange> {
+    return this.#call({ method: 'renameAudio', audioId, name });
+  }
+
+  detachAudio(audioId: AudioId): Promise<AppliedChange> {
+    return this.#call({ method: 'detachAudio', audioId });
+  }
+
   undo(): Promise<AppliedChange | null> {
     return this.#call({ method: 'undo' });
   }

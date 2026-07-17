@@ -161,6 +161,24 @@ export interface AnnotationClientLike {
   searchLabels(pattern: string, regex: boolean): Promise<LabelHit[]>;
   importTextGrid(audioId: AudioId, bytes: Uint8Array): Promise<AnnotationId>;
   exportTextGrid(annotationId: AnnotationId): Promise<Uint8Array>;
+  /** Renames a stored recording. Journaled; undo restores the prior name. */
+  renameAudio(audioId: AudioId, name: string): Promise<AppliedChange>;
+  /**
+   * Detaches a recording from the session, cascading to its annotation
+   * documents. Journaled; undo restores the recording and those documents
+   * together, keeping the same {@link AudioId}.
+   */
+  detachAudio(audioId: AudioId): Promise<AppliedChange>;
+}
+
+/** A node in the library tree: a recording leaf or a named group of nodes. */
+export type LibraryNode = { Media: number } | { Group: LibraryGroup };
+
+/** A named group of library nodes, nesting to any depth. */
+export interface LibraryGroup {
+  id: number;
+  name: string;
+  children: LibraryNode[];
 }
 
 /** One recording in a {@link SaveProjectSpec}, with session ids as plain numbers. */
@@ -173,6 +191,9 @@ export interface SaveProjectMediaSpec {
   channels: number;
   /** Session annotation id whose document is stored, or `null` when unannotated. */
   annotation: number | null;
+  description: string;
+  authors: string[];
+  tags: string[];
 }
 
 /** The argument to {@link CoreClientLike.saveProjectContainer}. */
@@ -180,7 +201,11 @@ export interface SaveProjectSpec {
   name: string;
   savedAt: number;
   view: unknown;
+  description: string;
+  authors: string[];
+  tags: string[];
   media: SaveProjectMediaSpec[];
+  groups: LibraryNode[];
 }
 
 /** One recording parsed from a project container. */
@@ -193,6 +218,9 @@ export interface LoadedProjectMedia {
   channels: number;
   /** Serialized annotation document to re-attach after import, or `null`. */
   annotationJson: string | null;
+  description: string;
+  authors: string[];
+  tags: string[];
 }
 
 /** A project container parsed back into the metadata a session restores from. */
@@ -200,7 +228,11 @@ export interface LoadedProjectContainer {
   name: string;
   savedAt: number;
   view: unknown;
+  description: string;
+  authors: string[];
+  tags: string[];
   media: LoadedProjectMedia[];
+  groups: LibraryNode[];
 }
 
 /** One recording inside an open project, bound to its live session ids. */
@@ -224,6 +256,12 @@ export interface RecordingEntry {
   annotationId: AnnotationId | null;
   /** Whether the recording carries an annotation document. */
   hasAnnotation: boolean;
+  /** Free-form description of this recording. Empty when unset. */
+  description: string;
+  /** Contributors credited for this recording, in listing order. */
+  authors: string[];
+  /** Free-form tags applied to this recording, in listing order. */
+  tags: string[];
 }
 
 /** A project as listed on the home grid, without its media decoded. */
