@@ -27,3 +27,4 @@ tools/session-viewer/.playwright-shots/
 .env.*
 !.env.example
 tools/session-viewer/
+tools/session-viewer/
