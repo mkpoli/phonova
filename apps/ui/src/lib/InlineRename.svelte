@@ -22,6 +22,11 @@
     editing = true;
   }
 
+  /** Enters edit mode from an owning widget (a treegrid row's F2, say). */
+  export function edit() {
+    startEdit();
+  }
+
   function commit() {
     if (!editing) return;
     const next = draft.trim();
@@ -35,11 +40,16 @@
 
   function handleDisplayKeydown(event: KeyboardEvent) {
     if (editing || (event.key !== 'F2' && event.key !== 'Enter' && event.key !== ' ')) return;
+    // Owning widgets (a treegrid row) bind these same keys; the rename
+    // affordance claims them while focused so a row does not also act on them.
     event.preventDefault();
+    event.stopPropagation();
     startEdit();
   }
 
   function handleInputKeydown(event: KeyboardEvent) {
+    // Keystrokes while editing belong to the field, never to an owning row.
+    event.stopPropagation();
     if (event.key === 'Enter') {
       event.preventDefault();
       commit();

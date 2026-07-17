@@ -6,6 +6,10 @@ export interface LibraryRow {
   key: string;
   depth: number;
   node: LibraryNode;
+  /** The group this row sits directly inside, or `null` at the root. */
+  parentGroupId: number | null;
+  /** Position among its parent's children, for reordering and drop math. */
+  index: number;
 }
 
 export function isGroup(node: LibraryNode): node is { Group: LibraryGroup } {
@@ -20,14 +24,33 @@ export function nodeKey(node: LibraryNode): string {
 export function flattenTree(
   nodes: LibraryNode[],
   collapsed: ReadonlySet<number>,
-  depth = 0
+  depth = 0,
+  parentGroupId: number | null = null
 ): LibraryRow[] {
   const out: LibraryRow[] = [];
-  for (const node of nodes) {
-    out.push({ key: nodeKey(node), depth, node });
+  nodes.forEach((node, index) => {
+    out.push({ key: nodeKey(node), depth, node, parentGroupId, index });
     if (isGroup(node) && !collapsed.has(node.Group.id)) {
-      out.push(...flattenTree(node.Group.children, collapsed, depth + 1));
+      out.push(...flattenTree(node.Group.children, collapsed, depth + 1, node.Group.id));
     }
+  });
+  return out;
+}
+
+/**
+ * Keeps every media leaf whose id is in `keep`, and every group holding at
+ * least one kept leaf anywhere below it. Empty groups drop out, so a filtered
+ * tree shows only the recordings that match and the groups that contain them.
+ */
+export function filterTree(nodes: LibraryNode[], keep: ReadonlySet<number>): LibraryNode[] {
+  const out: LibraryNode[] = [];
+  for (const node of nodes) {
+    if (isGroup(node)) {
+      const children = filterTree(node.Group.children, keep);
+      if (children.length > 0) out.push({ Group: { ...node.Group, children } });
+      continue;
+    }
+    if (keep.has(node.Media)) out.push(node);
   }
   return out;
 }
