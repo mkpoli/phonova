@@ -366,7 +366,18 @@
 >
   <header class="top">
     <div class="brand">
-      <span class="mark" aria-hidden="true"></span>
+      <svg
+        class="mark"
+        aria-hidden="true"
+        viewBox="0 0 64 64"
+        fill="none"
+        stroke-width="6"
+        stroke-linecap="round"
+      >
+        <path stroke="currentColor" d="M46.5 12.9 A 22 22 0 1 0 52.2 20.4" />
+        <path stroke="currentColor" d="M14 36 C20 24 25 24 31 32 C37 40 41 40 50 24" />
+        <circle class="dot" cx="52" cy="20" r="5" />
+      </svg>
       <span class="title">Phonia</span>
     </div>
     <div class="tools">
@@ -715,11 +726,13 @@
   }
 
   .mark {
-    width: 1rem;
-    height: 1rem;
-    border-radius: 4px;
-    background: linear-gradient(140deg, var(--accent), var(--accent-strong));
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent);
+    width: 1.35rem;
+    height: 1.35rem;
+    color: var(--accent);
+  }
+
+  .mark .dot {
+    fill: var(--warn);
   }
 
   .title {

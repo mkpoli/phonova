@@ -15,6 +15,17 @@ keeps long sessions comfortable; restraint keeps attention on the signal.
 Decoration appears in exactly one place — the serif wordmark — and nowhere
 else.
 
+## Identity
+
+The mark is a rise–fall–rise pitch contour held in a circle that opens at the
+top right; the contour's final rise passes through the gap and an amber dot
+sits just outside it. Strokes are round-capped teal. In-app the mark inherits
+`--accent` and `--warn` so it follows the theme; standalone renderings
+(favicon, exported icons) pin teal-600 with amber-600 on light and teal-300
+with amber-300 on dark. The wordmark sets "Phonia" in the serif stack beside
+the mark, and the two only appear together in chrome — the mark alone carries
+identity at icon sizes.
+
 ## Principles
 
 Each principle carries a test. A change that fails its test does not ship.
