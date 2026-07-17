@@ -778,7 +778,13 @@
   }
 
   const recordingChoices = $derived(
-    project?.recordings.map((entry) => ({ mediaId: entry.mediaId, name: entry.name })) ?? []
+    project?.recordings.map((entry) => ({
+      mediaId: entry.mediaId,
+      name: entry.name,
+      duration: entry.duration,
+      audioId: entry.audioId,
+      hasAnnotation: entry.hasAnnotation
+    })) ?? []
   );
 
   // Test hook: the batch-equals-GUI invariant check reads the live client and
@@ -870,6 +876,7 @@
     onExit={backToProject}
     projectName={project?.name}
     recordings={recordingChoices}
+    groups={project?.groups}
     currentRecordingId={recording?.mediaId ?? null}
     onSwitchRecording={switchRecording}
     onRenameRecording={renameRecording}

@@ -4,7 +4,7 @@
   import IconImage from '~icons/lucide/image';
   import IconPanelRight from '~icons/lucide/panel-right';
   import ExportDialog from './ExportDialog.svelte';
-  import InlineRename from './InlineRename.svelte';
+  import RecordingSwitcher from './RecordingSwitcher.svelte';
   import InspectorPanel from './InspectorPanel.svelte';
   import OverviewStrip from './OverviewStrip.svelte';
   import ReadoutBar from './ReadoutBar.svelte';
@@ -23,17 +23,22 @@
     type AudioInfo,
     type CoreClientLike,
     type OverlayParams,
+    type LibraryNode,
     type OverlayStats,
     type Selection,
     type SelectionReadout,
     type ViewportState,
     type VoiceReportData,
-    type WasmColormapName
+    type WasmColormapName,
+    type AudioId
   } from './types';
 
   interface RecordingChoice {
     mediaId: number;
     name: string;
+    duration: number;
+    audioId: AudioId | null;
+    hasAnnotation: boolean;
   }
 
   interface Props {
@@ -53,6 +58,8 @@
     onExit?: () => void;
     projectName?: string;
     recordings?: RecordingChoice[];
+    /** The library tree, so the recording switcher mirrors the corpus's grouping. */
+    groups?: LibraryNode[];
     currentRecordingId?: number | null;
     onSwitchRecording?: (mediaId: number) => void;
     onRenameRecording?: (mediaId: number, name: string) => void;
@@ -80,6 +87,7 @@
     onExit,
     projectName,
     recordings,
+    groups,
     currentRecordingId,
     onSwitchRecording,
     onRenameRecording,
@@ -88,9 +96,7 @@
     recording = false
   }: Props = $props();
 
-  let currentRecordingName = $derived(
-    recordings?.find((entry) => entry.mediaId === currentRecordingId)?.name ?? audio?.name ?? ''
-  );
+  let switcher = $state<{ show: () => void } | null>(null);
 
   let viewport = $state<ViewportState>(defaultViewport());
   let overlayParams = $state<OverlayParams>(defaultOverlayParams());
@@ -500,6 +506,14 @@
       run: () => onColormapChange('Grayscale')
     },
     {
+      id: 'switchRecording',
+      title: 'Switch recording',
+      group: 'Project',
+      keywords: ['open', 'take', 'corpus', 'change recording'],
+      enabled: () => !!onSwitchRecording && (recordings?.length ?? 0) > 1,
+      run: () => switcher?.show()
+    },
+    {
       id: 'closeRecording',
       title: 'Close recording',
       group: 'Project',
@@ -527,29 +541,19 @@
           <span>{projectName ?? 'Project'}</span>
         </button>
       {/if}
-      {#if onRenameRecording && currentRecordingId !== null && currentRecordingId !== undefined}
-        <InlineRename
-          name={currentRecordingName}
-          class="crumb-current"
-          label="Rename recording"
-          testId="rename-recording"
-          onRename={(next) => onRenameRecording?.(currentRecordingId as number, next)}
+      {#if recordings && recordings.length > 0 && onSwitchRecording}
+        <RecordingSwitcher
+          bind:this={switcher}
+          {client}
+          {theme}
+          {recordings}
+          {groups}
+          currentRecordingId={currentRecordingId ?? null}
+          onSwitch={(mediaId) => onSwitchRecording?.(mediaId)}
+          onRename={onRenameRecording}
         />
       {:else}
-        <span class="crumb-current">{currentRecordingName}</span>
-      {/if}
-      {#if recordings && recordings.length > 1 && onSwitchRecording}
-        <select
-          class="recording-switch"
-          aria-label="Switch recording"
-          data-testid="recording-switch"
-          value={currentRecordingId ?? undefined}
-          onchange={(event) => onSwitchRecording?.(Number(event.currentTarget.value))}
-        >
-          {#each recordings as recording (recording.mediaId)}
-            <option value={recording.mediaId}>{recording.name}</option>
-          {/each}
-        </select>
+        <span class="crumb-current">{recordings?.[0]?.name ?? audio?.name ?? ''}</span>
       {/if}
       {#if onStartRecording}
         <button
@@ -741,15 +745,6 @@
   .crumb-record:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-  }
-
-  .recording-switch {
-    border: 1px solid var(--chrome-strong);
-    border-radius: var(--radius-sm);
-    background: var(--panel-soft);
-    color: var(--text);
-    padding: 0.2rem 0.45rem;
-    max-width: 18rem;
   }
 
   .workspace {

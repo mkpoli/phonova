@@ -13,6 +13,7 @@ export { default as ProjectCard } from './ProjectCard.svelte';
 export { default as ProjectView } from './ProjectView.svelte';
 export { default as ReadoutBar } from './ReadoutBar.svelte';
 export { default as RecordingStrip } from './RecordingStrip.svelte';
+export { default as RecordingSwitcher } from './RecordingSwitcher.svelte';
 export { default as SearchBar } from './SearchBar.svelte';
 export { default as SelectionLayer } from './SelectionLayer.svelte';
 export { default as SpectrogramPane } from './SpectrogramPane.svelte';
