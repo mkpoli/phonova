@@ -15,6 +15,14 @@ async function attr(page: Page, testId: string, name: string) {
   return page.getByTestId(testId).evaluate((node, n) => Number(node.getAttribute(n)), name);
 }
 
+/** Opens the palette picker and chooses a built-in ramp by its name. */
+async function selectPalette(page: Page, name: string) {
+  await page.getByTestId('palette-picker').click();
+  await expect(page.getByTestId('palette-popover')).toBeVisible();
+  await page.locator(`[data-testid="palette-option"][data-name="${name}"]`).click();
+  await expect(page.getByTestId('palette-popover')).toHaveCount(0);
+}
+
 async function dispatchWheel(page: Page, deltaY: number, modifiers: { shiftKey?: boolean } = {}) {
   await page.getByTestId('timeline').evaluate(
     (node, { deltaY, modifiers }) => {
@@ -150,7 +158,7 @@ test('palette switch recolorizes under 300 ms and never recomputes the STFT', as
   // visibly within 300 ms (the cached dB is only re-colorized).
   const tokenBefore = await attr(page, 'spectrogram-canvas', 'data-render-token');
   const started = Date.now();
-  await page.getByLabel('Spectrogram palette').selectOption('Inferno');
+  await selectPalette(page, 'Inferno');
   await expect
     .poll(() => attr(page, 'spectrogram-canvas', 'data-render-token'), { timeout: 5000 })
     .toBeGreaterThan(tokenBefore);
@@ -159,13 +167,62 @@ test('palette switch recolorizes under 300 ms and never recomputes the STFT', as
   expect(elapsed).toBeLessThan(300);
 });
 
+test('the default palette is Phonia on a fresh load', async ({ page }) => {
+  await openEditorWithFixture(page, shortFixture);
+  await expect(page.getByTestId('spectrogram-canvas')).toHaveAttribute('data-render-token', /[1-9]/);
+  await expect(page.getByTestId('palette-current')).toHaveText('Phonia');
+});
+
+test('a custom ramp created in the editor persists across reload and recolors fast', async ({
+  page
+}) => {
+  await openEditorWithFixture(page, shortFixture);
+  await expect(page.getByTestId('spectrogram-canvas')).toHaveAttribute('data-render-token', /[1-9]/);
+
+  // Open the gradient editor from the picker, name and save a ramp.
+  await page.getByTestId('palette-picker').click();
+  await page.getByTestId('palette-new').click();
+  await expect(page.getByTestId('gradient-editor')).toBeVisible();
+  await page.getByTestId('ramp-name').fill('Ocean');
+
+  // Saving selects the ramp; the spectrogram repaints under it within 300 ms.
+  const tokenBefore = await attr(page, 'spectrogram-canvas', 'data-render-token');
+  const started = Date.now();
+  await page.getByTestId('ramp-save').click();
+  await expect(page.getByTestId('palette-current')).toHaveText('Ocean');
+  await expect
+    .poll(() => attr(page, 'spectrogram-canvas', 'data-render-token'), { timeout: 5000 })
+    .toBeGreaterThan(tokenBefore);
+  const elapsed = Date.now() - started;
+  console.log(`custom-ramp recolor ${elapsed} ms`);
+  expect(elapsed).toBeLessThan(300);
+
+  // The ramp and the active selection survive a full reload.
+  await page.reload();
+  const storedRamps = await page.evaluate(() => localStorage.getItem('phonia:custom-ramps'));
+  expect(storedRamps).toContain('Ocean');
+
+  // Reopen the project and confirm the picker still lists the ramp and holds it
+  // selected. A fresh autosave may prompt recovery; accept it to reach the work.
+  await page.getByTestId('open-project').first().click();
+  if (await page.getByTestId('recovery-accept').isVisible().catch(() => false)) {
+    await page.getByTestId('recovery-accept').click();
+  }
+  await expect(page.getByTestId('corpus')).toBeVisible();
+  await page.getByTestId('corpus-row').first().click();
+  await expect(page.getByTestId('editor')).toHaveAttribute('data-visible-end', /[1-9]/);
+  await expect(page.getByTestId('palette-current')).toHaveText('Ocean');
+  await page.getByTestId('palette-picker').click();
+  await expect(page.locator('[data-testid="palette-option"][data-name="Ocean"]')).toBeVisible();
+});
+
 test('new palettes render legibly in both themes', async ({ page }) => {
   await openEditorWithFixture(page, shortFixture);
   await expect(page.getByTestId('spectrogram-canvas')).toHaveAttribute('data-render-token', /[1-9]/);
 
   for (const palette of NEW_PALETTES) {
     const tokenBefore = await attr(page, 'spectrogram-canvas', 'data-render-token');
-    await page.getByLabel('Spectrogram palette').selectOption(palette);
+    await selectPalette(page, palette);
     await expect
       .poll(() => attr(page, 'spectrogram-canvas', 'data-render-token'))
       .toBeGreaterThan(tokenBefore);
