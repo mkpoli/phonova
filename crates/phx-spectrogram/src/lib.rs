@@ -3,6 +3,7 @@
 #![warn(missing_docs)]
 
 use std::f64::consts::PI;
+use std::ops::Range;
 
 use phx_audio::AudioView;
 use phx_dsp::{FrameGrid, RealFftPlan, Window, next_pow2, window_samples};
@@ -257,7 +258,23 @@ pub struct ColumnBlock {
 /// Returns the global time and frequency axes without running any FFT.
 #[must_use]
 pub fn analysis_axes(audio: AudioView<'_>, params: &SpectrogramParams) -> AnalysisAxes {
-    let analysis = Analysis::new(audio.sample_rate(), audio.duration(), params);
+    analysis_axes_dims(audio.sample_rate(), audio.duration(), params)
+}
+
+/// Returns the global time and frequency axes from the signal's sample rate and
+/// duration alone, without any samples.
+///
+/// A streamed source reports both from its header, so the axes — and thus the
+/// tile columns a viewport selects — are known before a single sample is
+/// decoded. The result equals [`analysis_axes`] for a buffer of the same rate
+/// and duration.
+#[must_use]
+pub fn analysis_axes_dims(
+    sample_rate: f64,
+    duration: f64,
+    params: &SpectrogramParams,
+) -> AnalysisAxes {
+    let analysis = Analysis::new(sample_rate, duration, params);
     AnalysisAxes {
         times: analysis.frame_grid.centers().collect(),
         frequencies: analysis.frequencies,
@@ -278,7 +295,59 @@ pub fn compute_column_block(
     col_count: usize,
 ) -> ColumnBlock {
     let mono = audio.mono_mix();
-    let analysis = Analysis::new(audio.sample_rate(), audio.duration(), params);
+    compute_column_block_windowed(
+        audio.sample_rate(),
+        audio.duration(),
+        params,
+        first_col,
+        col_count,
+        mono.as_ref(),
+        0,
+    )
+}
+
+/// The whole-signal sample range `[start, end)` that a column block reads.
+///
+/// A block's frame centres come from the whole-signal grid, but each centre
+/// only touches samples within half a physical window of itself, so the block
+/// as a whole reads a bounded contiguous range. A streamed source decodes
+/// exactly this range and hands it to [`compute_column_block_windowed`], which
+/// is how a spectrogram tile over a long file is computed without ever
+/// materializing the whole signal. `start` is clamped to zero; `end` may exceed
+/// the frame count and the caller clamps the read to what the source holds
+/// (samples past the end read as silence, matching [`compute_column_block`]).
+#[must_use]
+pub fn column_block_sample_range(
+    sample_rate: f64,
+    duration: f64,
+    params: &SpectrogramParams,
+    first_col: usize,
+    col_count: usize,
+) -> Range<usize> {
+    Analysis::new(sample_rate, duration, params).column_block_sample_range(first_col, col_count)
+}
+
+/// Computes a column block from a windowed mono buffer covering
+/// `[sample_offset, sample_offset + samples.len())` of the whole signal.
+///
+/// The frame grid still derives from the whole-signal `sample_rate` and
+/// `duration`, so the columns land on the same coordinates
+/// [`compute_column_block`] produces. Only the samples the block's frames touch
+/// need be present; supply the range [`column_block_sample_range`] reports (the
+/// eager path passes the whole mono buffer at offset zero, which is
+/// bit-for-bit identical). A sample index outside the buffer reads as silence,
+/// matching the whole-buffer path at the signal's edges.
+#[must_use]
+pub fn compute_column_block_windowed(
+    sample_rate: f64,
+    duration: f64,
+    params: &SpectrogramParams,
+    first_col: usize,
+    col_count: usize,
+    samples: &[f32],
+    sample_offset: usize,
+) -> ColumnBlock {
+    let analysis = Analysis::new(sample_rate, duration, params);
     let centers: Vec<f64> = analysis.frame_grid.centers().collect();
     let freq_len = analysis.frequencies.len();
     let start = first_col.min(centers.len());
@@ -286,7 +355,7 @@ pub fn compute_column_block(
     let mut fft = RealFftPlan::new();
     let mut db = Vec::with_capacity(end.saturating_sub(start) * freq_len);
     for &center in &centers[start..end] {
-        let spectrum = analysis.frame_db(mono.as_ref(), center, &mut fft);
+        let spectrum = analysis.frame_db_offset(samples, sample_offset, center, &mut fft);
         db.extend(spectrum.iter().map(|&v| v as f32));
     }
     ColumnBlock {
@@ -337,6 +406,24 @@ impl Analysis {
     }
 
     fn frame_db(&self, samples: &[f32], center: f64, fft: &mut RealFftPlan) -> Vec<f64> {
+        self.frame_db_offset(samples, 0, center, fft)
+    }
+
+    /// Raw PSD dB for the frame centred at `center`, reading `samples` as the
+    /// whole-signal slice starting at `sample_offset`.
+    ///
+    /// With `sample_offset == 0` and `samples` the whole mono buffer this is
+    /// identical to reading the buffer directly. A windowed caller passes a
+    /// sub-range and its offset; a sample index below the offset or past the
+    /// slice reads as silence, exactly as an out-of-range index does on the
+    /// whole buffer.
+    fn frame_db_offset(
+        &self,
+        samples: &[f32],
+        sample_offset: usize,
+        center: f64,
+        fft: &mut RealFftPlan,
+    ) -> Vec<f64> {
         if self.window.is_empty() || self.fft_bins.is_empty() {
             return Vec::new();
         }
@@ -348,7 +435,9 @@ impl Analysis {
             let sample_index = (center_sample + i as f64 - midpoint).round();
             if sample_index >= 0.0 {
                 let sample_index = sample_index as usize;
-                if let Some(&sample) = samples.get(sample_index) {
+                if let Some(local) = sample_index.checked_sub(sample_offset)
+                    && let Some(&sample) = samples.get(local)
+                {
                     *dst = f64::from(sample) * w;
                 }
             }
@@ -369,6 +458,34 @@ impl Analysis {
                 10.0 * psd.max(SILENT_PSD_FLOOR).log10()
             })
             .collect()
+    }
+
+    /// The lowest and highest whole-signal sample index a frame centred at
+    /// `center` reads, matching the rounding in [`Analysis::frame_db_offset`].
+    fn frame_sample_span(&self, center: f64) -> (f64, f64) {
+        let midpoint = (self.window.len().saturating_sub(1)) as f64 / 2.0;
+        let center_sample = center * self.sample_rate;
+        let last = self.window.len().saturating_sub(1) as f64;
+        let lo = (center_sample - midpoint).round();
+        let hi = (center_sample + last - midpoint).round();
+        (lo, hi)
+    }
+
+    /// Sample range `[start, end)` the columns `[first_col, first_col +
+    /// col_count)` read; `start` clamped to zero, `end` left to the caller to
+    /// clamp against the frame count.
+    fn column_block_sample_range(&self, first_col: usize, col_count: usize) -> Range<usize> {
+        let centers: Vec<f64> = self.frame_grid.centers().collect();
+        let start = first_col.min(centers.len());
+        let end = first_col.saturating_add(col_count).min(centers.len());
+        if start >= end {
+            return 0..0;
+        }
+        let (lo, _) = self.frame_sample_span(centers[start]);
+        let (_, hi) = self.frame_sample_span(centers[end - 1]);
+        let lo = lo.max(0.0) as usize;
+        let hi = (hi.max(0.0) as usize).saturating_add(1);
+        lo..hi
     }
 }
 
@@ -664,6 +781,58 @@ mod tests {
                 let tile_v = tile.db[f * n_time + t];
                 let block_v = block.db[t * n_freq + f];
                 assert_eq!(tile_v.to_bits(), block_v.to_bits());
+            }
+        }
+    }
+
+    #[test]
+    fn windowed_block_matches_the_whole_buffer_block_bit_for_bit() {
+        // A streamed tile decodes only the block's sample range and computes the
+        // block from that window; it must equal the whole-buffer block exactly.
+        let audio = oracle_audio(16_000.0, 0.5);
+        let params = SpectrogramParams {
+            window_length: 0.008,
+            max_frequency: 3200.0,
+            time_step: 0.003,
+            frequency_step: 40.0,
+            ..SpectrogramParams::default()
+        };
+        let view = audio.slice_samples(0..audio.frames());
+        let mono = view.mono_mix();
+        let axes = analysis_axes(view.clone(), &params);
+        let n_time = axes.times.len();
+        assert!(n_time > 3);
+
+        for &(first_col, cols) in &[(0usize, 4usize), (2, 5), (n_time.saturating_sub(3), 8)] {
+            let whole = compute_column_block(view.clone(), &params, first_col, cols);
+            let range = column_block_sample_range(
+                view.sample_rate(),
+                view.duration(),
+                &params,
+                first_col,
+                cols,
+            );
+            let end = range.end.min(mono.as_ref().len());
+            let start = range.start.min(end);
+            let windowed = compute_column_block_windowed(
+                view.sample_rate(),
+                view.duration(),
+                &params,
+                first_col,
+                cols,
+                &mono.as_ref()[start..end],
+                start,
+            );
+            assert_eq!(windowed.first_col, whole.first_col);
+            assert_eq!(windowed.col_count, whole.col_count);
+            assert_eq!(windowed.freq_len, whole.freq_len);
+            assert_eq!(windowed.db.len(), whole.db.len());
+            for (i, (a, b)) in windowed.db.iter().zip(&whole.db).enumerate() {
+                assert_eq!(
+                    a.to_bits(),
+                    b.to_bits(),
+                    "cell {i} block {first_col}+{cols}"
+                );
             }
         }
     }
