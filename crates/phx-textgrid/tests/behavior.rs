@@ -84,6 +84,15 @@ fn point_tier_labels_round_trip() {
 }
 
 #[test]
+fn zero_tier_document_round_trips() {
+    let doc = Annotation::from_raw(0.0, 2.0, Vec::new());
+    let bytes = write(&doc);
+    let (reparsed, _) = read(&bytes).expect("zero-tier document reads back");
+    assert_eq!(doc, reparsed);
+    assert!(reparsed.tiers().is_empty());
+}
+
+#[test]
 fn arbitrary_bytes_never_panic() {
     let samples: &[&[u8]] = &[
         b"",

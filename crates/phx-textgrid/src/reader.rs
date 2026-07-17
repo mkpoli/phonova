@@ -123,6 +123,26 @@ impl<'a> Cursor<'a> {
         }
         Ok(value as usize)
     }
+
+    /// Reads the `tiers?` presence flag, skipping decorative words such as the
+    /// `tiers?` tag itself, and reports whether tiers follow.
+    ///
+    /// A `<absent>` flag means the document has zero tiers and the file ends
+    /// at this field, with no `size` count or `item []:` block; `<exists>`
+    /// means a tier count and item block follow.
+    fn read_tiers_flag(&mut self) -> Result<bool, TextGridError> {
+        while let Some(token) = self.tokens.get(self.pos) {
+            self.pos += 1;
+            if let Token::Word(word) = token {
+                match word.as_str() {
+                    "<exists>" => return Ok(true),
+                    "<absent>" => return Ok(false),
+                    _ => {}
+                }
+            }
+        }
+        Err(TextGridError::UnexpectedEnd)
+    }
 }
 
 /// Reads a decoded TextGrid string into an annotation and its source variant.
@@ -141,33 +161,39 @@ pub fn parse(text: &str, encoding: Encoding) -> Result<(Annotation, SourceInfo),
 
     let xmin = cursor.read_number()?;
     let xmax = cursor.read_number()?;
-    let tier_count = cursor.read_count()?;
 
     let mut ids = IdMinter::default();
     let mut slots = Vec::new();
-    for _ in 0..tier_count {
-        let tier_class = cursor.read_string()?;
-        let name = cursor.read_string()?;
-        let _tier_xmin = cursor.read_number()?;
-        let _tier_xmax = cursor.read_number()?;
-        let entry_count = cursor.read_count()?;
+    if cursor.read_tiers_flag()? {
+        let tier_count = cursor.read_count()?;
+        for _ in 0..tier_count {
+            let tier_class = cursor.read_string()?;
+            let name = cursor.read_string()?;
+            let _tier_xmin = cursor.read_number()?;
+            let _tier_xmax = cursor.read_number()?;
+            let entry_count = cursor.read_count()?;
 
-        let tier = match tier_class.as_str() {
-            "IntervalTier" => Tier::Interval(read_interval_tier(
-                &mut cursor,
-                name,
-                entry_count,
-                &mut ids,
-            )?),
-            "TextTier" => Tier::Point(read_point_tier(&mut cursor, name, entry_count, &mut ids)?),
-            _ => return Err(TextGridError::UnknownTierClass { found: tier_class }),
-        };
-        slots.push(TierSlot {
-            id: TierId::new(ids.next_tier()),
-            relation: TierRelation::Independent,
-            tier,
-        });
+            let tier = match tier_class.as_str() {
+                "IntervalTier" => Tier::Interval(read_interval_tier(
+                    &mut cursor,
+                    name,
+                    entry_count,
+                    &mut ids,
+                )?),
+                "TextTier" => {
+                    Tier::Point(read_point_tier(&mut cursor, name, entry_count, &mut ids)?)
+                }
+                _ => return Err(TextGridError::UnknownTierClass { found: tier_class }),
+            };
+            slots.push(TierSlot {
+                id: TierId::new(ids.next_tier()),
+                relation: TierRelation::Independent,
+                tier,
+            });
+        }
     }
+    // `<absent>` means the document has zero tiers and the file ends at the
+    // flag; `slots` stays empty and no further tokens are consulted.
 
     let annotation = Annotation::from_raw(xmin, xmax, slots);
     Ok((annotation, SourceInfo { variant, encoding }))
@@ -391,5 +417,50 @@ Object class = \"TextGrid\"
         assert_eq!(long_info.variant, Variant::Long);
         assert_eq!(short_info.variant, Variant::Short);
         assert_eq!(long_doc, short_doc);
+    }
+
+    #[test]
+    fn absent_tiers_flag_parses_to_a_zero_tier_document() {
+        let text = "\
+File type = \"ooTextFile\"
+Object class = \"TextGrid\"
+
+xmin = 0
+xmax = 1
+tiers? <absent>
+";
+        let (doc, _) = parse(text, Encoding::Utf8).expect("parses");
+        assert_eq!(doc.xmin(), 0.0);
+        assert_eq!(doc.xmax(), 1.0);
+        assert!(doc.tiers().is_empty());
+    }
+
+    #[test]
+    fn absent_tiers_flag_parses_in_short_format_too() {
+        let text = "\
+File type = \"ooTextFile\"
+Object class = \"TextGrid\"
+0
+1
+<absent>
+";
+        let (doc, info) = parse(text, Encoding::Utf8).expect("parses");
+        assert_eq!(info.variant, Variant::Short);
+        assert!(doc.tiers().is_empty());
+    }
+
+    #[test]
+    fn exists_tiers_flag_still_reads_the_size_and_item_block() {
+        let tokens = tokenize("tiers? <exists>\nsize = 2").expect("tokenizes");
+        let mut cursor = Cursor::new(&tokens);
+        assert!(cursor.read_tiers_flag().expect("reads flag"));
+        assert_eq!(cursor.read_count().expect("reads size"), 2);
+    }
+
+    #[test]
+    fn absent_tiers_flag_stops_before_any_size_field() {
+        let tokens = tokenize("tiers? <absent>").expect("tokenizes");
+        let mut cursor = Cursor::new(&tokens);
+        assert!(!cursor.read_tiers_flag().expect("reads flag"));
     }
 }

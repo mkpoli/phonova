@@ -18,6 +18,12 @@ pub fn write(annotation: &Annotation) -> Vec<u8> {
     out.push_str("Object class = \"TextGrid\"\n\n");
     let _ = writeln!(out, "xmin = {xmin}");
     let _ = writeln!(out, "xmax = {xmax}");
+
+    if annotation.tiers().is_empty() {
+        out.push_str("tiers? <absent>\n");
+        return out.into_bytes();
+    }
+
     out.push_str("tiers? <exists>\n");
     let _ = writeln!(out, "size = {}", annotation.tiers().len());
     out.push_str("item []:\n");
@@ -101,5 +107,16 @@ mod tests {
         assert_eq!(escape("a\"b"), "a\"\"b");
         assert_eq!(escape(""), "");
         assert_eq!(escape("plain"), "plain");
+    }
+
+    #[test]
+    fn zero_tier_document_writes_the_absent_flag_and_stops() {
+        let doc = Annotation::from_raw(0.0, 1.0, Vec::new());
+        let bytes = write(&doc);
+        let text = std::str::from_utf8(&bytes).expect("written output is UTF-8");
+        assert_eq!(
+            text,
+            "File type = \"ooTextFile\"\nObject class = \"TextGrid\"\n\nxmin = 0\nxmax = 1\ntiers? <absent>\n"
+        );
     }
 }
