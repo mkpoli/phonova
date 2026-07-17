@@ -15,6 +15,9 @@ apps/web/src/lib/wasm/pkg/
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
+# Session viewer generated index (local-only internal tool)
+tools/session-viewer/data/
+
 # OS
 .DS_Store
 
