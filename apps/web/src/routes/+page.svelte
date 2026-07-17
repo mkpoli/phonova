@@ -15,6 +15,7 @@
     moveNode as treeMoveNode,
     type AudioExportRequest,
     type AudioInfo,
+    type HomeIndex,
     type LibraryNode,
     type ProjectExportMode,
     type ProjectSummary,
@@ -39,6 +40,7 @@
 
   let route = $state<Route>('home');
   let projects = $state<ProjectSummary[]>([]);
+  let homeIndex = $state<HomeIndex>({ pinned: [], groups: [] });
   let project = $state<ProjectState | null>(null);
   let recording = $state<RecordingEntry | null>(null);
 
@@ -221,8 +223,117 @@
     if (!store) return;
     try {
       projects = await store.list();
+      await loadHomeIndex();
     } catch (caught) {
       report(caught);
+    }
+  }
+
+  /**
+   * Reads the home index and drops any pin or group membership naming a project
+   * that no longer exists, so a deleted project leaves no dangling reference.
+   * Writes back only when pruning changed something.
+   */
+  async function loadHomeIndex() {
+    if (!store) return;
+    const known = new Set(projects.map((p) => p.id));
+    const raw = await store.readHomeIndex();
+    const pinned = raw.pinned.filter((id) => known.has(id));
+    const groups = raw.groups.map((g) => ({
+      ...g,
+      members: g.members.filter((id) => known.has(id))
+    }));
+    const pruned =
+      pinned.length !== raw.pinned.length ||
+      groups.some((g, i) => g.members.length !== raw.groups[i].members.length);
+    homeIndex = { pinned, groups };
+    if (pruned) await store.writeHomeIndex(homeIndex);
+  }
+
+  async function updateHomeIndex(next: HomeIndex) {
+    if (!store) return;
+    homeIndex = next;
+    try {
+      await store.writeHomeIndex(next);
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  function togglePin(id: string) {
+    const pinned = homeIndex.pinned.includes(id)
+      ? homeIndex.pinned.filter((x) => x !== id)
+      : [...homeIndex.pinned, id];
+    void updateHomeIndex({ ...homeIndex, pinned });
+  }
+
+  // A project lives in one group: seeding or moving into a group first drops it
+  // from every other group's membership.
+  function withoutMembers(groups: HomeIndex['groups'], ids: string[]): HomeIndex['groups'] {
+    const drop = new Set(ids);
+    return groups.map((g) => ({ ...g, members: g.members.filter((m) => !drop.has(m)) }));
+  }
+
+  function createGroupFrom(memberIds: string[]) {
+    const group = {
+      id: crypto.randomUUID(),
+      name: 'New group',
+      members: [...memberIds],
+      collapsed: false
+    };
+    const groups = [...withoutMembers(homeIndex.groups, memberIds), group];
+    void updateHomeIndex({ ...homeIndex, groups });
+  }
+
+  function renameHomeGroup(groupId: string, name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const groups = homeIndex.groups.map((g) => (g.id === groupId ? { ...g, name: trimmed } : g));
+    void updateHomeIndex({ ...homeIndex, groups });
+  }
+
+  function dissolveHomeGroup(groupId: string) {
+    const groups = homeIndex.groups.filter((g) => g.id !== groupId);
+    void updateHomeIndex({ ...homeIndex, groups });
+  }
+
+  function toggleGroupCollapse(groupId: string) {
+    const groups = homeIndex.groups.map((g) =>
+      g.id === groupId ? { ...g, collapsed: !g.collapsed } : g
+    );
+    void updateHomeIndex({ ...homeIndex, groups });
+  }
+
+  function moveToGroup(id: string, groupId: string | null) {
+    let groups = withoutMembers(homeIndex.groups, [id]);
+    if (groupId !== null) {
+      groups = groups.map((g) => (g.id === groupId ? { ...g, members: [...g.members, id] } : g));
+    }
+    void updateHomeIndex({ ...homeIndex, groups });
+  }
+
+  async function exportStoredProject(id: string) {
+    if (!store) return;
+    try {
+      const { name, bytes } = await store.exportStored(id);
+      downloadBytes(bytes, `${sanitizeFileName(name)}.phxproj`, 'application/zip');
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  async function batchDeleteProjects(ids: string[]) {
+    if (!store || ids.length === 0) return;
+    error = '';
+    busy = true;
+    busyLabel = `Deleting ${ids.length} ${ids.length === 1 ? 'project' : 'projects'}…`;
+    try {
+      for (const id of ids) await store.delete(id);
+      await refreshProjects();
+    } catch (caught) {
+      report(caught);
+    } finally {
+      busy = false;
     }
   }
 
@@ -1009,6 +1120,15 @@
     onThemeChange={handleThemeChange}
     onStartRecording={recordingSupported ? startRecording : undefined}
     recording={capturing}
+    {homeIndex}
+    onTogglePin={togglePin}
+    onCreateGroupFrom={createGroupFrom}
+    onRenameGroup={renameHomeGroup}
+    onDissolveGroup={dissolveHomeGroup}
+    onToggleGroupCollapse={toggleGroupCollapse}
+    onMoveToGroup={moveToGroup}
+    onExportStored={exportStoredProject}
+    onBatchDelete={batchDeleteProjects}
   />
 {:else if route === 'project' && project}
   <ProjectView

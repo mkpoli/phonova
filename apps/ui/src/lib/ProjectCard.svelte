@@ -1,18 +1,42 @@
 <script lang="ts">
   import IconCopy from '~icons/lucide/copy';
   import IconTrash from '~icons/lucide/trash-2';
+  import IconPin from '~icons/lucide/pin';
+  import IconGripVertical from '~icons/lucide/grip-vertical';
   import InlineRename from './InlineRename.svelte';
   import type { ProjectSummary } from './types';
 
   interface Props {
     project: ProjectSummary;
-    onOpen: (id: string) => void;
+    /** Whether this card is pinned (fills the pin, moves it to the Pinned section). */
+    pinned?: boolean;
+    /** Whether this card is part of the current multi-selection. */
+    selected?: boolean;
+    /** Body activation: a plain click opens, a modified click selects. Handled upstream. */
+    onActivate: (id: string, event: MouseEvent | KeyboardEvent) => void;
     onRename: (id: string, name: string) => void;
     onDelete: (id: string) => void;
     onDuplicate: (id: string) => void;
+    /** Toggles the pin; absent hides the pin control (desktop shell). */
+    onTogglePin?: (id: string) => void;
+    /** Begins a pointer drag to move the card between groups; absent hides the handle. */
+    onDragStart?: (id: string, event: PointerEvent) => void;
+    /** True while this card is the one being dragged. */
+    dragging?: boolean;
   }
 
-  let { project, onOpen, onRename, onDelete, onDuplicate }: Props = $props();
+  let {
+    project,
+    pinned = false,
+    selected = false,
+    onActivate,
+    onRename,
+    onDelete,
+    onDuplicate,
+    onTogglePin,
+    onDragStart,
+    dragging = false
+  }: Props = $props();
 
   function savedLabel(ms: number): string {
     const date = new Date(ms);
@@ -27,24 +51,58 @@
 
   function handleOpenClick(event: MouseEvent) {
     if (event.target instanceof Element && event.target.closest('.inline-rename')) return;
-    onOpen(project.id);
+    onActivate(project.id, event);
   }
 
   function handleOpenKeydown(event: KeyboardEvent) {
     if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      onOpen(project.id);
+      onActivate(project.id, event);
     }
   }
 </script>
 
 <div
   class="card"
+  class:pinned
+  class:selected
+  class:dragging
   data-testid="project-card"
   data-project-id={project.id}
   data-project-name={project.name}
+  data-selected={selected}
+  data-pinned={pinned}
 >
+  <div class="corner">
+    {#if onDragStart}
+      <button
+        type="button"
+        class="grip"
+        aria-label="Drag to move between groups"
+        title="Drag to move between groups"
+        data-testid="card-drag"
+        onpointerdown={(event) => onDragStart?.(project.id, event)}
+      >
+        <IconGripVertical aria-hidden="true" />
+      </button>
+    {/if}
+    {#if onTogglePin}
+      <button
+        type="button"
+        class="pin"
+        class:on={pinned}
+        aria-label={pinned ? 'Unpin project' : 'Pin project'}
+        aria-pressed={pinned}
+        title={pinned ? 'Unpin project' : 'Pin to top'}
+        data-testid="pin-project"
+        onclick={() => onTogglePin?.(project.id)}
+      >
+        <IconPin aria-hidden="true" />
+      </button>
+    {/if}
+  </div>
+
   <div
     class="open"
     role="button"
@@ -81,6 +139,7 @@
 
 <style>
   .card {
+    position: relative;
     display: flex;
     flex-direction: column;
     border: 1px solid var(--chrome-strong);
@@ -100,6 +159,88 @@
     transform: translateY(-1px);
   }
 
+  /* Selection is the identity accent: a ring plus a tinted surface. */
+  .card.selected {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  .card.dragging {
+    opacity: 0.5;
+  }
+
+  .corner {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    z-index: 1;
+  }
+
+  .grip,
+  .pin {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    padding: 0.22rem;
+    transition:
+      opacity var(--t-fast),
+      color var(--t-fast),
+      background var(--t-fast),
+      border-color var(--t-fast);
+  }
+
+  .grip {
+    opacity: 0;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .card:hover .grip,
+  .card:focus-within .grip {
+    opacity: 1;
+  }
+
+  .grip:hover {
+    color: var(--text);
+    background: var(--panel-soft);
+    border-color: var(--chrome-strong);
+  }
+
+  .pin {
+    opacity: 0;
+  }
+
+  .card:hover .pin,
+  .card:focus-within .pin,
+  .pin.on {
+    opacity: 1;
+  }
+
+  .pin:hover {
+    color: var(--accent-strong);
+    background: var(--accent-tint);
+  }
+
+  .pin.on {
+    color: var(--accent-strong);
+  }
+
+  .pin.on :global(svg) {
+    fill: currentColor;
+  }
+
+  .grip :global(svg),
+  .pin :global(svg) {
+    font-size: 0.95rem;
+  }
+
   .open {
     flex: 1;
     display: flex;
@@ -111,6 +252,10 @@
     text-align: left;
     min-height: 6.5rem;
     cursor: pointer;
+  }
+
+  .card.selected .open {
+    background: var(--accent-tint);
   }
 
   .open:hover {
