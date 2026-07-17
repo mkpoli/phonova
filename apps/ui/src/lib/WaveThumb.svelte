@@ -20,6 +20,10 @@
     const id = audioId;
     // Re-read theme so a palette flip repaints from the cached slice.
     void theme;
+    // A theme change re-runs this effect and clears the canvas below; drop the
+    // painted flag until the fresh slice repaints, so `ready`/`data-painted`
+    // never report a stale paint from the previous theme.
+    ready = false;
     if (!node || !client || id === null || duration <= 0) return;
     let cancelled = false;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -69,6 +73,7 @@
   style:width={`${width}px`}
   style:height={`${height}px`}
   data-testid="wave-thumb"
+  data-painted={ready}
   aria-hidden="true"
 ></canvas>
 

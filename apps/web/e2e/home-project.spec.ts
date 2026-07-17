@@ -59,13 +59,17 @@ test('drop a folder, build a browsable corpus, screenshots both themes', async (
 
   // Every row renders a waveform thumbnail.
   await expect
-    .poll(() => page.locator('[data-testid="wave-thumb"].ready').count(), { timeout: 30_000 })
+    .poll(() => page.locator('[data-testid="wave-thumb"][data-painted="true"]').count(), {
+      timeout: 30_000
+    })
     .toBe(5);
 
   await page.screenshot({ path: path.join(screenshots, 'corpus-light.png'), fullPage: true });
   await toggleTheme(page, true);
   await expect
-    .poll(() => page.locator('[data-testid="wave-thumb"].ready').count(), { timeout: 30_000 })
+    .poll(() => page.locator('[data-testid="wave-thumb"][data-painted="true"]').count(), {
+      timeout: 30_000
+    })
     .toBe(5);
   await page.screenshot({ path: path.join(screenshots, 'corpus-dark.png'), fullPage: true });
 
