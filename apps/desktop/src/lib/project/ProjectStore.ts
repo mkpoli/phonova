@@ -76,6 +76,10 @@ async function fsWrite(path: string, bytes: Uint8Array): Promise<void> {
   await invoke('fs_write', bytes, { headers: { path: pathHeader(path) } });
 }
 
+async function fsExists(path: string): Promise<boolean> {
+  return invoke<boolean>('fs_exists', { path });
+}
+
 async function fsRemove(path: string): Promise<void> {
   await invoke('fs_remove', { path });
 }
@@ -157,8 +161,9 @@ export class ProjectStore {
     for (const file of wavs) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const fileName = uniqueName(file.name, project.recordings);
-      await fsWrite(`${project.id}/${AUDIO_DIR}/${fileName}`, bytes);
-      const info = await this.#client.importAudio(new File([bytes], fileName));
+      const relativePath = `${project.id}/${AUDIO_DIR}/${fileName}`;
+      await fsWrite(relativePath, bytes);
+      const info = await this.#client.openAudioStreaming(relativePath, fileName);
       const recording: RecordingEntry = {
         mediaId: project.nextMediaId++,
         name: stem(fileName),
@@ -216,11 +221,11 @@ export class ProjectStore {
     let nextMediaId = 1;
     for (const media of container.media) {
       const fileName = media.relativePath.split('/').pop() ?? media.relativePath;
-      const bytes = await fsRead(`${id}/${AUDIO_DIR}/${fileName}`);
+      const relativePath = `${id}/${AUDIO_DIR}/${fileName}`;
       let audioId = null;
       let annotationId = null;
-      if (bytes) {
-        const info = await this.#client.importAudio(new File([bytes], fileName));
+      if (await fsExists(relativePath)) {
+        const info = await this.#client.openAudioStreaming(relativePath, fileName);
         audioId = info.id;
         if (media.annotationJson) {
           annotationId = await this.#client.attachAnnotationJson(audioId, media.annotationJson);

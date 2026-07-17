@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use phx_engine::AnnotationId;
+use phx_engine::{AnnotationId, ByteReader, Engine};
 use phx_project::{ContentHash, FsStore, MediaId, MediaRef, Project, Storage};
 use tauri::State;
 use tauri::ipc::{InvokeBody, Request, Response};
@@ -36,6 +36,123 @@ fn raw_body(request: &Request<'_>) -> Result<Vec<u8>, String> {
         InvokeBody::Raw(bytes) => Ok(bytes.clone()),
         InvokeBody::Json(_) => Err("expected a raw byte body".into()),
     }
+}
+
+/// A `Send + Sync` file-backed [`ByteReader`] serving positioned reads without
+/// holding the file in memory.
+///
+/// [`std::fs::File`] is `Send + Sync`, and the positioned reads used here take
+/// `&self` without a seek cursor, so a streamed source can share this reader
+/// across the engine's `Send + Sync` store on the native build.
+struct FileReader {
+    file: std::fs::File,
+    len: u64,
+}
+
+impl FileReader {
+    fn open(path: &Path) -> std::io::Result<Self> {
+        let file = std::fs::File::open(path)?;
+        let len = file.metadata()?.len();
+        Ok(Self { file, len })
+    }
+}
+
+impl ByteReader for FileReader {
+    fn total_len(&self) -> u64 {
+        self.len
+    }
+
+    #[cfg(unix)]
+    fn read_exact_at(&self, offset: u64, buf: &mut [u8]) -> Result<(), phx_engine::AudioError> {
+        use std::os::unix::fs::FileExt;
+        self.file
+            .read_exact_at(buf, offset)
+            .map_err(|e| phx_engine::AudioError::Io(e.to_string()))
+    }
+
+    #[cfg(windows)]
+    fn read_exact_at(&self, offset: u64, buf: &mut [u8]) -> Result<(), phx_engine::AudioError> {
+        use std::os::windows::fs::FileExt;
+        let mut done = 0;
+        while done < buf.len() {
+            let read = self
+                .file
+                .seek_read(&mut buf[done..], offset + done as u64)
+                .map_err(|e| phx_engine::AudioError::Io(e.to_string()))?;
+            if read == 0 {
+                return Err(phx_engine::AudioError::Io(
+                    "reader ended before the requested range".to_string(),
+                ));
+            }
+            done += read;
+        }
+        Ok(())
+    }
+}
+
+/// Streams the file at `path` through BLAKE3 in bounded chunks, returning the
+/// same content address a whole-file [`ContentHash::of`] would.
+fn hash_file(path: &Path) -> std::io::Result<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let read = file.read(&mut buf)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buf[..read]);
+    }
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
+/// Opens an audio file already stored under the projects root, choosing the
+/// eager or streamed path by its length.
+///
+/// `rel` is a `/`-separated path beneath the root. A file over the engine's
+/// eager frame threshold opens streamed over a `Send + Sync` file reader — only
+/// the header and the bounded waveform pyramid are read up front, and analysis
+/// reads sample ranges on demand — so an hour-long take never decodes whole into
+/// memory. A shorter file decodes eagerly, exactly as [`import_audio`] does.
+#[tauri::command]
+pub fn open_audio_streaming(state: State<AppState>, rel: String) -> Result<AudioInfoDto, String> {
+    let path = resolve(&state.root, &rel);
+    let name = path.file_name().map(|s| s.to_string_lossy().into_owned());
+
+    let frames =
+        phx_engine::StreamingWav::open(FileReader::open(&path).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?
+            .frames();
+
+    let mut engine = state
+        .engine
+        .lock()
+        .map_err(|_| "engine lock poisoned".to_string())?;
+
+    let (id, hash) = if frames > Engine::eager_import_frame_limit() {
+        let hash = hash_file(&path).map_err(|e| e.to_string())?;
+        let reader = FileReader::open(&path).map_err(|e| e.to_string())?;
+        let id = engine
+            .open_streaming_wav(reader, name)
+            .map_err(|e| e.to_string())?;
+        (id, hash)
+    } else {
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        let hash = ContentHash::of(&bytes).to_hex();
+        let id = engine.import_wav_bytes(&bytes).map_err(|e| e.to_string())?;
+        (id, hash)
+    };
+
+    let info = engine.audio_info(id).map_err(|e| e.to_string())?;
+    Ok(AudioInfoDto {
+        id: id.as_u64(),
+        duration: info.duration,
+        sample_rate: info.sample_rate,
+        channels: info.channels,
+        name: info.name,
+        hash,
+    })
 }
 
 /// Decodes RIFF/WAVE bytes into the engine, returning metadata and the BLAKE3
@@ -86,6 +203,9 @@ pub fn save_project_container(
             duration: media.duration,
             sample_rate: media.sample_rate,
             channels: media.channels,
+            description: String::new(),
+            authors: Vec::new(),
+            tags: Vec::new(),
         });
         if let Some(annotation_id) = media.annotation {
             let annotation = engine

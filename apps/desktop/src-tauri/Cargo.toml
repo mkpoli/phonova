@@ -23,6 +23,7 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
+blake3 = "1"
 
 phx-engine = { path = "../../../crates/phx-engine", features = ["figure-raster", "figure-pdf"] }
 phx-project = { path = "../../../crates/phx-project" }

@@ -81,6 +81,34 @@ export class TauriCoreClient implements CoreClientLike {
     };
   }
 
+  /**
+   * Opens an audio file already stored under the projects root, letting the
+   * native side choose the eager or streamed path by its length.
+   *
+   * `rel` is a `/`-separated path beneath the root. A file over the engine's
+   * eager frame threshold opens streamed over a `Send + Sync` file reader, so
+   * the whole decoded signal never enters native memory; a shorter one decodes
+   * whole, exactly as {@link importAudio} does.
+   */
+  async openAudioStreaming(rel: string, name: string): Promise<AudioInfo> {
+    const info = await invoke<{
+      id: number;
+      duration: number;
+      sampleRate: number;
+      channels: number;
+      name?: string;
+      hash: string;
+    }>('open_audio_streaming', { rel });
+    return {
+      id: big(info.id),
+      duration: info.duration,
+      sampleRate: info.sampleRate,
+      channels: info.channels,
+      name: info.name ?? name,
+      hash: info.hash
+    };
+  }
+
   async waveformSlice(id: AudioId, t0: number, t1: number, px: number): Promise<MinMaxPyramidSlice> {
     const buffer = await invoke<ArrayBuffer>('waveform_slice', { id: num(id), t0, t1, px });
     return { t0, t1, px, data: new Float32Array(buffer) };

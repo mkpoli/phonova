@@ -152,6 +152,18 @@ impl From<Applied> for AppliedDto {
                 dto.kind = "audioRemoved".into();
                 dto.audio = Some(au(audio));
             }
+            Applied::AudioRenamed { audio, .. } => {
+                dto.kind = "audioRenamed".into();
+                dto.audio = Some(au(audio));
+            }
+            Applied::AudioDetached { audio, .. } => {
+                dto.kind = "audioDetached".into();
+                dto.audio = Some(au(audio));
+            }
+            Applied::AudioRestored { audio, .. } => {
+                dto.kind = "audioRestored".into();
+                dto.audio = Some(au(audio));
+            }
             Applied::AnnotationAttached { annotation, audio } => {
                 dto.kind = "annotationAttached".into();
                 dto.annotation = Some(a(annotation));

@@ -2620,6 +2620,7 @@ name = "phonix-desktop"
 version = "0.0.1"
 dependencies = [
  "base64 0.22.1",
+ "blake3",
  "phx-audio",
  "phx-engine",
  "phx-playback",

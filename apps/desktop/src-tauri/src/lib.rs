@@ -35,6 +35,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             project_cmds::import_audio,
+            project_cmds::open_audio_streaming,
             project_cmds::save_project_container,
             project_cmds::load_project_container,
             project_cmds::rename_project_container,
