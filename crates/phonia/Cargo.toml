@@ -1,0 +1,15 @@
+[package]
+name = "phonia"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Name reservation for Phonia, an open-source phonetics toolkit; its library crates are published under the phx- prefix"
+documentation = "https://docs.rs/phonia"
+readme = "README.md"
+keywords = ["phonetics", "praat", "linguistics"]
+categories = ["science"]
+
+[dependencies]

@@ -16,6 +16,7 @@ members = [
     "crates/phx-playback",
     "crates/phx-engine",
     "crates/phx-wasm",
+    "crates/phonia",
     "tools/oracle-bridge",
 ]
 
