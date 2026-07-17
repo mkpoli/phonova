@@ -38,10 +38,14 @@ per-frame track -- compared field-by-field instead of positionally:
 Gross errors (octave/voicing-class disagreement) are separated from fine
 errors (small numeric deviation where both sides already agree on
 voicing/octave), per the GPE/MFPE methodology
-(`docs/research/algorithms-and-validation.md` §7.3). Only fine-error
-tolerance violations and sub-majority voicing agreement fail the run; gross
-errors are listed for investigation, matching validation.md's framing of
-them as "the expected disagreement mode".
+(`docs/research/algorithms-and-validation.md` §7.3). Both are part of the
+pass/fail decision: `oracle.tolerances` holds the specific per-track budgets
+`docs/plan/gates.md`'s phase gate reviews accepted with documentation (a
+handful of boundary-frame fine violations, zero gross errors, a bounded
+number of out-of-band intensity frames, a widened jitter/shimmer band on one
+named running-speech fixture, ...); anything past those recorded, cited
+bands fails the run rather than being routed to a notes/counter field the
+decision ignores.
 """
 
 from __future__ import annotations
@@ -142,7 +146,19 @@ def diff_pitch(reference: dict, measured: dict) -> DiffReport:
             )
 
     voicing_agreement_rate = voicing_agree / voiced_total if voiced_total else 1.0
-    passed = not fine_violations and voicing_agreement_rate >= tol.VOICING_MAJORITY_THRESHOLD
+    fine_violation_rate = len(fine_violations) / fine_checked if fine_checked else 0.0
+    max_fine_violation_relative = max(
+        (v["relative_diff"] for v in fine_violations), default=0.0
+    )
+    # Per docs/plan/gates.md T2.6: gross errors, fine-violation rate, and
+    # fine-violation magnitude are all part of the pass/fail decision, not
+    # just voicing agreement -- see oracle.tolerances for the accepted bands.
+    passed = (
+        len(gross_errors) <= tol.F0_GROSS_ERROR_MAX
+        and voicing_agreement_rate >= tol.VOICING_MAJORITY_THRESHOLD
+        and fine_violation_rate <= tol.F0_FINE_VIOLATION_RATE_MAX
+        and max_fine_violation_relative <= tol.F0_FINE_VIOLATION_MAX_RELATIVE
+    )
 
     return DiffReport(
         measure="pitch",
@@ -152,9 +168,15 @@ def diff_pitch(reference: dict, measured: dict) -> DiffReport:
             "both_unvoiced": both_unvoiced,
             "voicing_mismatches": len(voicing_mismatches),
             "voicing_agreement_rate": voicing_agreement_rate,
+            "voicing_majority_threshold": tol.VOICING_MAJORITY_THRESHOLD,
             "gross_errors": len(gross_errors),
+            "gross_errors_max": tol.F0_GROSS_ERROR_MAX,
             "fine_checked": fine_checked,
             "fine_violations": len(fine_violations),
+            "fine_violation_rate": fine_violation_rate,
+            "fine_violation_rate_max": tol.F0_FINE_VIOLATION_RATE_MAX,
+            "max_fine_violation_relative": max_fine_violation_relative,
+            "fine_violation_max_relative": tol.F0_FINE_VIOLATION_MAX_RELATIVE,
             "tolerance_relative": tol.F0_FINE_RELATIVE,
         },
         violations=fine_violations,
@@ -197,7 +219,17 @@ def diff_formant(reference: dict, measured: dict) -> DiffReport:
                     }
                 )
 
-    passed = not violations
+    violation_rate = len(violations) / checked if checked else 0.0
+    # Per docs/plan/gates.md T2.6: missing tracked slots fail outright (never
+    # part of the accepted residual); the violation rate is checked against
+    # the corpus-aggregate band recorded there. This per-file check alone is
+    # stricter than that aggregate on some fixtures -- `oracle diff-all`
+    # additionally aggregates checked/violations across the whole formant
+    # corpus and gates on that number, matching how the record was measured.
+    passed = (
+        len(missing) <= tol.FORMANT_MISSING_MAX
+        and violation_rate <= tol.FORMANT_CORPUS_VIOLATION_RATE_MAX
+    )
     return DiffReport(
         measure="formant",
         passed=passed,
@@ -205,7 +237,10 @@ def diff_formant(reference: dict, measured: dict) -> DiffReport:
             "total_frames": len(ref_frames),
             "checked_points": checked,
             "missing_points": len(missing),
+            "missing_points_max": tol.FORMANT_MISSING_MAX,
             "violations": len(violations),
+            "violation_rate": violation_rate,
+            "violation_rate_max": tol.FORMANT_CORPUS_VIOLATION_RATE_MAX,
             "tolerance": f"max({tol.FORMANT_ABSOLUTE_HZ} Hz, {tol.FORMANT_RELATIVE:.0%})",
         },
         violations=violations,
@@ -222,14 +257,14 @@ def diff_intensity(reference: dict, measured: dict) -> DiffReport:
     _require_same_length(ref_frames, meas_frames)
 
     checked = 0
-    missing = 0
+    null_mismatches = 0
     violations: list[dict] = []
 
     for i, (r, m) in enumerate(zip(ref_frames, meas_frames)):
         r_db, m_db = r["db"], m["db"]
         if r_db is None or m_db is None:
             if r_db != m_db:
-                missing += 1
+                null_mismatches += 1
             continue
         checked += 1
         diff_db = abs(m_db - r_db)
@@ -245,18 +280,36 @@ def diff_intensity(reference: dict, measured: dict) -> DiffReport:
                 }
             )
 
-    passed = not violations
+    max_violation_db = max((v["diff_db"] for v in violations), default=0.0)
+    # Per docs/plan/gates.md T2.6: a null-vs-value mismatch fails outright
+    # (never part of the accepted residual); out-of-band frames are capped
+    # both by count and by how far any one of them may drift, matching the
+    # recorded "7 frames on one fixture (max 3.5 dB)".
+    passed = (
+        null_mismatches <= tol.INTENSITY_NULL_MISMATCH_MAX
+        and len(violations) <= tol.INTENSITY_MAX_VIOLATION_FRAMES
+        and max_violation_db <= tol.INTENSITY_MAX_VIOLATION_DB
+    )
     return DiffReport(
         measure="intensity",
         passed=passed,
         summary={
             "total_frames": len(ref_frames),
             "checked": checked,
-            "missing": missing,
+            "null_mismatches": null_mismatches,
+            "null_mismatches_max": tol.INTENSITY_NULL_MISMATCH_MAX,
             "violations": len(violations),
+            "violations_max": tol.INTENSITY_MAX_VIOLATION_FRAMES,
+            "max_violation_db": max_violation_db,
+            "max_violation_db_max": tol.INTENSITY_MAX_VIOLATION_DB,
             "tolerance_db": tol.INTENSITY_ABSOLUTE_DB,
         },
         violations=violations,
+        notes=[
+            f"null-vs-value mismatch at frame {i} (t={r['time']})"
+            for i, (r, m) in enumerate(zip(ref_frames, meas_frames))
+            if (r["db"] is None) != (m["db"] is None)
+        ],
     )
 
 
@@ -273,12 +326,26 @@ def _compare_voice_scalar(
     violations: list[dict],
     notes: list[str],
 ) -> None:
-    """Relative-tolerance comparison for one voice-report scalar field."""
+    """Relative-tolerance comparison for one voice-report scalar field.
+
+    A null on one side with a value on the other is a structural
+    disagreement, not a numeric one -- per docs/plan/gates.md, it was never
+    part of the accepted residual on any fixture, so it is recorded as a
+    violation (not just a note) and fails the run.
+    """
     if reference_value is None or measured_value is None:
         if reference_value != measured_value:
             notes.append(
                 f"{label}: one side is null (reference={reference_value}, "
                 f"measured={measured_value})"
+            )
+            violations.append(
+                {
+                    "field": label,
+                    "reference": reference_value,
+                    "measured": measured_value,
+                    "issue": "null-mismatch",
+                }
             )
         return
     denominator = abs(reference_value) if reference_value != 0 else 1.0
@@ -298,6 +365,18 @@ def _compare_voice_scalar(
 def diff_voice(reference: dict, measured: dict) -> DiffReport:
     ref_report = reference["report"]
     meas_report = measured["report"]
+
+    # T4.6: the jitter/shimmer band widens only for the documented
+    # running-speech fixture; every other fixture (both sustained-vowel
+    # cases) keeps the tight 10% band, matching "both sustained-vowel cases
+    # pass 0/14".
+    audio_name = reference.get("audio", "")
+    is_running_speech = audio_name.endswith(tol.VOICE_RUNNING_SPEECH_AUDIO)
+    jitter_shimmer_tolerance = (
+        tol.VOICE_RUNNING_SPEECH_JITTER_SHIMMER_RELATIVE
+        if is_running_speech
+        else tol.JITTER_SHIMMER_RELATIVE
+    )
 
     violations: list[dict] = []
     notes: list[str] = []
@@ -320,7 +399,7 @@ def diff_voice(reference: dict, measured: dict) -> DiffReport:
             f"jitter.{field}",
             ref_report["jitter"].get(field),
             meas_report["jitter"].get(field),
-            tol.JITTER_SHIMMER_RELATIVE,
+            jitter_shimmer_tolerance,
             violations,
             notes,
         )
@@ -331,7 +410,7 @@ def diff_voice(reference: dict, measured: dict) -> DiffReport:
             f"shimmer.{field}",
             ref_report["shimmer"].get(field),
             meas_report["shimmer"].get(field),
-            tol.JITTER_SHIMMER_RELATIVE,
+            jitter_shimmer_tolerance,
             violations,
             notes,
         )
@@ -343,6 +422,14 @@ def diff_voice(reference: dict, measured: dict) -> DiffReport:
         if r_hnr != m_hnr:
             notes.append(
                 f"mean_hnr_db: one side is null (reference={r_hnr}, measured={m_hnr})"
+            )
+            violations.append(
+                {
+                    "field": "mean_hnr_db",
+                    "reference": r_hnr,
+                    "measured": m_hnr,
+                    "issue": "null-mismatch",
+                }
             )
     else:
         diff_db = abs(m_hnr - r_hnr)
@@ -357,14 +444,19 @@ def diff_voice(reference: dict, measured: dict) -> DiffReport:
                 }
             )
 
-    passed = not violations
+    null_mismatches = sum(1 for v in violations if v.get("issue") == "null-mismatch")
+    # Per docs/plan/gates.md T4.6: a null-vs-value mismatch fails outright on
+    # every fixture; numeric violations already fail via `not violations`
+    # since a violation only exists past its (fixture-aware) tolerance band.
+    passed = not violations and null_mismatches <= tol.VOICE_NULL_MISMATCH_MAX
     return DiffReport(
         measure="voice",
         passed=passed,
         summary={
             "checked_scalars": checked,
             "violations": len(violations),
-            "jitter_shimmer_tolerance_relative": tol.JITTER_SHIMMER_RELATIVE,
+            "running_speech_fixture": is_running_speech,
+            "jitter_shimmer_tolerance_relative": jitter_shimmer_tolerance,
             "f0_tolerance_relative": tol.VOICE_F0_RELATIVE,
             "hnr_tolerance_db": tol.VOICE_HNR_ABSOLUTE_DB,
         },

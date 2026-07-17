@@ -70,41 +70,40 @@ jobs:
   oracle:
     name: oracle
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: tools/oracle
     steps:
       - uses: actions/checkout@v7
       - name: Check for committed references
         id: refs
+        working-directory: tools/oracle
         run: |
           count=$(find references -name '*.json' 2>/dev/null | wc -l)
           echo "count=$count" >> "$GITHUB_OUTPUT"
           if [ "$count" -eq 0 ]; then
             echo "::notice::no reference JSON under tools/oracle/references -- oracle job skipped"
           fi
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.refs.outputs.count != '0'
+      - uses: Swatinem/rust-cache@v2
+        if: steps.refs.outputs.count != '0'
+      - name: Build oracle-bridge (release)
+        if: steps.refs.outputs.count != '0'
+        run: cargo build --release -p oracle-bridge
       - name: Install uv
         if: steps.refs.outputs.count != '0'
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
-      - name: Install parselmouth
-        id: install
+      - name: Install oracle (diffing the committed references needs no Praat/parselmouth)
         if: steps.refs.outputs.count != '0'
-        continue-on-error: true
+        working-directory: tools/oracle
+        run: uv sync
+      - name: Run oracle-bridge over the committed fixtures
+        if: steps.refs.outputs.count != '0'
         run: |
-          if uv sync --extra parselmouth; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Report parselmouth unavailable
-        if: steps.refs.outputs.count != '0' && steps.install.outputs.available != 'true'
-        run: echo "::warning::praat-parselmouth did not install on this runner -- oracle job skipped, not failed"
-      - name: Regenerate references and diff against committed fixtures
-        if: steps.refs.outputs.count != '0' && steps.install.outputs.available == 'true'
-        run: |
-          rm -rf /tmp/oracle-fresh
-          uv run oracle generate --out-dir /tmp/oracle-fresh
-          uv run oracle diff-all --measured-dir /tmp/oracle-fresh
+          rm -rf /tmp/oracle-candidate
+          ./target/release/oracle-bridge --out-dir /tmp/oracle-candidate
+      - name: Diff the Rust candidate output against the committed references
+        if: steps.refs.outputs.count != '0'
+        working-directory: tools/oracle
+        run: uv run oracle diff-all --measured-dir /tmp/oracle-candidate
 
   figcheck:
     name: figcheck

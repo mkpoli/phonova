@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from oracle import jsonio
+from oracle import tolerances as tol
 from oracle.cases import CASES
 from oracle.diff import DiffError, diff
 from oracle.paths import references_dir, repo_root
@@ -123,7 +124,15 @@ def _cmd_diff(args: argparse.Namespace) -> int:
 
 def _cmd_diff_all(args: argparse.Namespace) -> int:
     """Diff every reference file in `references/` against a measured directory
-    holding same-named files (the Rust CLI's dump directory)."""
+    holding same-named files (the Rust CLI's dump directory).
+
+    Formant is gated on a corpus-wide aggregate rather than each fixture's
+    own `passed`: docs/plan/gates.md T2.6 records the accepted residual as
+    487/6717 (7.3%) violations summed over the whole formant corpus, and
+    individual fixtures range from well under that rate to well over it.
+    Every other measure's `passed` already reflects gates.md's per-fixture
+    acceptance record (see `oracle.diff`), so it gates the run directly.
+    """
     ref_dir = references_dir()
     measured_dir = Path(args.measured_dir)
     ref_files = sorted(ref_dir.glob("*.json"))
@@ -132,6 +141,9 @@ def _cmd_diff_all(args: argparse.Namespace) -> int:
         return SKIP_EXIT_CODE
 
     overall_pass = True
+    formant_checked = 0
+    formant_violations = 0
+    formant_missing = 0
     for ref_path in ref_files:
         reference = jsonio.read_json(ref_path)
         if reference.get("measure") == "spectrogram":
@@ -150,7 +162,30 @@ def _cmd_diff_all(args: argparse.Namespace) -> int:
             overall_pass = False
             continue
         _print_report(report)
-        overall_pass = overall_pass and report.passed
+
+        if report.measure == "formant":
+            formant_checked += report.summary["checked_points"]
+            formant_violations += report.summary["violations"]
+            formant_missing += report.summary["missing_points"]
+        else:
+            overall_pass = overall_pass and report.passed
+
+    if formant_checked:
+        formant_violation_rate = formant_violations / formant_checked
+        formant_ok = (
+            formant_missing <= tol.FORMANT_MISSING_MAX
+            and formant_violation_rate <= tol.FORMANT_CORPUS_VIOLATION_RATE_MAX
+        )
+        print(
+            f"[{'PASS' if formant_ok else 'FAIL'}] measure=formant (corpus aggregate)\n"
+            f"  checked_points: {formant_checked}\n"
+            f"  violations: {formant_violations}\n"
+            f"  violation_rate: {formant_violation_rate:.4f}\n"
+            f"  violation_rate_max: {tol.FORMANT_CORPUS_VIOLATION_RATE_MAX}\n"
+            f"  missing_points: {formant_missing}\n"
+            f"  missing_points_max: {tol.FORMANT_MISSING_MAX}"
+        )
+        overall_pass = overall_pass and formant_ok
 
     return 0 if overall_pass else 1
 
