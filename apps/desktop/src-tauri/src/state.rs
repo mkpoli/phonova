@@ -10,22 +10,31 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use phx_engine::{Applied, Engine};
+use phx_playback::CpalPlayback;
 use serde::{Deserialize, Serialize};
 
-/// Tauri-managed application state: the native engine and the projects root.
+/// Tauri-managed application state: the native engine, the projects root, and
+/// the native playback engine.
 pub struct AppState {
     /// The one journaled engine instance every command reads and mutates.
     pub engine: Mutex<Engine>,
     /// Base directory the filesystem commands resolve project paths beneath.
     pub root: PathBuf,
+    /// The cpal playback engine, or `None` when the host exposes no output
+    /// device. The playback commands report `None` as an error so the frontend
+    /// falls back to WebAudio. Its `&self` control methods need no lock: the
+    /// engine carries its own state behind atomics and an audio thread.
+    pub playback: Option<CpalPlayback>,
 }
 
 impl AppState {
-    /// Creates state with an empty engine rooted at `root`.
+    /// Creates state with an empty engine rooted at `root`, opening the native
+    /// output device when one is available.
     pub fn new(root: PathBuf) -> Self {
         Self {
             engine: Mutex::new(Engine::new()),
             root,
+            playback: CpalPlayback::new().ok(),
         }
     }
 }

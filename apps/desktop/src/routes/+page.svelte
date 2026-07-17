@@ -13,6 +13,8 @@
     type WasmColormapName
   } from '@phonix/ui';
   import { TauriCoreClient } from '$lib/core/TauriCoreClient';
+  import type { Playback } from '$lib/playback/Playback';
+  import { NativePlayback } from '$lib/playback/NativePlayback';
   import { WebAudioPlayback } from '$lib/playback/WebAudioPlayback';
   import {
     AUTOSAVE_DEBOUNCE_MS,
@@ -25,7 +27,7 @@
 
   let client = $state<TauriCoreClient | null>(null);
   let store = $state<ProjectStore | null>(null);
-  let playback = $state<WebAudioPlayback | null>(null);
+  let playback = $state<Playback | null>(null);
 
   let route = $state<Route>('home');
   let projects = $state<ProjectSummary[]>([]);
@@ -57,7 +59,15 @@
   onMount(() => {
     client = new TauriCoreClient();
     store = new ProjectStore(client);
+    // Native cpal playback where the host has an output device; WebAudio
+    // otherwise. A recording is only opened well after this resolves.
     playback = new WebAudioPlayback();
+    void NativePlayback.available().then((native) => {
+      if (native && playback instanceof WebAudioPlayback) {
+        playback.close();
+        playback = new NativePlayback();
+      }
+    });
     const saved = localStorage.getItem('phonix-theme');
     theme =
       saved === 'dark' || saved === 'light'
@@ -250,7 +260,7 @@
       annotationId = entry.annotationId;
       cursorTime = 0;
       const file = await store.readAudioFile(project.id, entry);
-      if (file) await playback?.load(file);
+      if (file) await loadPlayback(file);
       playback?.seek(0);
       resetAutosaveBaseline();
       route = 'editor';
@@ -284,6 +294,22 @@
       report(caught);
     } finally {
       busy = false;
+    }
+  }
+
+  // Loads audio into the current backend; if the native stream fails, drops to
+  // WebAudio for the rest of the session and loads there instead.
+  async function loadPlayback(file: File) {
+    if (!playback) return;
+    try {
+      await playback.load(file);
+    } catch (caught) {
+      if (!(playback instanceof NativePlayback)) throw caught;
+      console.warn('Native playback failed; falling back to WebAudio.', caught);
+      playback.close();
+      const web = new WebAudioPlayback();
+      playback = web;
+      await web.load(file);
     }
   }
 

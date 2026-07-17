@@ -9,6 +9,7 @@
 //! hands the frontend paths.
 
 mod engine_cmds;
+mod playback_cmds;
 mod project_cmds;
 mod state;
 
@@ -81,6 +82,14 @@ pub fn run() {
             engine_cmds::build_figure,
             engine_cmds::render_figure_svg,
             engine_cmds::export_figure,
+            playback_cmds::playback_available,
+            playback_cmds::playback_load,
+            playback_cmds::playback_play,
+            playback_cmds::playback_play_range,
+            playback_cmds::playback_pause,
+            playback_cmds::playback_stop,
+            playback_cmds::playback_seek,
+            playback_cmds::playback_status,
         ])
         .run(tauri::generate_context!())
         .expect("run the Phonix desktop application");

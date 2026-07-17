@@ -27,6 +27,8 @@ base64 = "0.22"
 phx-engine = { path = "../../../crates/phx-engine", features = ["figure-raster", "figure-pdf"] }
 phx-project = { path = "../../../crates/phx-project" }
 phx-textgrid = { path = "../../../crates/phx-textgrid" }
+phx-audio = { path = "../../../crates/phx-audio" }
+phx-playback = { path = "../../../crates/phx-playback", features = ["cpal-backend"] }
 
 [features]
 # Larger binary but the default Tauri custom-protocol path; enabled for release.
