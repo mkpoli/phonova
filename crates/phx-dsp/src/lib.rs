@@ -9,12 +9,14 @@
 #![warn(missing_docs)]
 
 mod fft;
+mod filter;
 mod frame_grid;
 mod interpolate;
 mod preemphasis;
 mod window;
 
 pub use fft::RealFftPlan;
+pub use filter::{EDGE_TAPER_S, PASS_BAND_SKIRT_HZ, band_pass_filter, band_pass_gain};
 pub use frame_grid::FrameGrid;
 pub use interpolate::sinc_interpolate_max;
 pub use preemphasis::preemphasis_in_place;
