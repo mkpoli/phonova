@@ -78,8 +78,8 @@ test('batch equals GUI: readout band energy equals a direct engine query', async
   // Direct engine query at the identical coordinates, through the live client
   // the app drives — never a frontend recomputation.
   const direct = await page.evaluate(async (box) => {
-    const hook = (globalThis as unknown as { __phonix?: { client: any; audioId: bigint | null } })
-      .__phonix;
+    const hook = (globalThis as unknown as { __phonia?: { client: any; audioId: bigint | null } })
+      .__phonia;
     if (!hook || hook.audioId === null) throw new Error('no client hook');
     return (await hook.client.bandEnergy(hook.audioId, box.t0, box.t1, box.f0, box.f1)) as number;
   }, coords);

@@ -91,7 +91,7 @@ fn media_hash_matches_bytes() {
 
 #[test]
 fn content_hash_hex_round_trips() {
-    let hash = ContentHash::of(b"phonix");
+    let hash = ContentHash::of(b"phonia");
     let hex = hash.to_hex();
     assert_eq!(hex.len(), 64);
     assert_eq!(ContentHash::from_hex(&hex).unwrap(), hash);

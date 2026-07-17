@@ -1,4 +1,4 @@
-# @phonix/ui
+# @phonia/ui
 
 The shared Svelte package owns editor layout, viewport state, canvas rendering, cache keys, and the WebGL2 to Canvas2D fallback. `apps/web` supplies a `CoreClientLike` transport and playback clock.
 

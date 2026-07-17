@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { ProjectSummary, RecordingEntry, SaveProjectSpec } from '@phonix/ui';
+import type { ProjectSummary, RecordingEntry, SaveProjectSpec } from '@phonia/ui';
 import type { TauriCoreClient } from '$lib/core/TauriCoreClient';
 
 /** Container file name inside a project directory. */

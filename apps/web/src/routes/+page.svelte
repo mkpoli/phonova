@@ -13,7 +13,7 @@
     type ProjectSummary,
     type RecordingEntry,
     type WasmColormapName
-  } from '@phonix/ui';
+  } from '@phonia/ui';
   import { WasmCoreClient } from '$lib/core/WasmCoreClient';
   import { WebAudioPlayback } from '$lib/playback/WebAudioPlayback';
   import { MicRecorder, canRecord, type RecorderDevice, type RecorderLevel } from '$lib/audio/MicRecorder';
@@ -623,7 +623,7 @@
   // the open recording's audio id to run a direct engine query at the same
   // coordinates the readout used.
   $effect(() => {
-    (globalThis as unknown as { __phonix?: unknown }).__phonix = {
+    (globalThis as unknown as { __phonia?: unknown }).__phonia = {
       client,
       audioId: audio?.id ?? null
     };

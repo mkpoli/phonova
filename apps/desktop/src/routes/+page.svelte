@@ -11,7 +11,7 @@
     type ProjectSummary,
     type RecordingEntry,
     type WasmColormapName
-  } from '@phonix/ui';
+  } from '@phonia/ui';
   import { TauriCoreClient } from '$lib/core/TauriCoreClient';
   import type { Playback } from '$lib/playback/Playback';
   import { NativePlayback } from '$lib/playback/NativePlayback';
@@ -425,7 +425,7 @@
   // the open recording's audio id to run a direct engine query at the same
   // coordinates the readout used.
   $effect(() => {
-    (globalThis as unknown as { __phonix?: unknown }).__phonix = {
+    (globalThis as unknown as { __phonia?: unknown }).__phonia = {
       client,
       audioId: audio?.id ?? null
     };

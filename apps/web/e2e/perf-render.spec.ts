@@ -102,8 +102,8 @@ test('palette switch recolorizes under 300 ms and never recomputes the STFT', as
   // the raw-dB block cache (STFT + colorize), the second re-colorizes the same
   // cached dB under a different palette. The block count must not grow.
   const probe = await page.evaluate(async () => {
-    const hook = (globalThis as { __phonix?: { client?: unknown; audioId?: number | null } })
-      .__phonix;
+    const hook = (globalThis as { __phonia?: { client?: unknown; audioId?: number | null } })
+      .__phonia;
     const client = hook?.client as {
       spectrogramProbe: (
         id: number,

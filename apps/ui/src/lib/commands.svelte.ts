@@ -114,7 +114,7 @@ export class CommandRegistry {
   }
 }
 
-const REGISTRY_KEY = Symbol('phonix-command-registry');
+const REGISTRY_KEY = Symbol('phonia-command-registry');
 
 /** Creates a registry and publishes it to descendants. Call during init. */
 export function provideCommandRegistry(): CommandRegistry {

@@ -1,4 +1,4 @@
-//! Native audio playback for the Phonix desktop shell.
+//! Native audio playback for the Phonia desktop shell.
 //!
 //! Playback runs from the Rust side over a `cpal` output stream so the cursor
 //! is sample-accurate and independent of the three divergent webview audio

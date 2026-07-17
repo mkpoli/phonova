@@ -25,7 +25,7 @@ import type {
   TierId,
   TierInfo,
   VoiceReportData
-} from '@phonix/ui';
+} from '@phonia/ui';
 
 /** Widens a command's numeric id back to the `bigint` handle the UI passes. */
 const big = (value: number | string): bigint => BigInt(value);

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Phonix",
+  "productName": "Phonia",
   "version": "0.0.1",
-  "identifier": "dev.phonix.desktop",
+  "identifier": "dev.phonia.desktop",
   "build": {
     "frontendDist": "../build",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Phonix",
+        "title": "Phonia",
         "width": 1440,
         "height": 900,
         "minWidth": 900,

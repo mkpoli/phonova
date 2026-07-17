@@ -30,7 +30,7 @@ import type {
   TierId,
   TierInfo,
   VoiceReportData
-} from '@phonix/ui';
+} from '@phonia/ui';
 
 export type {
   AnnotationId,

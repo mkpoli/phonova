@@ -1,4 +1,4 @@
-//! The Phonix desktop shell: the shared Svelte UI in a Tauri webview over a
+//! The Phonia desktop shell: the shared Svelte UI in a Tauri webview over a
 //! native [`phx_engine`] core.
 //!
 //! The engine sits behind a `Mutex<Engine>` in Tauri-managed state, and every
@@ -92,5 +92,5 @@ pub fn run() {
             playback_cmds::playback_status,
         ])
         .run(tauri::generate_context!())
-        .expect("run the Phonix desktop application");
+        .expect("run the Phonia desktop application");
 }

@@ -125,7 +125,7 @@
   <header class="top">
     <div class="brand">
       <span class="mark" aria-hidden="true"></span>
-      <span class="title">Phonix</span>
+      <span class="title">Phonia</span>
     </div>
     <div class="tools">
       <form
