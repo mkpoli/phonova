@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn zero_tier_document_writes_the_absent_flag_and_stops() {
-        let doc = Annotation::from_raw(0.0, 1.0, Vec::new());
+        let doc = Annotation::from_raw(0.0, 1.0, Vec::new()).expect("valid raw document");
         let bytes = write(&doc);
         let text = std::str::from_utf8(&bytes).expect("written output is UTF-8");
         assert_eq!(

@@ -35,7 +35,8 @@ fn quoted_quotes_in_labels_survive_round_trip() {
             relation: TierRelation::Independent,
             tier: Tier::Interval(tier),
         }],
-    );
+    )
+    .expect("valid raw document");
 
     let bytes = write(&doc);
     let text = std::str::from_utf8(&bytes).expect("written output is UTF-8");
@@ -77,7 +78,8 @@ fn point_tier_labels_round_trip() {
                 ],
             }),
         }],
-    );
+    )
+    .expect("valid raw document");
 
     let (reparsed, _) = read(&write(&doc)).expect("point document reads back");
     assert_eq!(doc, reparsed);
@@ -85,7 +87,7 @@ fn point_tier_labels_round_trip() {
 
 #[test]
 fn zero_tier_document_round_trips() {
-    let doc = Annotation::from_raw(0.0, 2.0, Vec::new());
+    let doc = Annotation::from_raw(0.0, 2.0, Vec::new()).expect("valid raw document");
     let bytes = write(&doc);
     let (reparsed, _) = read(&bytes).expect("zero-tier document reads back");
     assert_eq!(doc, reparsed);

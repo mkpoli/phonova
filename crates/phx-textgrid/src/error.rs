@@ -6,7 +6,7 @@ use std::fmt;
 ///
 /// Every reader failure path returns one of these variants; the reader never
 /// panics on malformed, truncated, or arbitrary input.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TextGridError {
     /// The input held no bytes.
     Empty,
@@ -41,6 +41,10 @@ pub enum TextGridError {
     ExpectedNumber,
     /// The stream ended while a field was still being read.
     UnexpectedEnd,
+    /// The parsed tiers failed to build a valid annotation, such as a raw
+    /// identifier that leaves no room to allocate the next one, or a
+    /// non-finite time value.
+    Annotation(phx_annot::AnnotationError),
 }
 
 impl fmt::Display for TextGridError {
@@ -60,8 +64,15 @@ impl fmt::Display for TextGridError {
             Self::InvalidNumber { token } => write!(f, "expected a number, found {token:?}"),
             Self::ExpectedNumber => write!(f, "expected a number, found a quoted string"),
             Self::UnexpectedEnd => write!(f, "input ended while reading a field"),
+            Self::Annotation(err) => write!(f, "invalid annotation: {err}"),
         }
     }
 }
 
 impl std::error::Error for TextGridError {}
+
+impl From<phx_annot::AnnotationError> for TextGridError {
+    fn from(err: phx_annot::AnnotationError) -> Self {
+        Self::Annotation(err)
+    }
+}

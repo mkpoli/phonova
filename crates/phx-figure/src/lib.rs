@@ -98,7 +98,7 @@ mod tests {
                 ],
             }),
         };
-        Annotation::from_raw(0.0, 1.0, vec![tier])
+        Annotation::from_raw(0.0, 1.0, vec![tier]).expect("valid raw document")
     }
 
     #[test]

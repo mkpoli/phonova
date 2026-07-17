@@ -195,7 +195,7 @@ pub fn parse(text: &str, encoding: Encoding) -> Result<(Annotation, SourceInfo),
     // `<absent>` means the document has zero tiers and the file ends at the
     // flag; `slots` stays empty and no further tokens are consulted.
 
-    let annotation = Annotation::from_raw(xmin, xmax, slots);
+    let annotation = Annotation::from_raw(xmin, xmax, slots)?;
     Ok((annotation, SourceInfo { variant, encoding }))
 }
 

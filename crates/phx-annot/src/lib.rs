@@ -150,8 +150,15 @@ impl Annotation {
     /// Builds a document from raw tiers and recomputes identifier generators.
     ///
     /// This constructor accepts invalid tier contents so importers can preserve
-    /// source data and call `validate` to report every issue.
-    pub fn from_raw(xmin: f64, xmax: f64, tiers: Vec<TierSlot>) -> Self {
+    /// source data and call `validate` to report every issue. It still rejects
+    /// a raw identifier of [`u64::MAX`], since reseeding the generator that
+    /// mints the next one would overflow.
+    ///
+    /// # Errors
+    /// Returns [`AnnotationError::IdAllocationOverflow`] when a tier, boundary,
+    /// interval, or point in `tiers` already carries the identifier
+    /// [`u64::MAX`].
+    pub fn from_raw(xmin: f64, xmax: f64, tiers: Vec<TierSlot>) -> Result<Self, AnnotationError> {
         let mut annotation = Self {
             xmin,
             xmax,
@@ -161,8 +168,8 @@ impl Annotation {
             next_interval_id: 1,
             next_point_id: 1,
         };
-        annotation.reseed_ids();
-        annotation
+        annotation.reseed_ids()?;
+        Ok(annotation)
     }
 
     /// Returns the start of the document time domain in seconds.
@@ -573,7 +580,7 @@ impl Annotation {
             InverseMutation::RestorePoint { tier, point } => {
                 let mut candidate = self.clone();
                 candidate.insert_point_into_tier(*tier, point.clone())?;
-                candidate.reseed_ids();
+                candidate.reseed_ids()?;
                 candidate.commit_if_valid()?;
                 *self = candidate;
             }
@@ -861,8 +868,22 @@ impl Annotation {
         id
     }
 
-    fn reseed_ids(&mut self) {
-        self.next_tier_id = self.tiers.iter().map(|slot| slot.id.0).max().unwrap_or(0) + 1;
+    /// Recomputes the next tier, boundary, interval, and point identifier from
+    /// the highest raw identifier already present in `self.tiers`.
+    ///
+    /// # Errors
+    /// Returns [`AnnotationError::IdAllocationOverflow`] when the highest raw
+    /// identifier of a kind is already [`u64::MAX`], since the next identifier
+    /// of that kind would overflow.
+    fn reseed_ids(&mut self) -> Result<(), AnnotationError> {
+        self.next_tier_id = self
+            .tiers
+            .iter()
+            .map(|slot| slot.id.0)
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or(AnnotationError::IdAllocationOverflow { kind: IdKind::Tier })?;
         self.next_boundary_id = self
             .tiers
             .iter()
@@ -873,7 +894,10 @@ impl Annotation {
             .flatten()
             .max()
             .unwrap_or(0)
-            + 1;
+            .checked_add(1)
+            .ok_or(AnnotationError::IdAllocationOverflow {
+                kind: IdKind::Boundary,
+            })?;
         self.next_interval_id = self
             .tiers
             .iter()
@@ -884,7 +908,10 @@ impl Annotation {
             .flatten()
             .max()
             .unwrap_or(0)
-            + 1;
+            .checked_add(1)
+            .ok_or(AnnotationError::IdAllocationOverflow {
+                kind: IdKind::Interval,
+            })?;
         self.next_point_id = self
             .tiers
             .iter()
@@ -895,7 +922,11 @@ impl Annotation {
             .flatten()
             .max()
             .unwrap_or(0)
-            + 1;
+            .checked_add(1)
+            .ok_or(AnnotationError::IdAllocationOverflow {
+                kind: IdKind::Point,
+            })?;
+        Ok(())
     }
 
     fn tier_index(&self, tier: TierId) -> Result<usize, AnnotationError> {
@@ -1117,7 +1148,7 @@ impl Annotation {
             position..=position,
             [merge.left.clone(), merge.right.clone()],
         );
-        self.reseed_ids();
+        self.reseed_ids()?;
         Ok(())
     }
 
@@ -1687,6 +1718,30 @@ pub enum TierKind {
     Point,
 }
 
+/// Kind of stable identifier whose generator [`Annotation::from_raw`] reseeds.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum IdKind {
+    /// Tier identifier.
+    Tier,
+    /// Boundary identifier.
+    Boundary,
+    /// Interval identifier.
+    Interval,
+    /// Point identifier.
+    Point,
+}
+
+impl fmt::Display for IdKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Tier => write!(f, "tier"),
+            Self::Boundary => write!(f, "boundary"),
+            Self::Interval => write!(f, "interval"),
+            Self::Point => write!(f, "point"),
+        }
+    }
+}
+
 /// Relation kind used in integrity reports.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum RelationKind {
@@ -2155,6 +2210,12 @@ pub enum AnnotationError {
         /// Merged interval identifier.
         interval: IntervalId,
     },
+    /// A raw identifier of `u64::MAX` left the generator for `kind` with no
+    /// room to mint the next one.
+    IdAllocationOverflow {
+        /// Kind of identifier whose generator would overflow.
+        kind: IdKind,
+    },
 }
 
 impl fmt::Display for AnnotationError {
@@ -2216,6 +2277,10 @@ impl fmt::Display for AnnotationError {
                 interval.get(),
                 tier.get()
             ),
+            Self::IdAllocationOverflow { kind } => write!(
+                f,
+                "{kind} identifier u64::MAX leaves no room to allocate the next {kind} identifier"
+            ),
         }
     }
 }
@@ -2246,10 +2311,102 @@ mod tests {
     // model malformed importer input that `validate` must report.
     #[test]
     fn validation_reports_invalid_time_domain() {
-        let doc = Annotation::from_raw(1.0, 0.0, Vec::new());
+        let doc = Annotation::from_raw(1.0, 0.0, Vec::new()).expect("valid raw document");
         assert_single_issue(doc.validate(), |issue| {
             matches!(issue, IntegrityIssue::InvalidTimeDomain { .. })
         });
+    }
+
+    #[test]
+    fn from_raw_rejects_a_tier_id_of_u64_max() {
+        let slot = TierSlot {
+            id: TierId(u64::MAX),
+            relation: TierRelation::Independent,
+            tier: Tier::Point(PointTier {
+                name: "points".to_owned(),
+                points: Vec::new(),
+            }),
+        };
+        let err = Annotation::from_raw(0.0, 1.0, vec![slot]).unwrap_err();
+        assert_eq!(
+            err,
+            AnnotationError::IdAllocationOverflow { kind: IdKind::Tier }
+        );
+    }
+
+    #[test]
+    fn from_raw_rejects_a_boundary_id_of_u64_max() {
+        let slot = TierSlot {
+            id: TierId(1),
+            relation: TierRelation::Independent,
+            tier: Tier::Interval(IntervalTier {
+                name: "raw".to_owned(),
+                intervals: vec![interval(1, u64::MAX, 2, 0.0, 1.0)],
+            }),
+        };
+        let err = Annotation::from_raw(0.0, 1.0, vec![slot]).unwrap_err();
+        assert_eq!(
+            err,
+            AnnotationError::IdAllocationOverflow {
+                kind: IdKind::Boundary
+            }
+        );
+    }
+
+    #[test]
+    fn from_raw_rejects_an_interval_id_of_u64_max() {
+        let slot = TierSlot {
+            id: TierId(1),
+            relation: TierRelation::Independent,
+            tier: Tier::Interval(IntervalTier {
+                name: "raw".to_owned(),
+                intervals: vec![interval(u64::MAX, 1, 2, 0.0, 1.0)],
+            }),
+        };
+        let err = Annotation::from_raw(0.0, 1.0, vec![slot]).unwrap_err();
+        assert_eq!(
+            err,
+            AnnotationError::IdAllocationOverflow {
+                kind: IdKind::Interval
+            }
+        );
+    }
+
+    #[test]
+    fn from_raw_rejects_a_point_id_of_u64_max() {
+        let slot = TierSlot {
+            id: TierId(1),
+            relation: TierRelation::Independent,
+            tier: Tier::Point(PointTier {
+                name: "points".to_owned(),
+                points: vec![Point {
+                    id: PointId(u64::MAX),
+                    time: 0.5,
+                    label: String::new(),
+                }],
+            }),
+        };
+        let err = Annotation::from_raw(0.0, 1.0, vec![slot]).unwrap_err();
+        assert_eq!(
+            err,
+            AnnotationError::IdAllocationOverflow {
+                kind: IdKind::Point
+            }
+        );
+    }
+
+    #[test]
+    fn from_raw_accepts_a_near_max_id_with_room_for_the_next_one() {
+        let slot = TierSlot {
+            id: TierId(u64::MAX - 1),
+            relation: TierRelation::Independent,
+            tier: Tier::Point(PointTier {
+                name: "points".to_owned(),
+                points: Vec::new(),
+            }),
+        };
+        let doc = Annotation::from_raw(0.0, 1.0, vec![slot]).expect("near-max id is not rejected");
+        assert!(doc.validate().is_empty());
     }
 
     #[test]
@@ -2269,7 +2426,8 @@ mod tests {
                     }],
                 }),
             }],
-        );
+        )
+        .expect("valid raw document");
         assert_single_issue(doc.validate(), |issue| {
             matches!(issue, IntegrityIssue::NonFiniteTime { .. })
         });
@@ -2281,7 +2439,8 @@ mod tests {
             0.0,
             1.0,
             vec![empty_point_slot(1, "left"), empty_point_slot(1, "right")],
-        );
+        )
+        .expect("valid raw document");
         assert_single_issue(doc.validate(), |issue| {
             matches!(issue, IntegrityIssue::DuplicateTierId { .. })
         });
@@ -2319,7 +2478,8 @@ mod tests {
                     ],
                 }),
             }],
-        );
+        )
+        .expect("valid raw document");
         assert_single_issue(doc.validate(), |issue| {
             matches!(issue, IntegrityIssue::DuplicatePointId { .. })
         });
@@ -2346,7 +2506,8 @@ mod tests {
                     intervals: Vec::new(),
                 }),
             }],
-        );
+        )
+        .expect("valid raw document");
         assert_single_issue(doc.validate(), |issue| {
             matches!(issue, IntegrityIssue::IntervalTierEmpty { .. })
         });
@@ -2381,7 +2542,8 @@ mod tests {
                     intervals: vec![interval(1, 1, 2, 0.0, 0.7), interval(2, 2, 3, 0.7, 0.6)],
                 }),
             }],
-        );
+        )
+        .expect("valid raw document");
         assert_single_issue(doc.validate(), |issue| {
             matches!(issue, IntegrityIssue::IntervalUnsorted { .. })
         });
@@ -2428,7 +2590,8 @@ mod tests {
                     }],
                 }),
             }],
-        );
+        )
+        .expect("valid raw document");
         assert_single_issue(doc.validate(), |issue| {
             matches!(issue, IntegrityIssue::PointOutsideDomain { .. })
         });
@@ -2458,7 +2621,8 @@ mod tests {
                     ],
                 }),
             }],
-        );
+        )
+        .expect("valid raw document");
         assert_single_issue(doc.validate(), |issue| {
             matches!(issue, IntegrityIssue::PointUnsorted { .. })
         });
@@ -2488,7 +2652,8 @@ mod tests {
                     ],
                 }),
             }],
-        );
+        )
+        .expect("valid raw document");
         assert_single_issue(doc.validate(), |issue| {
             matches!(issue, IntegrityIssue::DuplicatePointTime { .. })
         });
@@ -2509,7 +2674,8 @@ mod tests {
                     intervals: vec![interval(1, 1, 2, 0.0, 1.0)],
                 }),
             }],
-        );
+        )
+        .expect("valid raw document");
         assert_single_issue(doc.validate(), |issue| {
             matches!(issue, IntegrityIssue::MissingTierRelationTarget { .. })
         });
@@ -2542,7 +2708,8 @@ mod tests {
                     }),
                 },
             ],
-        );
+        )
+        .expect("valid raw document");
         assert_single_issue(doc.validate(), |issue| {
             matches!(issue, IntegrityIssue::RelationTierKindMismatch { .. })
         });
@@ -2566,7 +2733,7 @@ mod tests {
                 intervals: vec![interval(3, 4, 5, 0.0, 1.0)],
             }),
         };
-        let doc = Annotation::from_raw(0.0, 1.0, vec![left, right]);
+        let doc = Annotation::from_raw(0.0, 1.0, vec![left, right]).expect("valid raw document");
         assert_single_issue(doc.validate(), |issue| {
             matches!(issue, IntegrityIssue::AlignedBoundaryMissing { .. })
         });
@@ -2590,7 +2757,7 @@ mod tests {
                 intervals: vec![interval(3, 4, 5, 0.0, 1.0)],
             }),
         };
-        let doc = Annotation::from_raw(0.0, 1.0, vec![parent, child]);
+        let doc = Annotation::from_raw(0.0, 1.0, vec![parent, child]).expect("valid raw document");
         assert_single_issue(doc.validate(), |issue| {
             matches!(issue, IntegrityIssue::OrphanChildInterval { .. })
         });
@@ -2726,7 +2893,8 @@ mod tests {
                 ],
             }),
         };
-        let doc = Annotation::from_raw(0.0, 1.0, vec![parent, aligned, child, points]);
+        let doc = Annotation::from_raw(0.0, 1.0, vec![parent, aligned, child, points])
+            .expect("valid raw document");
         assert_eq!(doc.validate(), Vec::new());
         doc
     }
@@ -2990,6 +3158,7 @@ mod tests {
                 }),
             }],
         )
+        .expect("valid raw document")
     }
 
     fn interval(id: u64, start: u64, end: u64, xmin: f64, xmax: f64) -> Interval {

@@ -163,7 +163,7 @@ pub(crate) fn insert_tier(
     let mut tiers = annotation.tiers().to_vec();
     let index = index.min(tiers.len());
     tiers.insert(index, slot);
-    let rebuilt = Annotation::from_raw(annotation.xmin(), annotation.xmax(), tiers);
+    let rebuilt = Annotation::from_raw(annotation.xmin(), annotation.xmax(), tiers)?;
     reject_invalid(rebuilt)
 }
 
@@ -185,7 +185,7 @@ pub(crate) fn remove_tier(
         .filter(|slot| slot.id != tier)
         .cloned()
         .collect();
-    let rebuilt = Annotation::from_raw(annotation.xmin(), annotation.xmax(), tiers);
+    let rebuilt = Annotation::from_raw(annotation.xmin(), annotation.xmax(), tiers)?;
     reject_invalid(rebuilt)
 }
 
