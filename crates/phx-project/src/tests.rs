@@ -338,6 +338,58 @@ fn v1_container(project: &Project) -> Vec<u8> {
 }
 
 #[test]
+fn bundle_embeds_media_and_container_still_loads() {
+    let wav0 = wav_bytes(0);
+    let wav1 = wav_bytes(7);
+    let project = sample_project_v2();
+    let media = vec![(MediaId::new(1), wav0.clone()), (MediaId::new(2), wav1.clone())];
+    let bytes = save_bundle(&project, &media);
+
+    // A reader ignoring the embedded entries loads the same project a
+    // references-only container would: embedding carries no version bump.
+    let loaded = load(&bytes).expect("bundle loads as a project");
+    assert_eq!(loaded, project);
+    assert_eq!(manifest_version(&bytes), 2);
+
+    // The embedded bytes come back exactly, ascending by id.
+    let embedded = load_embedded_media(&bytes).expect("embedded media");
+    assert_eq!(
+        embedded,
+        vec![(MediaId::new(1), wav0), (MediaId::new(2), wav1)]
+    );
+}
+
+#[test]
+fn references_only_container_embeds_nothing() {
+    let project = sample_project_v2();
+    // save and save_bundle with no media produce byte-identical references-only
+    // containers, and neither carries embedded media.
+    assert_eq!(save(&project), save_bundle(&project, &[]));
+    assert!(load_embedded_media(&save(&project)).unwrap().is_empty());
+}
+
+#[test]
+fn bundle_is_deterministic_regardless_of_media_order() {
+    let wav0 = wav_bytes(0);
+    let wav1 = wav_bytes(7);
+    let project = sample_project_v2();
+    let forward = vec![(MediaId::new(1), wav0.clone()), (MediaId::new(2), wav1.clone())];
+    let reversed = vec![(MediaId::new(2), wav1), (MediaId::new(1), wav0)];
+    assert_eq!(save_bundle(&project, &forward), save_bundle(&project, &reversed));
+}
+
+#[test]
+fn bundle_may_embed_a_subset() {
+    let wav0 = wav_bytes(0);
+    let project = sample_project_v2();
+    // Only recording 1 travels with the bundle; recording 2 stays references-only.
+    let bytes = save_bundle(&project, &[(MediaId::new(1), wav0.clone())]);
+    let embedded = load_embedded_media(&bytes).expect("embedded media");
+    assert_eq!(embedded, vec![(MediaId::new(1), wav0)]);
+    assert_eq!(load(&bytes).expect("load"), project);
+}
+
+#[test]
 fn media_hash_matches_bytes() {
     let bytes = wav_bytes(3);
     let media = MediaRef::from_wav_bytes(MediaId::new(1), "x.wav", &bytes).expect("media");

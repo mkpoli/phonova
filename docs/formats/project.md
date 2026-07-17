@@ -24,11 +24,13 @@ entries:
 | `profiles.json` | optional | Array of named parameter profiles. Absence means no profiles. |
 | `view.json` | optional | Opaque view-state value. Absence is read as JSON `null`. |
 | `annotations/<id>.json` | optional, one per annotated recording | The annotation document for the recording whose `id` matches. |
+| `media/<id>.wav` | optional, one per embedded recording | The recording's own bytes, present only in a self-contained bundle (see [Self-contained bundle](#self-contained-bundle)). |
 
-Every entry is UTF-8 JSON. A reader that does not recognise an entry name
+Every JSON entry is UTF-8. A reader that does not recognise an entry name
 ignores it. A writer emits entries in the order above, media in manifest order,
-tree nodes in display order, and annotations in ascending `id` order, so a
-given project value serializes to the same bytes each time.
+tree nodes in display order, annotations in ascending `id` order, and embedded
+`media/<id>.wav` entries in ascending `id` order, so a given project value
+serializes to the same bytes each time whether or not it carries media.
 
 ## `manifest.json`
 
@@ -159,6 +161,34 @@ A version 1 file has no `groups`; the repair lays every recording out flat at
 the root in `media` order, which is the manifest order. Repair is idempotent:
 running it on an already-well-formed tree changes nothing, so a file round-trips
 to identical bytes.
+
+## Self-contained bundle
+
+A project file travels two ways. The default references the media externally,
+as [Media references](#media-references) describes: the recordings stay on disk
+and the file carries only their paths and hashes. A self-contained bundle
+instead embeds each recording, so the file opens on a machine that never held
+the source audio.
+
+A bundle embeds a recording as a `media/<id>.wav` entry, where `<id>` is the
+recording's manifest `id`. The entry holds the recording's exact bytes; the ZIP
+stores it Deflate-compressed like every other entry, and the bytes carry no
+further compression, so a lossless source stays lossless. A bundle may embed
+every recording, a subset, or none — a recording the archive does not embed
+stays references-only and resolves through the re-link flow below.
+
+Embedding is orthogonal to the schema `version`: a bundle is a version-2 file,
+and the manifest is identical to the references-only form. A reader that ignores
+the `media/` entries sees the same project and resolves each recording against
+the filesystem; a reader that reads them restores the recording from the bundle
+before falling back to that resolution. So a bundle needs no version bump, and
+an older reader opens it as a references-only project.
+
+On import, a reader restores each embedded recording to the location its
+`relative_path` names, then resolves any recording the bundle did not embed by
+content hash against media already present, exactly as a moved reference
+re-links (see [Media references](#media-references)). A recording that resolves
+to no local file is reported to the user as a gap and left for them to locate.
 
 ## `profiles.json`
 

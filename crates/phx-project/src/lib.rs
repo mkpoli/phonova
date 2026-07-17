@@ -36,7 +36,9 @@ pub use autosave::{
     AUTOSAVE_SUFFIX, Autosaver, DEFAULT_DEBOUNCE_MS, DEFAULT_MAX_WAIT_MS, Recovery, autosave_path,
     detect_recovery,
 };
-pub use container::{FORMAT_TAG, FORMAT_VERSION, ProjectError, load, save};
+pub use container::{
+    FORMAT_TAG, FORMAT_VERSION, ProjectError, load, load_embedded_media, save, save_bundle,
+};
 pub use media::{
     ContentHash, GroupId, HashParseError, MediaCandidate, MediaGap, MediaId, MediaRef,
     MediaResolution,

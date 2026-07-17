@@ -27,9 +27,15 @@ pub const FORMAT_VERSION: u32 = 2;
 const MANIFEST_ENTRY: &str = "manifest.json";
 const PROFILES_ENTRY: &str = "profiles.json";
 const VIEW_ENTRY: &str = "view.json";
+const MEDIA_DIR: &str = "media/";
 
 fn annotation_entry(id: MediaId) -> String {
     format!("annotations/{id}.json")
+}
+
+/// Entry name a self-contained bundle stores a recording's bytes under.
+fn media_entry(id: MediaId) -> String {
+    format!("{MEDIA_DIR}{id}.wav")
 }
 
 /// The `manifest.json` payload.
@@ -54,19 +60,35 @@ struct Manifest {
     groups: Vec<LibraryNode>,
 }
 
-/// Serializes a project into the versioned ZIP container.
+/// Serializes a project into the versioned ZIP container, references-only.
 ///
 /// The byte stream is deterministic for a given project value: entries are
 /// written in a fixed order, media in their vector order, and annotations in
-/// media-id order.
+/// media-id order. Media stays external — a recording is a `relative_path` plus
+/// content hash, not embedded bytes. Use [`save_bundle`] to embed the media.
 pub fn save(project: &Project) -> Vec<u8> {
     // Writing to an in-memory cursor never fails, so the byte-producing path is
     // infallible from the caller's view; only malformed input could fault, and
     // the project type makes that unrepresentable.
-    save_inner(project).expect("in-memory container writing cannot fail")
+    save_inner(project, &[]).expect("in-memory container writing cannot fail")
 }
 
-fn save_inner(project: &Project) -> Result<Vec<u8>, ZipError> {
+/// Serializes a project as a self-contained bundle, embedding each recording's
+/// bytes alongside the references-only container.
+///
+/// `media` supplies the bytes for the recordings to embed, keyed by
+/// [`MediaId`]; an id absent from `media` is written references-only (its
+/// `relative_path` still resolves against the filesystem on read). Embedded
+/// entries land under `media/<id>.wav`, in ascending id order, after the
+/// annotations, so the bundle serializes deterministically. Embedding is
+/// orthogonal to the schema version: a reader that ignores the `media/` entries
+/// reads the same version-2 project and falls back to re-linking, so a bundle
+/// carries no version bump (see `docs/formats/project.md`).
+pub fn save_bundle(project: &Project, media: &[(MediaId, Vec<u8>)]) -> Vec<u8> {
+    save_inner(project, media).expect("in-memory container writing cannot fail")
+}
+
+fn save_inner(project: &Project, media: &[(MediaId, Vec<u8>)]) -> Result<Vec<u8>, ZipError> {
     let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
@@ -94,6 +116,15 @@ fn save_inner(project: &Project) -> Result<Vec<u8>, ZipError> {
     for (id, annotation) in &project.annotations {
         writer.start_file(annotation_entry(*id), options)?;
         writer.write_all(&to_json(annotation))?;
+    }
+
+    // Embedded media closes the archive, in ascending id order so the bundle is
+    // deterministic regardless of the order the host supplies the bytes.
+    let mut embedded: Vec<&(MediaId, Vec<u8>)> = media.iter().collect();
+    embedded.sort_by_key(|(id, _)| *id);
+    for (id, bytes) in embedded {
+        writer.start_file(media_entry(*id), options)?;
+        writer.write_all(bytes)?;
     }
 
     Ok(writer.finish()?.into_inner())
@@ -150,6 +181,37 @@ pub fn load(bytes: &[u8]) -> Result<Project, ProjectError> {
     // leaf is corrected rather than rejected (see docs/formats/project.md).
     project.normalize_library();
     Ok(project)
+}
+
+/// Extracts the media a self-contained bundle embedded, keyed by [`MediaId`].
+///
+/// Returns the recordings stored under `media/<id>.wav`, ascending by id, each
+/// with the exact bytes the bundle carried. A references-only container has no
+/// such entries and yields an empty vector, which is how a caller tells a
+/// self-contained bundle from a references-only one. Entries whose name does not
+/// match `media/<id>.wav` are ignored.
+pub fn load_embedded_media(bytes: &[u8]) -> Result<Vec<(MediaId, Vec<u8>)>, ProjectError> {
+    let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(ProjectError::from_zip)?;
+    let mut media = Vec::new();
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).map_err(ProjectError::from_zip)?;
+        let name = file.name().to_string();
+        let Some(id) = parse_media_entry(&name) else {
+            continue;
+        };
+        let mut buf = Vec::with_capacity(file.size() as usize);
+        std::io::Read::read_to_end(&mut file, &mut buf)
+            .map_err(|err| ProjectError::Container(err.to_string()))?;
+        media.push((id, buf));
+    }
+    media.sort_by_key(|(id, _)| *id);
+    Ok(media)
+}
+
+/// Parses `media/<id>.wav` into its [`MediaId`], or `None` for any other name.
+fn parse_media_entry(name: &str) -> Option<MediaId> {
+    let rest = name.strip_prefix(MEDIA_DIR)?.strip_suffix(".wav")?;
+    rest.parse::<u64>().ok().map(MediaId::new)
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(
