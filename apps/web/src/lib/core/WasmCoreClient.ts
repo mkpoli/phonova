@@ -346,7 +346,11 @@ export class WasmCoreClient implements CoreClient {
   }
 
   saveProjectContainer(spec: SaveProjectSpec): Promise<Uint8Array> {
-    return this.#call({ method: 'saveProjectContainer', spec });
+    // A caller's `spec` can embed reactive-store arrays (e.g. the library
+    // tree); the structured clone `postMessage` uses to cross into the worker
+    // rejects such proxies ("could not be cloned"), so the spec crosses as a
+    // plain JSON string instead, exactly what the worker hands the engine.
+    return this.#call({ method: 'saveProjectContainer', specJson: JSON.stringify(spec) });
   }
 
   async loadProjectContainer(bytes: Uint8Array): Promise<LoadedProjectContainer> {

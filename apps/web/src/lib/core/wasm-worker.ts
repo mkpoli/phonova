@@ -19,7 +19,6 @@ import type {
   FigureSpec,
   IntervalId,
   PointId,
-  SaveProjectSpec,
   SpectrogramTileRequest,
   TierId,
   TierInfo
@@ -160,7 +159,7 @@ type RequestMessage =
   | { id: number; method: 'exportTextGrid'; annotationId: AnnotationId }
   | { id: number; method: 'annotationJson'; annotationId: AnnotationId }
   | { id: number; method: 'attachAnnotationJson'; audioId: AudioId; json: string }
-  | { id: number; method: 'saveProjectContainer'; spec: SaveProjectSpec }
+  | { id: number; method: 'saveProjectContainer'; specJson: string }
   | { id: number; method: 'loadProjectContainer'; bytes: ArrayBuffer }
   | { id: number; method: 'renameProjectContainer'; bytes: ArrayBuffer; name: string }
   | { id: number; method: 'buildFigure'; spec: FigureSpec }
@@ -766,7 +765,7 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
         return;
       }
       case 'saveProjectContainer': {
-        const bytes = wasm.saveProjectContainer(JSON.stringify(message.spec));
+        const bytes = wasm.saveProjectContainer(message.specJson);
         const copy = new Uint8Array(bytes.length);
         copy.set(bytes);
         postMessage({ id: message.id, ok: true, result: copy }, { transfer: [copy.buffer] });
