@@ -14,9 +14,11 @@
   import TierPane from './TierPane.svelte';
   import TimeRuler from './TimeRuler.svelte';
   import TransportBar from './TransportBar.svelte';
+  import GradientEditor from './GradientEditor.svelte';
   import VoiceReportCard from './VoiceReportCard.svelte';
   import WaveformPane from './WaveformPane.svelte';
   import { registerCommands } from './commands.svelte';
+  import { newRampTemplate, type CustomRamp, type PaletteSelection } from './palette';
   import {
     clampViewport,
     defaultOverlayParams,
@@ -33,7 +35,6 @@
     type SelectionReadout,
     type ViewportState,
     type VoiceReportData,
-    type WasmColormapName,
     type AudioId
   } from './types';
 
@@ -52,11 +53,16 @@
     cursorTime: number;
     isPlaying: boolean;
     theme: 'light' | 'dark';
-    colormap: WasmColormapName;
+    palette: PaletteSelection;
+    customRamps: CustomRamp[];
     onFile: (file: File) => void;
     onPlayToggle: () => void;
     onThemeChange: (theme: 'light' | 'dark') => void;
-    onColormapChange: (colormap: WasmColormapName) => void;
+    onPaletteChange: (palette: PaletteSelection) => void;
+    /** Persists a created or edited custom ramp. */
+    onSaveRamp: (ramp: CustomRamp) => void;
+    /** Removes a custom ramp by id. */
+    onDeleteRamp: (id: string) => void;
     onCursorChange?: (time: number) => void;
     onAnnotationChange?: (id: bigint | null) => void;
     onExit?: () => void;
@@ -87,11 +93,14 @@
     cursorTime,
     isPlaying,
     theme,
-    colormap,
+    palette,
+    customRamps,
     onFile,
     onPlayToggle,
     onThemeChange,
-    onColormapChange,
+    onPaletteChange,
+    onSaveRamp,
+    onDeleteRamp,
     onCursorChange,
     onAnnotationChange,
     onExit,
@@ -109,6 +118,36 @@
   }: Props = $props();
 
   let audioExportOpen = $state(false);
+
+  // Gradient editor. While a draft is open the spectrogram previews it live, so
+  // the pane shows the draft ramp (recolor path) rather than the committed
+  // palette. Cancelling drops the draft; saving commits and selects it.
+  let editingRamp = $state<CustomRamp | null>(null);
+  let editingExisting = $state(false);
+  const activePalette = $derived<PaletteSelection>(
+    editingRamp ? { kind: 'custom', ramp: editingRamp } : palette
+  );
+
+  function openNewRamp() {
+    editingExisting = false;
+    editingRamp = newRampTemplate();
+  }
+
+  function openEditRamp(ramp: CustomRamp) {
+    editingExisting = true;
+    editingRamp = { ...ramp, stops: ramp.stops.map((s) => ({ ...s })) };
+  }
+
+  function saveRamp(ramp: CustomRamp) {
+    onSaveRamp(ramp);
+    onPaletteChange({ kind: 'custom', ramp });
+    editingRamp = null;
+  }
+
+  function deleteRamp(id: string) {
+    onDeleteRamp(id);
+    editingRamp = null;
+  }
 
   // Resolve the dialog's choice into concrete signal coordinates: the whole file
   // from zero, or the live selection's span (band-limited to its box only when
@@ -623,46 +662,60 @@
       }
     },
     {
+      id: 'colormapPhonia',
+      title: 'Spectrogram palette: Phonia',
+      group: 'Appearance',
+      keywords: ['colormap', 'color', 'default', 'brand'],
+      run: () => onPaletteChange({ kind: 'builtin', name: 'Phonia' })
+    },
+    {
       id: 'colormapViridis',
       title: 'Spectrogram palette: Viridis',
       group: 'Appearance',
-      keywords: ['colormap', 'color'],
-      run: () => onColormapChange('Viridis')
+      keywords: ['colormap', 'color', 'color-blind', 'cvd', 'accessible'],
+      run: () => onPaletteChange({ kind: 'builtin', name: 'Viridis' })
     },
     {
       id: 'colormapMagma',
       title: 'Spectrogram palette: Magma',
       group: 'Appearance',
       keywords: ['colormap', 'color'],
-      run: () => onColormapChange('Magma')
+      run: () => onPaletteChange({ kind: 'builtin', name: 'Magma' })
     },
     {
       id: 'colormapInferno',
       title: 'Spectrogram palette: Inferno',
       group: 'Appearance',
       keywords: ['colormap', 'color'],
-      run: () => onColormapChange('Inferno')
+      run: () => onPaletteChange({ kind: 'builtin', name: 'Inferno' })
     },
     {
       id: 'colormapPlasma',
       title: 'Spectrogram palette: Plasma',
       group: 'Appearance',
       keywords: ['colormap', 'color'],
-      run: () => onColormapChange('Plasma')
+      run: () => onPaletteChange({ kind: 'builtin', name: 'Plasma' })
     },
     {
       id: 'colormapCividis',
       title: 'Spectrogram palette: Cividis',
       group: 'Appearance',
       keywords: ['colormap', 'color', 'color-blind', 'cvd', 'accessible'],
-      run: () => onColormapChange('Cividis')
+      run: () => onPaletteChange({ kind: 'builtin', name: 'Cividis' })
     },
     {
       id: 'colormapGrayscale',
       title: 'Spectrogram palette: Grayscale',
       group: 'Appearance',
       keywords: ['colormap', 'grayscale', 'print', 'publication'],
-      run: () => onColormapChange('Grayscale')
+      run: () => onPaletteChange({ kind: 'builtin', name: 'Grayscale' })
+    },
+    {
+      id: 'colormapNewRamp',
+      title: 'New custom spectrogram ramp…',
+      group: 'Appearance',
+      keywords: ['colormap', 'gradient', 'custom', 'palette', 'editor'],
+      run: openNewRamp
     },
     {
       id: 'switchRecording',
@@ -733,12 +786,30 @@
     {cursorTime}
     {isPlaying}
     {theme}
-    {colormap}
+    {palette}
+    {customRamps}
     {onFile}
     onPlayToggle={handleTransportToggle}
     {onThemeChange}
-    {onColormapChange}
+    onPaletteChange={onPaletteChange}
+    onNewRamp={openNewRamp}
+    onEditRamp={openEditRamp}
   />
+
+  {#if editingRamp}
+    <div class="ramp-editor-slot" data-testid="ramp-editor-slot">
+      {#key editingRamp.id}
+        <GradientEditor
+          ramp={editingRamp}
+          existing={editingExisting}
+          onChange={(next) => (editingRamp = next)}
+          onSave={saveRamp}
+          onCancel={() => (editingRamp = null)}
+          onDelete={deleteRamp}
+        />
+      {/key}
+    </div>
+  {/if}
 
   <OverviewStrip {client} {audio} {viewport} {theme} onViewportChange={setViewport} />
 
@@ -790,7 +861,7 @@
         {viewport}
         {cursorTime}
         {theme}
-        {colormap}
+        palette={activePalette}
         {overlayParams}
         onOverlayStats={(stats) => (overlayStats = stats)}
         {selection}
@@ -870,7 +941,7 @@
       {viewport}
       {overlayParams}
       appTheme={theme}
-      {colormap}
+      appPalette={palette}
       onClose={() => (exportOpen = false)}
     />
   {/if}
@@ -895,11 +966,28 @@
 
 <style>
   .editor {
+    position: relative;
     min-height: 100vh;
     display: grid;
     grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     background: var(--chrome);
     color: var(--text);
+  }
+
+  /* The gradient editor floats below the transport, over the workspace, so
+     opening it never reflows the panes and the live preview stays visible. */
+  .ramp-editor-slot {
+    position: absolute;
+    top: 5.6rem;
+    right: 0.85rem;
+    z-index: 40;
+  }
+
+  @media (max-width: 720px) {
+    .ramp-editor-slot {
+      right: 0.5rem;
+      left: 0.5rem;
+    }
   }
 
   .breadcrumb {

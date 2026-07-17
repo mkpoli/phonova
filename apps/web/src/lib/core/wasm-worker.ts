@@ -493,23 +493,42 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
       }
       case 'spectrogramTile': {
         const req = message.req;
-        const data = wasm.spectrogramTileRgba(
-          message.audioId,
-          req.t0,
-          req.t1,
-          req.f0,
-          req.f1,
-          req.widthPx,
-          req.heightPx,
-          req.windowLength,
-          req.maxFrequency,
-          req.timeStep,
-          req.frequencyStep,
-          req.dynamicRangeDb,
-          req.maxDb,
-          colormap(req.colormap),
-          theme(req.theme)
-        );
+        // A custom ramp carries a 768-byte LUT and colorizes through the LUT
+        // path; otherwise a built-in colormap renders per theme.
+        const data = req.lut
+          ? wasm.spectrogramTileRgbaLut(
+              message.audioId,
+              req.t0,
+              req.t1,
+              req.f0,
+              req.f1,
+              req.widthPx,
+              req.heightPx,
+              req.windowLength,
+              req.maxFrequency,
+              req.timeStep,
+              req.frequencyStep,
+              req.dynamicRangeDb,
+              req.maxDb,
+              req.lut
+            )
+          : wasm.spectrogramTileRgba(
+              message.audioId,
+              req.t0,
+              req.t1,
+              req.f0,
+              req.f1,
+              req.widthPx,
+              req.heightPx,
+              req.windowLength,
+              req.maxFrequency,
+              req.timeStep,
+              req.frequencyStep,
+              req.dynamicRangeDb,
+              req.maxDb,
+              colormap(req.colormap),
+              theme(req.theme)
+            );
         const copy = new Uint8Array(data.length);
         copy.set(data);
         postMessage(

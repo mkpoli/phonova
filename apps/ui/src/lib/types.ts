@@ -17,7 +17,14 @@ export interface MinMaxPyramidSlice {
   data: Float32Array;
 }
 
-export type WasmColormapName = 'Viridis' | 'Magma' | 'Inferno' | 'Plasma' | 'Cividis' | 'Grayscale';
+export type WasmColormapName =
+  | 'Phonia'
+  | 'Viridis'
+  | 'Magma'
+  | 'Inferno'
+  | 'Plasma'
+  | 'Cividis'
+  | 'Grayscale';
 export type WasmThemeName = 'Light' | 'Dark';
 
 /** WAV output sample format: 16/24/32-bit PCM or lossless 32-bit float. */
@@ -60,6 +67,12 @@ export interface SpectrogramTileRequest {
   maxDb?: number;
   colormap: WasmColormapName;
   theme: WasmThemeName;
+  /**
+   * A custom 768-byte ramp (256 `R, G, B` triples). When present it colorizes
+   * the tile instead of `colormap`, and `theme` is ignored — a custom ramp is a
+   * fixed table, like the perceptual built-ins.
+   */
+  lut?: Uint8Array;
 }
 
 /** A pitch contour: parallel arrays, `f0` holding `NaN` on unvoiced frames. */

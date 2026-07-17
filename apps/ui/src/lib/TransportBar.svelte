@@ -4,18 +4,23 @@
   import IconSun from '~icons/lucide/sun';
   import IconMoon from '~icons/lucide/moon';
   import IconFileAudio from '~icons/lucide/file-audio-2';
-  import { formatTime, type AudioInfo, type WasmColormapName } from './types';
+  import { formatTime, type AudioInfo } from './types';
+  import PalettePicker from './PalettePicker.svelte';
+  import type { CustomRamp, PaletteSelection } from './palette';
 
   interface Props {
     audio: AudioInfo | null;
     cursorTime: number;
     isPlaying: boolean;
     theme: 'light' | 'dark';
-    colormap: WasmColormapName;
+    palette: PaletteSelection;
+    customRamps: CustomRamp[];
     onFile: (file: File) => void;
     onPlayToggle: () => void;
     onThemeChange: (theme: 'light' | 'dark') => void;
-    onColormapChange: (colormap: WasmColormapName) => void;
+    onPaletteChange: (palette: PaletteSelection) => void;
+    onNewRamp: () => void;
+    onEditRamp: (ramp: CustomRamp) => void;
   }
 
   let {
@@ -23,11 +28,14 @@
     cursorTime,
     isPlaying,
     theme,
-    colormap,
+    palette,
+    customRamps,
     onFile,
     onPlayToggle,
     onThemeChange,
-    onColormapChange
+    onPaletteChange,
+    onNewRamp,
+    onEditRamp
   }: Props = $props();
 
   let dragging = $state(false);
@@ -86,19 +94,15 @@
     {formatTime(cursorTime)}
   </div>
 
-  <select
-    class="palette-select"
-    aria-label="Spectrogram palette"
-    value={colormap}
-    onchange={(event) => onColormapChange(event.currentTarget.value as WasmColormapName)}
-  >
-    <option value="Viridis">Viridis</option>
-    <option value="Magma">Magma</option>
-    <option value="Inferno">Inferno</option>
-    <option value="Plasma">Plasma</option>
-    <option value="Cividis">Cividis</option>
-    <option value="Grayscale">Gray</option>
-  </select>
+  <div class="palette-slot">
+    <PalettePicker
+      {palette}
+      {customRamps}
+      onSelect={onPaletteChange}
+      {onNewRamp}
+      {onEditRamp}
+    />
+  </div>
 
   <button
     class="icon-button theme"
@@ -133,7 +137,6 @@
   }
 
   .icon-button,
-  .palette-select,
   .drop-target {
     border: 1px solid var(--chrome-strong);
     border-radius: var(--radius-md);
@@ -207,8 +210,9 @@
     font-size: 0.95rem;
   }
 
-  .palette-select {
-    padding: 0 0.65rem;
+  .palette-slot {
+    display: inline-flex;
+    min-width: 0;
   }
 
   @media (max-width: 720px) {
@@ -216,7 +220,7 @@
       grid-template-columns: auto 1fr auto;
     }
 
-    .palette-select {
+    .palette-slot {
       display: none;
     }
   }

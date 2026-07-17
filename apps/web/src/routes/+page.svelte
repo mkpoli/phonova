@@ -20,7 +20,11 @@
     type ProjectExportMode,
     type ProjectSummary,
     type RecordingEntry,
-    type WasmColormapName
+    DEFAULT_PALETTE,
+    loadCustomRamps,
+    saveCustomRamps,
+    type CustomRamp,
+    type PaletteSelection
   } from '@phonia/ui';
   import { WasmCoreClient } from '$lib/core/WasmCoreClient';
   import { WebAudioPlayback } from '$lib/playback/WebAudioPlayback';
@@ -49,7 +53,10 @@
   let cursorTime = $state(0);
   let isPlaying = $state(false);
   let theme = $state<'light' | 'dark'>('light');
-  let colormap = $state<WasmColormapName>('Viridis');
+  // The active spectrogram palette (default the brand ramp) and the machine's
+  // saved custom ramps. Both persist in localStorage, app-wide.
+  let palette = $state<PaletteSelection>(DEFAULT_PALETTE);
+  let customRamps = $state<CustomRamp[]>([]);
   // App-wide UI scale as a fraction of the base root font size. rem-based layout
   // grows and shrinks with it; the bounds keep both extremes usable.
   let uiScale = $state(1);
@@ -124,6 +131,9 @@
           : 'light';
     applyTheme(theme);
 
+    customRamps = loadCustomRamps();
+    palette = loadPalette(customRamps);
+
     const savedScale = Number(localStorage.getItem('phonix-ui-scale'));
     uiScale = Number.isFinite(savedScale) && savedScale > 0 ? clampScale(savedScale) : 1;
     applyUiScale(uiScale);
@@ -161,6 +171,66 @@
   function handleThemeChange(next: 'light' | 'dark') {
     theme = next;
     applyTheme(next);
+  }
+
+  const PALETTE_KEY = 'phonia:palette';
+
+  // Restore the saved palette, resolving a custom selection against the live
+  // ramp list so an edited ramp reloads with its current stops. Falls back to
+  // the default when the saved ramp was deleted or nothing was stored.
+  function loadPalette(ramps: CustomRamp[]): PaletteSelection {
+    try {
+      const raw = localStorage.getItem(PALETTE_KEY);
+      if (!raw) return DEFAULT_PALETTE;
+      const saved = JSON.parse(raw) as { kind: string; name?: string; id?: string };
+      if (saved.kind === 'custom' && saved.id) {
+        const ramp = ramps.find((r) => r.id === saved.id);
+        return ramp ? { kind: 'custom', ramp } : DEFAULT_PALETTE;
+      }
+      if (saved.kind === 'builtin' && saved.name) {
+        return { kind: 'builtin', name: saved.name } as PaletteSelection;
+      }
+    } catch {
+      // Unreadable selection: the default ramp stands.
+    }
+    return DEFAULT_PALETTE;
+  }
+
+  function persistPalette(sel: PaletteSelection) {
+    try {
+      const ref =
+        sel.kind === 'custom' ? { kind: 'custom', id: sel.ramp.id } : { kind: 'builtin', name: sel.name };
+      localStorage.setItem(PALETTE_KEY, JSON.stringify(ref));
+    } catch {
+      // Storage unavailable: the selection stays for the session.
+    }
+  }
+
+  function handlePaletteChange(next: PaletteSelection) {
+    palette = next;
+    persistPalette(next);
+  }
+
+  // Persist a created or edited ramp, keeping the list keyed by id, and refresh
+  // the active selection if it names the same ramp.
+  function saveRamp(ramp: CustomRamp) {
+    const idx = customRamps.findIndex((r) => r.id === ramp.id);
+    customRamps =
+      idx >= 0
+        ? customRamps.map((r) => (r.id === ramp.id ? ramp : r))
+        : [...customRamps, ramp];
+    saveCustomRamps(customRamps);
+    if (palette.kind === 'custom' && palette.ramp.id === ramp.id) {
+      palette = { kind: 'custom', ramp };
+    }
+  }
+
+  function deleteRamp(id: string) {
+    customRamps = customRamps.filter((r) => r.id !== id);
+    saveCustomRamps(customRamps);
+    if (palette.kind === 'custom' && palette.ramp.id === id) {
+      handlePaletteChange(DEFAULT_PALETTE);
+    }
   }
 
   function clampScale(value: number): number {
@@ -1175,11 +1245,14 @@
     {cursorTime}
     {isPlaying}
     {theme}
-    {colormap}
+    {palette}
+    {customRamps}
     onFile={editorImportFile}
     onPlayToggle={handlePlayToggle}
     onThemeChange={handleThemeChange}
-    onColormapChange={(next) => (colormap = next)}
+    onPaletteChange={handlePaletteChange}
+    onSaveRamp={saveRamp}
+    onDeleteRamp={deleteRamp}
     onCursorChange={handleCursorChange}
     onAnnotationChange={(id) => {
       annotationId = id;

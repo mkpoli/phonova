@@ -14,9 +14,9 @@
     FigureSpec,
     FigureThemeName,
     OverlayParams,
-    ViewportState,
-    WasmColormapName
+    ViewportState
   } from './types';
+  import type { PaletteSelection } from './palette';
 
   interface Props {
     client: CoreClientLike | null;
@@ -25,12 +25,33 @@
     viewport: ViewportState;
     overlayParams: OverlayParams;
     appTheme: 'light' | 'dark';
-    colormap: WasmColormapName;
+    appPalette: PaletteSelection;
     onClose: () => void;
   }
 
-  let { client, audio, annotationId, viewport, overlayParams, appTheme, colormap, onClose }: Props =
+  let { client, audio, annotationId, viewport, overlayParams, appTheme, appPalette, onClose }: Props =
     $props();
+
+  const FIGURE_COLORMAPS: FigureColormapName[] = [
+    'viridis',
+    'magma',
+    'inferno',
+    'plasma',
+    'cividis',
+    'grayscale'
+  ];
+
+  // Figures export the colorblind-validated and grayscale built-ins, so a figure
+  // seeds from the on-screen palette when that palette is one of them; the brand
+  // ramp and custom ramps fall back to viridis, which a reader can trust under
+  // color-vision deficiency.
+  function seedFigurePalette(sel: PaletteSelection): FigureColormapName {
+    if (sel.kind === 'builtin') {
+      const lower = sel.name.toLowerCase() as FigureColormapName;
+      if (FIGURE_COLORMAPS.includes(lower)) return lower;
+    }
+    return 'viridis';
+  }
 
   const LAYER_LABELS: Array<{ key: keyof FigureLayerToggles; label: string }> = [
     { key: 'waveform', label: 'Waveform' },
@@ -67,9 +88,7 @@
   let height = $state(12);
   let unit = $state<FigureLengthUnit>('cm');
   let figTheme = $state<FigureThemeName>(untrack(() => appTheme));
-  let palette = $state<FigureColormapName>(
-    untrack(() => colormap).toLowerCase() as FigureColormapName
-  );
+  let palette = $state<FigureColormapName>(seedFigurePalette(untrack(() => appPalette)));
   let format = $state<FigureExportFormat>('svg');
 
   let svg = $state('');

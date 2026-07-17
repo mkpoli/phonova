@@ -10,7 +10,11 @@
     type AudioInfo,
     type ProjectSummary,
     type RecordingEntry,
-    type WasmColormapName
+    DEFAULT_PALETTE,
+    loadCustomRamps,
+    saveCustomRamps,
+    type CustomRamp,
+    type PaletteSelection
   } from '@phonia/ui';
   import { TauriCoreClient } from '$lib/core/TauriCoreClient';
   import type { Playback } from '$lib/playback/Playback';
@@ -39,7 +43,8 @@
   let cursorTime = $state(0);
   let isPlaying = $state(false);
   let theme = $state<'light' | 'dark'>('light');
-  let colormap = $state<WasmColormapName>('Viridis');
+  let palette = $state<PaletteSelection>(DEFAULT_PALETTE);
+  let customRamps = $state<CustomRamp[]>([]);
   let error = $state('');
   let busy = $state(false);
   let busyLabel = $state('');
@@ -76,6 +81,8 @@
           ? 'dark'
           : 'light';
     applyTheme(theme);
+    customRamps = loadCustomRamps();
+    palette = loadPalette(customRamps);
     void refreshProjects();
 
     const tick = () => {
@@ -104,6 +111,59 @@
   function handleThemeChange(next: 'light' | 'dark') {
     theme = next;
     applyTheme(next);
+  }
+
+  const PALETTE_KEY = 'phonia:palette';
+
+  function loadPalette(ramps: CustomRamp[]): PaletteSelection {
+    try {
+      const raw = localStorage.getItem(PALETTE_KEY);
+      if (!raw) return DEFAULT_PALETTE;
+      const saved = JSON.parse(raw) as { kind: string; name?: string; id?: string };
+      if (saved.kind === 'custom' && saved.id) {
+        const ramp = ramps.find((r) => r.id === saved.id);
+        return ramp ? { kind: 'custom', ramp } : DEFAULT_PALETTE;
+      }
+      if (saved.kind === 'builtin' && saved.name) {
+        return { kind: 'builtin', name: saved.name } as PaletteSelection;
+      }
+    } catch {
+      // Unreadable selection: the default ramp stands.
+    }
+    return DEFAULT_PALETTE;
+  }
+
+  function persistPalette(sel: PaletteSelection) {
+    try {
+      const ref =
+        sel.kind === 'custom' ? { kind: 'custom', id: sel.ramp.id } : { kind: 'builtin', name: sel.name };
+      localStorage.setItem(PALETTE_KEY, JSON.stringify(ref));
+    } catch {
+      // Storage unavailable: the selection stays for the session.
+    }
+  }
+
+  function handlePaletteChange(next: PaletteSelection) {
+    palette = next;
+    persistPalette(next);
+  }
+
+  function saveRamp(ramp: CustomRamp) {
+    const idx = customRamps.findIndex((r) => r.id === ramp.id);
+    customRamps =
+      idx >= 0 ? customRamps.map((r) => (r.id === ramp.id ? ramp : r)) : [...customRamps, ramp];
+    saveCustomRamps(customRamps);
+    if (palette.kind === 'custom' && palette.ramp.id === ramp.id) {
+      palette = { kind: 'custom', ramp };
+    }
+  }
+
+  function deleteRamp(id: string) {
+    customRamps = customRamps.filter((r) => r.id !== id);
+    saveCustomRamps(customRamps);
+    if (palette.kind === 'custom' && palette.ramp.id === id) {
+      handlePaletteChange(DEFAULT_PALETTE);
+    }
   }
 
   registerCommands([
@@ -475,11 +535,14 @@
     {cursorTime}
     {isPlaying}
     {theme}
-    {colormap}
+    {palette}
+    {customRamps}
     onFile={editorImportFile}
     onPlayToggle={handlePlayToggle}
     onThemeChange={handleThemeChange}
-    onColormapChange={(next) => (colormap = next)}
+    onPaletteChange={handlePaletteChange}
+    onSaveRamp={saveRamp}
+    onDeleteRamp={deleteRamp}
     onCursorChange={handleCursorChange}
     onAnnotationChange={(id) => {
       annotationId = id;

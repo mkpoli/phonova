@@ -4,6 +4,8 @@ export { default as CommandPalette } from './CommandPalette.svelte';
 export { default as EditorView } from './EditorView.svelte';
 export { default as ExportDialog } from './ExportDialog.svelte';
 export { default as ProjectExportDialog } from './ProjectExportDialog.svelte';
+export { default as GradientEditor } from './GradientEditor.svelte';
+export { default as PalettePicker } from './PalettePicker.svelte';
 export { default as HomeView } from './HomeView.svelte';
 export { default as InlineRename } from './InlineRename.svelte';
 export { default as InspectorPanel } from './InspectorPanel.svelte';
@@ -53,4 +55,24 @@ export {
   type CommandGroup,
   type CommandMatch
 } from './commands.svelte';
+export {
+  BUILTIN_PALETTES,
+  DEFAULT_PALETTE,
+  builtinGradientCss,
+  hexToRgb,
+  loadCustomRamps,
+  newRampTemplate,
+  paletteGradientCss,
+  paletteKey,
+  paletteLabel,
+  rampGradientCss,
+  rampIsMonotonic,
+  rampToLut,
+  rgbToHex,
+  saveCustomRamps,
+  type BuiltinPalette,
+  type CustomRamp,
+  type GradientStop,
+  type PaletteSelection
+} from './palette';
 export * from './types';

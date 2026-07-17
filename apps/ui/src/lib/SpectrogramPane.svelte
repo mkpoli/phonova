@@ -6,9 +6,9 @@
     OverlayStats,
     Selection,
     SpectrogramTileRequest,
-    ViewportState,
-    WasmColormapName
+    ViewportState
   } from './types';
+  import { paletteKey, rampToLut, type PaletteSelection } from './palette';
   import {
     applyCanvasSize,
     cssVar,
@@ -30,7 +30,7 @@
     viewport: ViewportState;
     cursorTime: number;
     theme: 'light' | 'dark';
-    colormap: WasmColormapName;
+    palette: PaletteSelection;
     overlayParams: OverlayParams;
     onOverlayStats?: (stats: OverlayStats) => void;
     selection?: Selection | null;
@@ -52,7 +52,7 @@
     viewport,
     cursorTime,
     theme,
-    colormap,
+    palette,
     overlayParams,
     onOverlayStats,
     selection = null,
@@ -63,6 +63,15 @@
     onDoubleZoom,
     ghostWaveform = false
   }: Props = $props();
+
+  // A custom ramp resolves to its 768-byte LUT; a built-in resolves to its name.
+  // The id keys the tile cache so a palette change — or a live edit of a custom
+  // ramp — recolors, and re-selecting the same palette hits the cache.
+  const paletteId = $derived(paletteKey(palette));
+  const paletteLut = $derived(
+    palette.kind === 'custom' ? rampToLut(palette.ramp.stops) : undefined
+  );
+
   let canvas = $state<HTMLCanvasElement | null>(null);
   let notice = $state('');
   let usingCanvas2d = $state(false);
@@ -132,7 +141,7 @@
     viewport.f0;
     viewport.f1;
     theme;
-    colormap;
+    paletteId;
     applyTransform();
     scheduleFetch();
   });
@@ -148,7 +157,7 @@
       viewport.f1.toFixed(1),
       cssWidth,
       cssHeight,
-      colormap,
+      paletteId,
       theme
     ].join(':');
     const key = `${String(audio.id)}:spec:${tile0}:${tile1}:${paramsHash}`;
@@ -166,8 +175,9 @@
       timeStep: 0.002,
       frequencyStep: 20,
       dynamicRangeDb: 70,
-      colormap,
-      theme: theme === 'dark' ? 'Dark' : 'Light'
+      colormap: palette.kind === 'builtin' ? palette.name : 'Phonia',
+      theme: theme === 'dark' ? 'Dark' : 'Light',
+      lut: paletteLut
     };
     const bitmap = await client.spectrogramTile(audio.id, req);
     cache.set(key, bitmap);
