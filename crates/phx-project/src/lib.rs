@@ -2,14 +2,16 @@
 //! parameter profiles, autosave snapshots.
 //!
 //! A [`Project`] gathers a session: external recordings referenced by relative
-//! path and BLAKE3 content hash, an [`phx_annot::Annotation`] per recording,
+//! path and BLAKE3 content hash, a [`LibraryNode`] tree that nests them into
+//! [`Group`]s, descriptive metadata, an [`phx_annot::Annotation`] per recording,
 //! named analysis [`Profile`]s, and an opaque view-state blob the UI owns.
 //! [`save`] serializes a project to a versioned ZIP container and [`load`]
 //! reads it back to the same value.
 //!
 //! The container is a ZIP archive holding `manifest.json` (format tag,
-//! [`FORMAT_VERSION`], name, media list), `profiles.json`, `view.json`, and one
-//! `annotations/<id>.json` per annotated recording. Media stays external:
+//! [`FORMAT_VERSION`], name, project metadata, media list, library tree),
+//! `profiles.json`, `view.json`, and one `annotations/<id>.json` per annotated
+//! recording. Media stays external:
 //! moving a recording is repaired by hashing candidates in sibling directories
 //! ([`resolve_media`]) rather than embedding the audio.
 //!
@@ -36,9 +38,10 @@ pub use autosave::{
 };
 pub use container::{FORMAT_TAG, FORMAT_VERSION, ProjectError, load, save};
 pub use media::{
-    ContentHash, HashParseError, MediaCandidate, MediaGap, MediaId, MediaRef, MediaResolution,
+    ContentHash, GroupId, HashParseError, MediaCandidate, MediaGap, MediaId, MediaRef,
+    MediaResolution,
 };
-pub use model::{Profile, Project};
+pub use model::{Group, LibraryNode, Profile, Project};
 pub use relink::resolve_media;
 pub use storage::{MemStore, MemStoreError, Storage, join, parent_dir};
 

@@ -30,6 +30,32 @@ impl fmt::Display for MediaId {
     }
 }
 
+/// Stable identifier for a library group within one project.
+///
+/// Groups organize recordings into a nesting tree without owning them; a
+/// [`GroupId`] labels a group so view state and edits can name it. It shares no
+/// namespace with [`MediaId`].
+#[derive(Clone, Copy, Debug, Hash, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct GroupId(u64);
+
+impl GroupId {
+    /// Wraps a raw value as a group identifier.
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    /// Returns the numeric value carried by this identifier.
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+impl fmt::Display for GroupId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// A BLAKE3 content hash of a media file's bytes.
 ///
 /// Serialized as a 64-character lowercase hex string so the manifest stays
@@ -135,6 +161,9 @@ const fn hex_value(byte: u8) -> Option<u8> {
 /// file. `duration`, `sample_rate`, and `channels` are recorded so a project
 /// can list its recordings without opening the media, and so re-linking can
 /// reject a file whose shape no longer matches.
+///
+/// `description`, `authors`, and `tags` are descriptive metadata a v2 container
+/// carries per recording. They are absent from a v1 file and default to empty.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MediaRef {
     /// Identifier used by annotations and profiles to refer to this recording.
@@ -149,6 +178,15 @@ pub struct MediaRef {
     pub sample_rate: f64,
     /// Channel count.
     pub channels: usize,
+    /// Free-form description of this recording. Empty when unset.
+    #[serde(default)]
+    pub description: String,
+    /// Contributors credited for this recording, in listing order.
+    #[serde(default)]
+    pub authors: Vec<String>,
+    /// Free-form tags applied to this recording, in listing order.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 impl MediaRef {
@@ -170,6 +208,9 @@ impl MediaRef {
             duration: audio.duration(),
             sample_rate: audio.sample_rate(),
             channels: audio.channel_count(),
+            description: String::new(),
+            authors: Vec::new(),
+            tags: Vec::new(),
         })
     }
 }

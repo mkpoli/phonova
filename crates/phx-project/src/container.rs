@@ -2,7 +2,7 @@
 //! `profiles.json`, `view.json`.
 
 use crate::media::{MediaId, MediaRef};
-use crate::model::{Profile, Project};
+use crate::model::{LibraryNode, Profile, Project};
 use phx_annot::Annotation;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -17,10 +17,12 @@ pub const FORMAT_TAG: &str = "phonix-project";
 
 /// Current container schema version.
 ///
-/// [`load`] accepts this version and refuses a higher one with
+/// [`load`] accepts this version and lower, and refuses a higher one with
 /// [`ProjectError::UnsupportedVersion`], so an older build reports a clear
-/// error instead of silently dropping fields it cannot represent.
-pub const FORMAT_VERSION: u32 = 1;
+/// error instead of silently dropping fields it cannot represent. Version 2
+/// adds the library tree and descriptive metadata; version 1 files load with
+/// those defaulted (see `docs/formats/project.md`).
+pub const FORMAT_VERSION: u32 = 2;
 
 const MANIFEST_ENTRY: &str = "manifest.json";
 const PROFILES_ENTRY: &str = "profiles.json";
@@ -31,13 +33,25 @@ fn annotation_entry(id: MediaId) -> String {
 }
 
 /// The `manifest.json` payload.
+///
+/// Fields serialize in declaration order. `description`, `authors`, `tags`, and
+/// `groups` arrived in version 2; a version 1 manifest omits them and they
+/// default here, so an old file loads without loss.
 #[derive(Serialize, Deserialize)]
 struct Manifest {
     format: String,
     version: u32,
     saved_at: u64,
     name: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    authors: Vec<String>,
+    #[serde(default)]
+    tags: Vec<String>,
     media: Vec<MediaRef>,
+    #[serde(default)]
+    groups: Vec<LibraryNode>,
 }
 
 /// Serializes a project into the versioned ZIP container.
@@ -61,7 +75,11 @@ fn save_inner(project: &Project) -> Result<Vec<u8>, ZipError> {
         version: FORMAT_VERSION,
         saved_at: project.saved_at,
         name: project.name.clone(),
+        description: project.description.clone(),
+        authors: project.authors.clone(),
+        tags: project.tags.clone(),
         media: project.media.clone(),
+        groups: project.groups.clone(),
     };
 
     writer.start_file(MANIFEST_ENTRY, options)?;
@@ -114,14 +132,24 @@ pub fn load(bytes: &[u8]) -> Result<Project, ProjectError> {
         }
     }
 
-    Ok(Project {
+    let mut project = Project {
         name: manifest.name,
         saved_at: manifest.saved_at,
+        description: manifest.description,
+        authors: manifest.authors,
+        tags: manifest.tags,
         media: manifest.media,
+        groups: manifest.groups,
         annotations,
         profiles,
         view,
-    })
+    };
+    // The tree is an organizational overlay on the flat media list. Repair it so
+    // every recording appears exactly once: a v1 file arrives with no tree and
+    // lays out flat in manifest order; a v2 file with a dangling or duplicate
+    // leaf is corrected rather than rejected (see docs/formats/project.md).
+    project.normalize_library();
+    Ok(project)
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(

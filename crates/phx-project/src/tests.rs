@@ -55,6 +55,39 @@ fn sample_project() -> Project {
         },
     ];
     project.view = json!({ "zoom": [0.0, 1.0], "palette": "grayscale", "tracks": ["pitch"] });
+    project.normalize_library();
+    project
+}
+
+/// Builds a v2 project carrying nested groups and full metadata.
+fn sample_project_v2() -> Project {
+    let mut project = sample_project();
+    project.description = "Two speakers recorded on site.".to_string();
+    project.authors = vec!["Fieldworker A".to_string(), "Fieldworker B".to_string()];
+    project.tags = vec!["fieldwork".to_string(), "2026".to_string()];
+
+    if let Some(m) = project.media.iter_mut().find(|m| m.id == MediaId::new(1)) {
+        m.description = "Elicitation, morning session.".to_string();
+        m.authors = vec!["Speaker A".to_string()];
+        m.tags = vec!["elicitation".to_string(), "vowels".to_string()];
+    }
+
+    // A nested tree: recording 1 sits inside a group, recording 2 at the root.
+    let inner = Group {
+        id: GroupId::new(20),
+        name: "Session 1".to_string(),
+        children: vec![LibraryNode::Media(MediaId::new(1))],
+    };
+    let outer = Group {
+        id: GroupId::new(10),
+        name: "Speaker A".to_string(),
+        children: vec![LibraryNode::Group(inner)],
+    };
+    project.groups = vec![
+        LibraryNode::Group(outer),
+        LibraryNode::Media(MediaId::new(2)),
+    ];
+    project.normalize_library();
     project
 }
 
@@ -77,6 +110,231 @@ fn round_trip_default_project() {
 fn round_trip_is_deterministic() {
     let project = sample_project();
     assert_eq!(save(&project), save(&project));
+}
+
+#[test]
+fn round_trip_v2_preserves_groups_and_metadata() {
+    let project = sample_project_v2();
+    let loaded = load(&save(&project)).expect("load");
+    assert_eq!(project, loaded);
+    // The nested tree and per-media metadata survived intact.
+    assert_eq!(
+        loaded.library_media_ids(),
+        vec![MediaId::new(1), MediaId::new(2)]
+    );
+    assert_eq!(loaded.media[0].tags, vec!["elicitation", "vowels"]);
+    assert_eq!(loaded.authors, vec!["Fieldworker A", "Fieldworker B"]);
+}
+
+#[test]
+fn round_trip_v2_is_deterministic() {
+    let project = sample_project_v2();
+    assert_eq!(save(&project), save(&project));
+    // Deterministic across an intervening load, too.
+    let once = save(&project);
+    assert_eq!(once, save(&load(&once).expect("load")));
+}
+
+#[test]
+fn saves_write_version_two() {
+    assert_eq!(manifest_version(&save(&sample_project_v2())), 2);
+    assert_eq!(manifest_version(&save(&Project::new("empty"))), 2);
+}
+
+#[test]
+fn v1_fixture_loads_with_defaults() {
+    let original = sample_project();
+    let loaded = load(&v1_container(&original)).expect("load v1");
+
+    // v1 has no metadata and no tree; both default, so the loaded project
+    // equals the normalized in-memory one (flat root in manifest order).
+    assert_eq!(loaded, original);
+    assert!(loaded.description.is_empty());
+    assert!(loaded.authors.is_empty());
+    assert!(loaded.tags.is_empty());
+    assert!(loaded.media.iter().all(|m| m.tags.is_empty()));
+    assert_eq!(
+        loaded.library_media_ids(),
+        vec![MediaId::new(1), MediaId::new(2)]
+    );
+}
+
+#[test]
+fn v1_fixture_resaves_as_v2_preserving_structure() {
+    let loaded = load(&v1_container(&sample_project())).expect("load v1");
+    let resaved = save(&loaded);
+    assert_eq!(manifest_version(&resaved), 2);
+    // Re-loading the v2 file reproduces the same value: annotations, media,
+    // profiles, and the flat root all preserved through the upgrade.
+    assert_eq!(load(&resaved).expect("reload"), loaded);
+}
+
+#[test]
+fn load_repairs_dangling_and_duplicate_leaves() {
+    // A hand-built container whose tree references a missing recording, repeats
+    // one, and omits another. The loader repairs to the invariant.
+    let mut project = sample_project();
+    project.groups = vec![
+        LibraryNode::Media(MediaId::new(2)),
+        LibraryNode::Media(MediaId::new(2)), // duplicate, dropped
+        LibraryNode::Media(MediaId::new(99)), // unknown, dropped
+                                             // recording 1 omitted, appended at root during repair
+    ];
+    let loaded = load(&save(&project)).expect("load");
+    // Recording 2 stays where it was placed; recording 1 lands at root end.
+    assert_eq!(
+        loaded.library_media_ids(),
+        vec![MediaId::new(2), MediaId::new(1)]
+    );
+}
+
+#[test]
+fn normalize_is_idempotent() {
+    let mut project = sample_project_v2();
+    let once = project.clone();
+    project.normalize_library();
+    assert_eq!(project, once);
+}
+
+#[test]
+fn random_group_trees_round_trip() {
+    let mut rng = Rng::new(0x9E37_79B9_7F4A_7C15);
+    for _ in 0..256 {
+        let mut project = Project::new("random");
+        let media_count = 1 + (rng.next() % 6) as usize;
+        for i in 0..media_count {
+            let bytes = wav_bytes(i);
+            project.media.push(
+                MediaRef::from_wav_bytes(MediaId::new(i as u64 + 1), format!("m{i}.wav"), &bytes)
+                    .expect("media"),
+            );
+        }
+        // A random (possibly malformed) tree over these recordings plus noise.
+        project.groups = random_forest(&mut rng, media_count, 0);
+        project.normalize_library();
+
+        // Invariant: every recording appears exactly once, no stranger present.
+        let ids = project.library_media_ids();
+        let mut sorted = ids.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted.len(), media_count, "each recording appears once");
+        assert!(
+            ids.iter()
+                .all(|id| id.get() >= 1 && id.get() <= media_count as u64)
+        );
+
+        // The normalized tree round-trips byte-deterministically.
+        let bytes = save(&project);
+        let loaded = load(&bytes).expect("load");
+        assert_eq!(loaded, project);
+        assert_eq!(save(&loaded), bytes);
+    }
+}
+
+/// Builds a random forest of nodes over `media_count` recordings.
+///
+/// Leaves reference ids in `1..=media_count`, plus out-of-range ids the loader
+/// must drop; groups nest up to a small depth. The result is deliberately
+/// malformed so normalization is exercised.
+fn random_forest(rng: &mut Rng, media_count: usize, depth: u32) -> Vec<LibraryNode> {
+    let count = (rng.next() % 4) as usize;
+    let mut nodes = Vec::new();
+    for _ in 0..count {
+        let make_group = depth < 3 && rng.next() % 3 == 0;
+        if make_group {
+            let id = GroupId::new(1_000 + rng.next() % 1_000);
+            nodes.push(LibraryNode::Group(Group {
+                id,
+                name: format!("g{}", rng.next() % 100),
+                children: random_forest(rng, media_count, depth + 1),
+            }));
+        } else {
+            // Bias toward valid ids but allow strays the loader must drop.
+            let id = 1 + rng.next() % (media_count as u64 + 2);
+            nodes.push(LibraryNode::Media(MediaId::new(id)));
+        }
+    }
+    nodes
+}
+
+/// A tiny SplitMix64 generator: deterministic randomness with no dependency.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -> Self {
+        Self(seed)
+    }
+
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+}
+
+/// Reads the `version` integer from a container's manifest.
+fn manifest_version(bytes: &[u8]) -> u64 {
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    let mut file = archive.by_name("manifest.json").unwrap();
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut file, &mut text).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    value["version"].as_u64().unwrap()
+}
+
+/// Serializes `project` as a version-1 container: no metadata, no library tree,
+/// media entries lacking the v2 per-recording fields.
+fn v1_container(project: &Project) -> Vec<u8> {
+    let media: Vec<serde_json::Value> = project
+        .media
+        .iter()
+        .map(|m| {
+            json!({
+                "id": m.id,
+                "relative_path": m.relative_path,
+                "hash": m.hash,
+                "duration": m.duration,
+                "sample_rate": m.sample_rate,
+                "channels": m.channels,
+            })
+        })
+        .collect();
+    let manifest = json!({
+        "format": FORMAT_TAG,
+        "version": 1,
+        "saved_at": project.saved_at,
+        "name": project.name,
+        "media": media,
+    });
+
+    let opts = zip::write::SimpleFileOptions::default();
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let write_entry = |writer: &mut zip::ZipWriter<std::io::Cursor<Vec<u8>>>,
+                       name: &str,
+                       value: &serde_json::Value| {
+        writer.start_file(name, opts).unwrap();
+        writer
+            .write_all(serde_json::to_string_pretty(value).unwrap().as_bytes())
+            .unwrap();
+    };
+    write_entry(&mut writer, "manifest.json", &manifest);
+    write_entry(
+        &mut writer,
+        "profiles.json",
+        &serde_json::to_value(&project.profiles).unwrap(),
+    );
+    write_entry(&mut writer, "view.json", &project.view);
+    for (id, annotation) in &project.annotations {
+        write_entry(
+            &mut writer,
+            &format!("annotations/{id}.json"),
+            &serde_json::to_value(annotation).unwrap(),
+        );
+    }
+    writer.finish().unwrap().into_inner()
 }
 
 #[test]
