@@ -116,4 +116,19 @@ impl DocumentStore {
         ids.sort_unstable();
         ids
     }
+
+    /// Returns, in ascending id order, every document that annotates `audio`.
+    ///
+    /// A journaled audio detach cascades to exactly these documents, so the
+    /// order is deterministic to keep undo and redo folding them identically.
+    #[must_use]
+    pub fn ids_referencing(&self, audio: AudioId) -> Vec<AnnotationId> {
+        let mut ids: Vec<AnnotationId> = self
+            .documents
+            .iter()
+            .filter_map(|(id, document)| (document.audio == audio).then_some(*id))
+            .collect();
+        ids.sort_unstable();
+        ids
+    }
 }

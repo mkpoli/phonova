@@ -92,6 +92,7 @@ enum Entry {
     Eager {
         audio: Audio,
         pyramid: Pyramid,
+        name: Option<String>,
     },
     Streamed {
         source: Arc<StreamingWav>,
@@ -103,11 +104,11 @@ enum Entry {
 impl Entry {
     fn info(&self) -> AudioInfo {
         match self {
-            Self::Eager { audio, .. } => AudioInfo {
+            Self::Eager { audio, name, .. } => AudioInfo {
                 duration: audio.duration(),
                 sample_rate: audio.sample_rate(),
                 channels: audio.channel_count(),
-                name: audio.name().map(str::to_owned),
+                name: name.clone(),
             },
             Self::Streamed { source, name, .. } => AudioInfo {
                 duration: source.duration(),
@@ -116,6 +117,18 @@ impl Entry {
                 name: name.clone(),
             },
         }
+    }
+
+    /// Replaces the display name, returning the previous one.
+    ///
+    /// The name is the store's own field for both entry kinds, so a rename
+    /// reaches an eager buffer and a streamed source through the same path and
+    /// never depends on the decoded [`Audio`]'s embedded name.
+    fn set_name(&mut self, new_name: Option<String>) -> Option<String> {
+        let slot = match self {
+            Self::Eager { name, .. } | Self::Streamed { name, .. } => name,
+        };
+        std::mem::replace(slot, new_name)
     }
 }
 
@@ -129,6 +142,11 @@ impl Entry {
 pub struct AudioStore {
     next_id: u64,
     entries: HashMap<AudioId, Entry>,
+    /// Entries a journaled [`crate::Command::DetachAudio`] has taken out of the
+    /// live set. They stay parked here — not dropped and not cloned — so undo
+    /// restores a streamed source (whose pyramid is not clonable) as cheaply as
+    /// an eager buffer, under the same id.
+    detached: HashMap<AudioId, Entry>,
 }
 
 impl AudioStore {
@@ -143,7 +161,15 @@ impl AudioStore {
     pub fn insert(&mut self, audio: Audio) -> AudioId {
         let id = self.fresh_id();
         let pyramid = Pyramid::build(&audio);
-        self.entries.insert(id, Entry::Eager { audio, pyramid });
+        let name = audio.name().map(str::to_owned);
+        self.entries.insert(
+            id,
+            Entry::Eager {
+                audio,
+                pyramid,
+                name,
+            },
+        );
         id
     }
 
@@ -302,7 +328,62 @@ impl AudioStore {
     /// live entry holds it.
     pub fn restore(&mut self, id: AudioId, audio: Audio) {
         let pyramid = Pyramid::build(&audio);
-        self.entries.insert(id, Entry::Eager { audio, pyramid });
+        let name = audio.name().map(str::to_owned);
+        self.entries.insert(
+            id,
+            Entry::Eager {
+                audio,
+                pyramid,
+                name,
+            },
+        );
+    }
+
+    /// Replaces the display name of `id`, returning the previous name.
+    ///
+    /// Works for both eager and streamed entries; the name lives in the store,
+    /// not the decoded buffer, so a streamed source renames without a decode.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` names no live entry.
+    pub fn set_name(
+        &mut self,
+        id: AudioId,
+        name: Option<String>,
+    ) -> Result<Option<String>, EngineError> {
+        self.entries
+            .get_mut(&id)
+            .map(|entry| entry.set_name(name))
+            .ok_or(EngineError::UnknownAudioId(id))
+    }
+
+    /// Takes the live entry for `id` out of the store and parks it, keeping the
+    /// id reserved for a later [`AudioStore::reattach_detached`].
+    ///
+    /// This is the forward transition of a journaled detach. It serves eager and
+    /// streamed entries alike — the whole entry is moved, not dropped or cloned —
+    /// so undo restores either kind by moving it back. Returns whether a live
+    /// entry was parked.
+    pub fn detach(&mut self, id: AudioId) -> bool {
+        if let Some(entry) = self.entries.remove(&id) {
+            self.detached.insert(id, entry);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Moves a parked entry back into the live set under its original id.
+    ///
+    /// This is the undo of [`AudioStore::detach`]. Returns whether a parked
+    /// entry was restored.
+    pub fn reattach_detached(&mut self, id: AudioId) -> bool {
+        if let Some(entry) = self.detached.remove(&id) {
+            self.entries.insert(id, entry);
+            true
+        } else {
+            false
+        }
     }
 
     /// Returns every live id in ascending order.

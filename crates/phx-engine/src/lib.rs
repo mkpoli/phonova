@@ -32,8 +32,8 @@ use phx_spectrogram::{analysis_axes, compute_column_block, select_axis_indices};
 
 use tile_cache::{BlockKey, TILE_COLS, TileCache, params_hash};
 
-use phx_audio::{Audio, BitDepth, StreamingWav};
-use phx_dsp::Window;
+use phx_audio::{Audio, StreamingWav};
+use phx_dsp::{RealFftPlan, Window};
 
 use std::sync::Arc;
 
@@ -54,7 +54,9 @@ pub use phx_annot::{
     Interval, IntervalId, IntervalTier, LabelPattern, LabelQuery, LabelTarget, MatchSpan, Merged,
     Moved, Point, PointId, PointTier, Tier, TierId, TierKind, TierMerge, TierRelation, TierSlot,
 };
-pub use phx_audio::{AudioError, ByteReader, BytesReader, StreamSampleFormat, WavStreamInfo};
+pub use phx_audio::{
+    AudioError, BitDepth, ByteReader, BytesReader, StreamSampleFormat, WavStreamInfo,
+};
 pub use phx_figure::Figure;
 pub use phx_formant::{FormantFrame, FormantParams, FormantPoint, FormantTrack};
 pub use phx_intensity::{IntensityParams, IntensityTrack};
@@ -123,6 +125,10 @@ pub struct Engine {
     journal: Journal,
     recordings: RecordingStore,
     tiles: Mutex<TileCache>,
+    /// FFT plans reused across band-filtered span renders, so the box-selection
+    /// replay a frontend fires while a user drags does not rebuild a plan per
+    /// call.
+    filter_plan: RealFftPlan,
 }
 
 impl Engine {
@@ -837,6 +843,106 @@ impl Engine {
         ))
     }
 
+    /// Renders a time span band-filtered to `[f_low, f_high]` as a mono buffer
+    /// at the source sample rate, for audible playback of a box selection.
+    ///
+    /// The span `[t0, t1]` is decoded (only that range, through a streamed
+    /// source's ranged reads), mixed to mono, and passed through the spectral
+    /// band-pass filter in [`phx_dsp::band_pass_filter`]: unity gain inside the
+    /// band, zero outside, half-cosine skirts of
+    /// [`phx_dsp::PASS_BAND_SKIRT_HZ`] at each edge, and a
+    /// [`phx_dsp::EDGE_TAPER_S`] taper on the reconstructed span's ends. The
+    /// result is deterministic for a given `(id, t0, t1, f_low, f_high)`.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` names no live store
+    /// entry, [`EngineError::InvalidRequest`] when a bound is not finite, and
+    /// [`EngineError::Audio`] when a streamed span cannot be decoded.
+    pub fn band_filtered_span(
+        &mut self,
+        id: AudioId,
+        t0: f64,
+        t1: f64,
+        f_low: f64,
+        f_high: f64,
+    ) -> Result<Vec<f32>, EngineError> {
+        if ![t0, t1, f_low, f_high]
+            .iter()
+            .all(|value| value.is_finite())
+        {
+            return Err(EngineError::InvalidRequest {
+                reason: "band_filtered_span bounds must be finite".to_string(),
+            });
+        }
+        let info = self.store.info(id)?;
+        let (start, end) = span_frames(info.sample_rate, info.duration, t0, t1);
+        let audio = self.store.range_owned(id, start, end)?;
+        let mono = audio.mono_mix();
+        Ok(phx_dsp::band_pass_filter(
+            &mut self.filter_plan,
+            &mono,
+            info.sample_rate,
+            f_low,
+            f_high,
+        ))
+    }
+
+    /// Encodes the time span `[t0, t1]` of `id` as WAV bytes at `bits`, with no
+    /// filtering.
+    ///
+    /// The span is the exact sample slice — an eager buffer's samples are copied
+    /// verbatim and a streamed source's are decoded from the same range — so an
+    /// unfiltered export at [`BitDepth::Float32`] round-trips bit-for-bit with a
+    /// direct slice of the signal.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` names no live store
+    /// entry, [`EngineError::InvalidRequest`] when a bound is not finite, and
+    /// [`EngineError::Audio`] when the span cannot be decoded or encoded.
+    pub fn export_span_wav(
+        &self,
+        id: AudioId,
+        t0: f64,
+        t1: f64,
+        bits: BitDepth,
+    ) -> Result<Vec<u8>, EngineError> {
+        if !t0.is_finite() || !t1.is_finite() {
+            return Err(EngineError::InvalidRequest {
+                reason: "export_span_wav t0/t1 must be finite".to_string(),
+            });
+        }
+        let info = self.store.info(id)?;
+        let (start, end) = span_frames(info.sample_rate, info.duration, t0, t1);
+        let audio = self.store.range_owned(id, start, end)?;
+        Ok(audio.to_wav_bytes(bits)?)
+    }
+
+    /// Encodes the band-filtered time span `[t0, t1]` of `id` as mono WAV bytes
+    /// at `bits`.
+    ///
+    /// Filters the span through [`Engine::band_filtered_span`], then encodes the
+    /// mono result — the "save selection as audio" path for a box selection the
+    /// user is hearing filtered.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` names no live store
+    /// entry, [`EngineError::InvalidRequest`] when a bound is not finite, and
+    /// [`EngineError::Audio`] when the span cannot be decoded or encoded.
+    pub fn export_band_filtered_span_wav(
+        &mut self,
+        id: AudioId,
+        t0: f64,
+        t1: f64,
+        f_low: f64,
+        f_high: f64,
+        bits: BitDepth,
+    ) -> Result<Vec<u8>, EngineError> {
+        let sample_rate = self.store.info(id)?.sample_rate;
+        let filtered = self.band_filtered_span(id, t0, t1, f_low, f_high)?;
+        let audio = Audio::new(vec![filtered], sample_rate)?;
+        Ok(audio.to_wav_bytes(bits)?)
+    }
+
     /// Applies one command through the journal and reports what changed.
     ///
     /// This is the only path that mutates a document: it runs the command,
@@ -933,11 +1039,15 @@ impl Engine {
         (audio_ids.len() as u64).hash(&mut hasher);
         for id in audio_ids {
             id.as_u64().hash(&mut hasher);
-            if let Ok(audio) = self.store.audio(id) {
-                (audio.frames() as u64).hash(&mut hasher);
-                audio.sample_rate().to_bits().hash(&mut hasher);
-                (audio.channel_count() as u64).hash(&mut hasher);
-                audio.name().hash(&mut hasher);
+            // Fold buffer identity through the store's metadata surface so the
+            // name — the store's own field for both eager and streamed entries —
+            // enters the hash and a rename shifts it. Reading metadata never
+            // decodes a streamed source.
+            if let Ok(info) = self.store.info(id) {
+                info.duration.to_bits().hash(&mut hasher);
+                info.sample_rate.to_bits().hash(&mut hasher);
+                (info.channels as u64).hash(&mut hasher);
+                info.name.hash(&mut hasher);
             }
         }
         let doc_ids = self.documents.ids_sorted();
@@ -1016,6 +1126,45 @@ impl Engine {
                             id,
                             audio: Box::new(replay),
                         },
+                    },
+                ))
+            }
+            Command::RenameAudio { id, name } => {
+                let previous = self.store.set_name(id, Some(name.clone()))?;
+                Ok((
+                    Applied::AudioRenamed {
+                        audio: id,
+                        name: name.clone(),
+                    },
+                    JournalEntry {
+                        undo: Reverse::RenameAudio { id, name: previous },
+                        redo: Reverse::RenameAudio {
+                            id,
+                            name: Some(name),
+                        },
+                    },
+                ))
+            }
+            Command::DetachAudio { id } => {
+                if !self.store.contains(id) {
+                    return Err(EngineError::UnknownAudioId(id));
+                }
+                let annotations = self.documents.ids_referencing(id);
+                let mut captured = Vec::with_capacity(annotations.len());
+                for annotation in &annotations {
+                    if let Some(document) = self.documents.detach(*annotation) {
+                        captured.push((*annotation, document));
+                    }
+                }
+                self.store.detach(id);
+                Ok((
+                    Applied::AudioDetached {
+                        audio: id,
+                        annotations,
+                    },
+                    JournalEntry {
+                        undo: Reverse::RestoreAudio { id, docs: captured },
+                        redo: Reverse::DetachAudio { id },
                     },
                 ))
             }
@@ -1418,6 +1567,19 @@ fn ordered_clamped(a: f64, b: f64, min: f64, max: f64) -> (f64, f64) {
     (lo, hi)
 }
 
+/// Converts a time span to a half-open frame range `[start, end)`.
+///
+/// Times are ordered and clamped to `[0, duration]`, then the start floors and
+/// the end ceils to whole frames so the range covers every sample the span
+/// touches. [`crate::store::AudioStore::range_owned`] clamps the end to the
+/// signal's frame count.
+fn span_frames(sample_rate: f64, duration: f64, t0: f64, t1: f64) -> (usize, usize) {
+    let (lo, hi) = ordered_clamped(t0, t1, 0.0, duration);
+    let start = (lo * sample_rate).floor().max(0.0) as usize;
+    let end = (hi * sample_rate).ceil().max(0.0) as usize;
+    (start, end.max(start))
+}
+
 /// Mean of the values whose time falls inside `span`, or `None` when none do.
 fn mean_in_span(frames: impl Iterator<Item = (f64, f64)>, span: TimeSpan) -> Option<f64> {
     let mut sum = 0.0;
@@ -1508,7 +1670,7 @@ fn validate_tile_request(req: &TileRequest) -> Result<(), EngineError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f64::consts::PI;
+    use std::f64::consts::{PI, TAU};
 
     const FIXTURE_WAV: &[u8] = include_bytes!("../../../tests/fixtures/audio/arctic_bdl_a0001.wav");
     const VOWEL_WAV: &[u8] = include_bytes!("../../../tests/fixtures/audio/synth_vowel_a.wav");
@@ -2167,6 +2329,162 @@ mod tests {
     }
 
     #[test]
+    fn rename_audio_reports_and_reads_back_and_undo_redo_is_hash_stable() {
+        let (mut engine, audio, _doc) = base_engine();
+        let before = engine.state_hash();
+        assert_eq!(
+            engine.audio_info(audio).unwrap().name.as_deref(),
+            Some("base")
+        );
+
+        let applied = engine
+            .apply(Command::RenameAudio {
+                id: audio,
+                name: "renamed".to_string(),
+            })
+            .unwrap();
+        assert!(matches!(
+            applied,
+            Applied::AudioRenamed { audio: a, ref name } if a == audio && name == "renamed"
+        ));
+        assert_eq!(
+            engine.audio_info(audio).unwrap().name.as_deref(),
+            Some("renamed")
+        );
+        let renamed_hash = engine.state_hash();
+        assert_ne!(renamed_hash, before, "rename must shift the state hash");
+
+        engine.undo().unwrap();
+        assert_eq!(
+            engine.audio_info(audio).unwrap().name.as_deref(),
+            Some("base")
+        );
+        assert_eq!(engine.state_hash(), before);
+
+        engine.redo().unwrap();
+        assert_eq!(
+            engine.audio_info(audio).unwrap().name.as_deref(),
+            Some("renamed")
+        );
+        assert_eq!(engine.state_hash(), renamed_hash);
+    }
+
+    #[test]
+    fn rename_unknown_audio_rejects() {
+        let mut engine = Engine::new();
+        assert!(matches!(
+            engine.apply(Command::RenameAudio {
+                id: AudioId::from_u64(7),
+                name: "x".to_string(),
+            }),
+            Err(EngineError::UnknownAudioId(_))
+        ));
+    }
+
+    #[test]
+    fn detach_audio_cascades_to_documents_and_undo_redo_is_hash_stable() {
+        let (mut engine, audio, doc) = base_engine();
+        let before = engine.state_hash();
+        assert!(engine.annotation(doc).is_ok());
+
+        let applied = engine.apply(Command::DetachAudio { id: audio }).unwrap();
+        match applied {
+            Applied::AudioDetached {
+                audio: a,
+                annotations,
+            } => {
+                assert_eq!(a, audio);
+                assert_eq!(annotations, vec![doc]);
+            }
+            other => panic!("expected AudioDetached, got {other:?}"),
+        }
+        // Audio and its cascaded document are both gone.
+        assert!(engine.audio_info(audio).is_err());
+        assert!(engine.annotation(doc).is_err());
+        let detached_hash = engine.state_hash();
+        assert_ne!(detached_hash, before);
+
+        let undone = engine.undo().unwrap().unwrap();
+        match undone {
+            Applied::AudioRestored {
+                audio: a,
+                annotations,
+            } => {
+                assert_eq!(a, audio);
+                assert_eq!(annotations, vec![doc]);
+            }
+            other => panic!("expected AudioRestored, got {other:?}"),
+        }
+        assert!(engine.audio_info(audio).is_ok());
+        assert_eq!(engine.annotation_audio(doc).unwrap(), audio);
+        assert_eq!(engine.state_hash(), before);
+
+        engine.redo().unwrap();
+        assert!(engine.audio_info(audio).is_err());
+        assert!(engine.annotation(doc).is_err());
+        assert_eq!(engine.state_hash(), detached_hash);
+    }
+
+    #[test]
+    fn export_span_wav_equals_a_direct_sample_slice_bit_for_bit() {
+        let mut engine = Engine::new();
+        let bytes = sine_wav_bytes(8_000, 1.0, 220.0);
+        let audio = engine.import_wav_bytes(&bytes).unwrap();
+        let info = engine.audio_info(audio).unwrap();
+        let sr = info.sample_rate;
+
+        let (t0, t1) = (0.25, 0.75);
+        let wav = engine
+            .export_span_wav(audio, t0, t1, BitDepth::Float32)
+            .unwrap();
+        let decoded = Audio::from_wav_bytes(&wav).unwrap();
+
+        // The exact half-open frame range the export covers.
+        let start = (t0 * sr).floor() as usize;
+        let end = (t1 * sr).ceil() as usize;
+        let reference = engine.store.range_owned(audio, start, end).unwrap();
+        assert_eq!(decoded.frames(), reference.frames());
+        for (a, b) in decoded.channel(0).iter().zip(reference.channel(0)) {
+            assert_eq!(a.to_bits(), b.to_bits());
+        }
+    }
+
+    #[test]
+    fn band_filtered_span_suppresses_out_of_band_energy() {
+        // A 300 Hz + 3000 Hz two-tone; a band around 300 Hz should keep the low
+        // tone and cut the high one, so the filtered span carries far less energy
+        // than the raw span.
+        let sr = 16_000_u32;
+        let seconds = 0.5;
+        let frames = (f64::from(sr) * seconds) as usize;
+        let planar: Vec<f32> = (0..frames)
+            .map(|i| {
+                let t = i as f64 / f64::from(sr);
+                (0.4 * (TAU * 300.0 * t).sin() + 0.4 * (TAU * 3000.0 * t).sin()) as f32
+            })
+            .collect();
+        let mut engine = Engine::new();
+        let audio = engine
+            .store
+            .insert(Audio::new(vec![planar], f64::from(sr)).unwrap());
+
+        let raw: f64 = engine
+            .band_filtered_span(audio, 0.0, seconds, 0.0, f64::from(sr) / 2.0)
+            .unwrap()
+            .iter()
+            .map(|&s| f64::from(s) * f64::from(s))
+            .sum();
+        let low_band: f64 = engine
+            .band_filtered_span(audio, 0.0, seconds, 150.0, 450.0)
+            .unwrap()
+            .iter()
+            .map(|&s| f64::from(s) * f64::from(s))
+            .sum();
+        // Cutting the 3 kHz tone removes about half the energy.
+        assert!(low_band < 0.7 * raw, "low_band {low_band} vs raw {raw}");
+    }
+
+    #[test]
     fn attach_reports_incremental_changes_and_reads_back() {
         let (mut engine, audio, doc) = base_engine();
         let (tier, intervals) = {
@@ -2422,6 +2740,13 @@ mod tests {
         let roll = rng.below(100);
 
         match roll {
+            39 => {
+                // Rename the audio buffer; always applies against a live id.
+                Some(Command::RenameAudio {
+                    id: audio,
+                    name: format!("r{}", rng.below(1000)),
+                })
+            }
             0..=39 => {
                 // Set a label on a random interval.
                 if tiers.is_empty() {

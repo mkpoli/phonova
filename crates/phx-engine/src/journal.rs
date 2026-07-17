@@ -33,6 +33,16 @@ pub(crate) enum Reverse {
     ImportAudio { id: AudioId, audio: Box<Audio> },
     /// Remove an audio buffer.
     RemoveAudio { id: AudioId },
+    /// Set an audio buffer's display name.
+    RenameAudio { id: AudioId, name: Option<String> },
+    /// Detach an audio buffer, cascading to every document referencing it.
+    DetachAudio { id: AudioId },
+    /// Reattach a previously detached audio buffer and the documents that were
+    /// cascaded off it, each under its original id.
+    RestoreAudio {
+        id: AudioId,
+        docs: Vec<(AnnotationId, Document)>,
+    },
     /// Reattach a previously detached document under its original id.
     Attach {
         id: AnnotationId,
@@ -70,6 +80,39 @@ impl Reverse {
             Self::RemoveAudio { id } => {
                 audio_store.remove(*id);
                 Ok(Applied::AudioRemoved { audio: *id })
+            }
+            Self::RenameAudio { id, name } => {
+                audio_store.set_name(*id, name.clone())?;
+                Ok(Applied::AudioRenamed {
+                    audio: *id,
+                    name: name.clone().unwrap_or_default(),
+                })
+            }
+            Self::DetachAudio { id } => {
+                let annotations = documents.ids_referencing(*id);
+                for annotation in &annotations {
+                    documents.detach(*annotation);
+                }
+                audio_store.detach(*id);
+                Ok(Applied::AudioDetached {
+                    audio: *id,
+                    annotations,
+                })
+            }
+            Self::RestoreAudio { id, docs } => {
+                audio_store.reattach_detached(*id);
+                let mut annotations: Vec<AnnotationId> = docs
+                    .iter()
+                    .map(|(annotation, document)| {
+                        documents.reattach(*annotation, document.clone());
+                        *annotation
+                    })
+                    .collect();
+                annotations.sort_unstable();
+                Ok(Applied::AudioRestored {
+                    audio: *id,
+                    annotations,
+                })
             }
             Self::Attach { id, document } => {
                 documents.reattach(*id, (**document).clone());

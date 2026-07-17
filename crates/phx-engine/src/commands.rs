@@ -33,6 +33,23 @@ pub enum Command {
         /// Display name recorded on the decoded buffer.
         name: String,
     },
+    /// Rename a stored audio buffer. The inverse restores the prior name.
+    RenameAudio {
+        /// Audio buffer to rename.
+        id: AudioId,
+        /// New display name.
+        name: String,
+    },
+    /// Detach a stored audio buffer from the session, cascading to every
+    /// annotation document that references it.
+    ///
+    /// The referencing documents are detached in the same command, and the
+    /// inverse restores the audio and those documents together, each under its
+    /// original id.
+    DetachAudio {
+        /// Audio buffer to detach.
+        id: AudioId,
+    },
     /// Attach an annotation document to a stored audio buffer.
     AttachAnnotation {
         /// Audio buffer the document annotates.
@@ -156,6 +173,28 @@ pub enum Applied {
     AudioRemoved {
         /// Audio id that was removed.
         audio: AudioId,
+    },
+    /// A stored audio buffer was renamed.
+    AudioRenamed {
+        /// Renamed audio id.
+        audio: AudioId,
+        /// Name now in place.
+        name: String,
+    },
+    /// An audio buffer and every document referencing it left the session.
+    AudioDetached {
+        /// Detached audio id.
+        audio: AudioId,
+        /// Documents detached alongside it, in ascending id order.
+        annotations: Vec<AnnotationId>,
+    },
+    /// A detached audio buffer and its documents returned to the session (a
+    /// detach undone).
+    AudioRestored {
+        /// Restored audio id.
+        audio: AudioId,
+        /// Documents restored alongside it, in ascending id order.
+        annotations: Vec<AnnotationId>,
     },
     /// A document was attached to audio.
     AnnotationAttached {
