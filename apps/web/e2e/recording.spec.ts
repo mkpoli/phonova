@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { canvasForegroundCoverage } from './helpers';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const screenshots = path.join(here, 'screenshots');
@@ -95,35 +96,4 @@ function meterFill(page: Page) {
 
 function visibleEnd(page: Page) {
   return page.getByTestId('editor').evaluate((node) => Number(node.getAttribute('data-visible-end')));
-}
-
-/**
- * Counts painted waveform pixels — those departing from the pane's dominant
- * background colour. The WebGL waveform draws hard-edged (no anti-aliasing), so
- * unique-colour counting can't distinguish a real signal from a flat line;
- * coverage does, and it is independent of the fake tone's amplitude or the
- * playback cursor.
- */
-async function canvasForegroundCoverage(page: Page, testId: string) {
-  return page.getByTestId(testId).evaluate(async (canvas: HTMLCanvasElement) => {
-    const bitmap = await createImageBitmap(canvas);
-    const w = bitmap.width;
-    const h = bitmap.height;
-    const off = new OffscreenCanvas(w, h);
-    const ctx = off.getContext('2d');
-    if (!ctx) return 0;
-    ctx.drawImage(bitmap, 0, 0);
-    const pixels = ctx.getImageData(0, 0, w, h).data;
-    const tally = new Map<number, number>();
-    const key = (i: number) =>
-      (pixels[i] << 24) | (pixels[i + 1] << 16) | (pixels[i + 2] << 8) | pixels[i + 3];
-    for (let i = 0; i < pixels.length; i += 4) {
-      const k = key(i);
-      tally.set(k, (tally.get(k) ?? 0) + 1);
-    }
-    let backgroundCount = 0;
-    for (const count of tally.values()) if (count > backgroundCount) backgroundCount = count;
-    const total = pixels.length / 4;
-    return total - backgroundCount;
-  });
 }

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openEditorWithFixture } from './helpers';
+import { canvasForegroundCoverage, openEditorWithFixture } from './helpers';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../../..');
@@ -199,4 +199,36 @@ test('new palettes render legibly in both themes', async ({ page }) => {
     await page.getByLabel('Toggle theme').click();
     await expect(page.locator('html')).not.toHaveClass(/dark/);
   }
+});
+
+test('resizing the window keeps waveform and spectrogram painted', async ({ page }) => {
+  await openEditorWithFixture(page, shortFixture);
+  await expect(page.getByTestId('waveform-canvas')).toHaveAttribute('data-render-token', /[1-9]/);
+  await expect(page.getByTestId('spectrogram-canvas')).toHaveAttribute('data-render-token', /[1-9]/);
+  await expect
+    .poll(() => canvasForegroundCoverage(page, 'waveform-canvas'))
+    .toBeGreaterThan(100);
+  await expect
+    .poll(() => canvasForegroundCoverage(page, 'spectrogram-canvas'))
+    .toBeGreaterThan(100);
+
+  // Shrink the window: a resize's backing-store reallocation must never leave
+  // the pane cleared while a fresh slice/tile streams in (transform-first: the
+  // stale bitmap keeps showing, stretched to the new box, until it does).
+  await page.setViewportSize({ width: 900, height: 700 });
+  await expect
+    .poll(() => canvasForegroundCoverage(page, 'waveform-canvas'), { timeout: 5000 })
+    .toBeGreaterThan(50);
+  await expect
+    .poll(() => canvasForegroundCoverage(page, 'spectrogram-canvas'), { timeout: 5000 })
+    .toBeGreaterThan(50);
+
+  // Grow back: same guarantee in the other direction.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect
+    .poll(() => canvasForegroundCoverage(page, 'waveform-canvas'), { timeout: 5000 })
+    .toBeGreaterThan(100);
+  await expect
+    .poll(() => canvasForegroundCoverage(page, 'spectrogram-canvas'), { timeout: 5000 })
+    .toBeGreaterThan(100);
 });
