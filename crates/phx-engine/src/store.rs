@@ -16,6 +16,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use phx_audio::{Audio, StreamingWav};
+use phx_spectrogram::{
+    ColumnBlock, SpectrogramParams, column_block_sample_range, compute_column_block,
+    compute_column_block_windowed,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::error::EngineError;
@@ -278,6 +282,58 @@ impl AudioStore {
             Some(Entry::Streamed {
                 source, pyramid, ..
             }) => Ok(pyramid.slice(source, t0, t1, px)?),
+            None => Err(EngineError::UnknownAudioId(id)),
+        }
+    }
+
+    /// Computes one raw-dB spectrogram column block for `id` without ever
+    /// holding the whole signal.
+    ///
+    /// An eager entry blocks straight off its resident buffer. A streamed entry
+    /// decodes only the sample range the block's frames touch
+    /// ([`column_block_sample_range`]) and computes the block from that window
+    /// ([`compute_column_block_windowed`]), so a spectrogram tile over an
+    /// hour-long take reads a few frames' worth of samples, not the whole file.
+    /// Both kinds return a block bit-for-bit equal to a whole-buffer
+    /// [`compute_column_block`], since the frame grid is a function of the sample
+    /// rate and duration alone.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] for an unknown id and
+    /// [`EngineError::Audio`] when a streamed range cannot be decoded.
+    pub(crate) fn column_block(
+        &self,
+        id: AudioId,
+        params: &SpectrogramParams,
+        first_col: usize,
+        col_count: usize,
+    ) -> Result<ColumnBlock, EngineError> {
+        match self.entries.get(&id) {
+            Some(Entry::Eager { audio, .. }) => {
+                let view = audio.slice_samples(0..audio.frames());
+                Ok(compute_column_block(view, params, first_col, col_count))
+            }
+            Some(Entry::Streamed { source, .. }) => {
+                let range = column_block_sample_range(
+                    source.sample_rate(),
+                    source.duration(),
+                    params,
+                    first_col,
+                    col_count,
+                );
+                let end = range.end.min(source.frames());
+                let start = range.start.min(end);
+                let mono = source.read_mono(start..end)?;
+                Ok(compute_column_block_windowed(
+                    source.sample_rate(),
+                    source.duration(),
+                    params,
+                    first_col,
+                    col_count,
+                    &mono,
+                    start,
+                ))
+            }
             None => Err(EngineError::UnknownAudioId(id)),
         }
     }

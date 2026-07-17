@@ -28,11 +28,11 @@ mod tile_cache;
 use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
 
-use phx_spectrogram::{analysis_axes, compute_column_block, select_axis_indices};
+use phx_spectrogram::{analysis_axes_dims, select_axis_indices};
 
 use tile_cache::{BlockKey, TILE_COLS, TileCache, params_hash};
 
-use phx_audio::{Audio, StreamingWav};
+use phx_audio::Audio;
 use phx_dsp::{RealFftPlan, Window};
 
 use std::sync::Arc;
@@ -55,7 +55,7 @@ pub use phx_annot::{
     Moved, Point, PointId, PointTier, Tier, TierId, TierKind, TierMerge, TierRelation, TierSlot,
 };
 pub use phx_audio::{
-    AudioError, BitDepth, ByteReader, BytesReader, StreamSampleFormat, WavStreamInfo,
+    AudioError, BitDepth, ByteReader, BytesReader, StreamSampleFormat, StreamingWav, WavStreamInfo,
 };
 pub use phx_figure::Figure;
 pub use phx_formant::{FormantFrame, FormantParams, FormantPoint, FormantTrack};
@@ -354,10 +354,12 @@ impl Engine {
     /// values are bit-for-bit identical to a direct `compute_tile`, since both
     /// read the same frame centres off the same grid.
     fn spectrogram_tile_db(&self, id: AudioId, req: &TileRequest) -> Result<Vec<f32>, EngineError> {
-        let access = self.store.whole(id)?;
-        let audio = access.audio();
-        let view = audio.slice_samples(0..audio.frames());
-        let axes = analysis_axes(view.clone(), &req.params);
+        // Axes come from the header dimensions alone, so a streamed source picks
+        // the same tile columns without decoding a sample; each needed block is
+        // then computed bounded (whole-buffer for eager, ranged read for
+        // streamed) and cached, never materializing the whole signal.
+        let info = self.store.info(id)?;
+        let axes = analysis_axes_dims(info.sample_rate, info.duration, &req.params);
         let freq_len = axes.frequencies.len();
 
         let time_indices = select_axis_indices(
@@ -393,12 +395,12 @@ impl Engine {
             let block = match hit {
                 Some(block) => block,
                 None => {
-                    let block = compute_column_block(
-                        view.clone(),
+                    let block = self.store.column_block(
+                        id,
                         &req.params,
                         block_index * TILE_COLS,
                         TILE_COLS,
-                    );
+                    )?;
                     self.tiles
                         .lock()
                         .expect("tile cache poisoned")
