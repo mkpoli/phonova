@@ -105,6 +105,37 @@ async function writeFileBytes(
 }
 
 /**
+ * Streams a File into OPFS without buffering it whole in memory.
+ *
+ * A large recording is piped straight from the File to the OPFS writable, so
+ * importing an hour-long take never holds the file on the main thread; the
+ * worker then opens it streamed off the persisted copy.
+ */
+async function writeFileStream(
+  dir: FileSystemDirectoryHandle,
+  name: string,
+  file: File
+): Promise<void> {
+  const handle = await dir.getFileHandle(name, { create: true });
+  const writable = await handle.createWritable();
+  await file.stream().pipeTo(writable);
+}
+
+/** OPFS directory segments, from the root, that hold a project's recordings. */
+function audioSegments(projectId: string): string[] {
+  return [PROJECTS_DIR, projectId, AUDIO_DIR];
+}
+
+async function fileExists(dir: FileSystemDirectoryHandle, name: string): Promise<boolean> {
+  try {
+    await dir.getFileHandle(name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Orchestrates project persistence over the Origin Private File System.
  *
  * The container format and its round-trip stay in `phx-project` (reached through
@@ -186,10 +217,13 @@ export class ProjectStore {
     const byStem = new Map<string, RecordingEntry>();
 
     for (const file of wavs) {
-      const bytes = new Uint8Array(await file.arrayBuffer());
       const fileName = uniqueName(file.name, project.recordings);
-      await writeFileBytes(audioDir, fileName, bytes);
-      const info = await this.#client.importAudio(new File([bytes], fileName));
+      await writeFileStream(audioDir, fileName, file);
+      const info = await this.#client.openAudioFile(
+        audioSegments(project.id),
+        fileName,
+        fileName
+      );
       const recording: RecordingEntry = {
         mediaId: project.nextMediaId++,
         name: stem(fileName),
@@ -285,11 +319,10 @@ export class ProjectStore {
     let nextMediaId = 1;
     for (const media of container.media) {
       const fileName = media.relativePath.split('/').pop() ?? media.relativePath;
-      const bytes = await readFileBytes(audioDir, fileName);
       let audioId = null;
       let annotationId = null;
-      if (bytes) {
-        const info = await this.#client.importAudio(new File([bytes], fileName));
+      if (await fileExists(audioDir, fileName)) {
+        const info = await this.#client.openAudioFile(audioSegments(id), fileName, fileName);
         audioId = info.id;
         if (media.annotationJson) {
           annotationId = await this.#client.attachAnnotationJson(audioId, media.annotationJson);

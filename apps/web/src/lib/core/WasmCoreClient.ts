@@ -68,6 +68,20 @@ export class WasmCoreClient implements CoreClient {
     return this.#call<AudioInfo>({ method: 'importAudio', bytes, name: file.name }, [bytes]);
   }
 
+  /**
+   * Opens an audio file already resident in OPFS, choosing the eager or streamed
+   * path by its length.
+   *
+   * `dirSegments` locate the file's directory under the OPFS root and `fileName`
+   * names it; the worker opens a synchronous access handle so the bytes never
+   * cross the message boundary. A file over the engine's eager frame threshold
+   * opens streamed — only ranged reads reach wasm — and a shorter one decodes
+   * whole, exactly as a byte import would.
+   */
+  openAudioFile(dirSegments: string[], fileName: string, name: string): Promise<AudioInfo> {
+    return this.#call<AudioInfo>({ method: 'openAudioFile', dirSegments, fileName, name });
+  }
+
   beginRecording(sampleRate: number, channels: number): Promise<bigint> {
     return this.#call({ method: 'beginRecording', sampleRate, channels });
   }

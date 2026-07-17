@@ -1,5 +1,6 @@
 import init, {
 	WasmColormap,
+	WasmContentHasher,
 	WasmEngine,
 	WasmTheme,
 	WasmTierRelation,
@@ -7,7 +8,8 @@ import init, {
 	exportFigure as wasmExportFigure,
 	loadProjectContainer as wasmLoadProjectContainer,
 	renameProjectContainer as wasmRenameProjectContainer,
-	renderFigureSvg as wasmRenderFigureSvg
+	renderFigureSvg as wasmRenderFigureSvg,
+	wavStreamHeader as wasmWavStreamHeader
 } from '../wasm/pkg/phx_wasm.js';
 import type {
   AnnotationId,
@@ -25,6 +27,13 @@ import type {
 
 type RequestMessage =
   | { id: number; method: 'importAudio'; bytes: ArrayBuffer; name: string }
+  | {
+      id: number;
+      method: 'openAudioFile';
+      dirSegments: string[];
+      fileName: string;
+      name: string;
+    }
   | { id: number; method: 'beginRecording'; sampleRate: number; channels: number }
   | { id: number; method: 'appendSamples'; recordingId: bigint; samples: ArrayBuffer }
   | { id: number; method: 'finishRecording'; recordingId: bigint; name: string }
@@ -167,6 +176,66 @@ function engine() {
   return enginePromise;
 }
 
+/** Bytes read per chunk when hashing or whole-reading an OPFS file. */
+const OPFS_READ_CHUNK = 1 << 20;
+
+/**
+ * The subset of `FileSystemSyncAccessHandle` this worker uses. The type is only
+ * exposed inside a worker, and not yet in every `lib.dom` release, so it is
+ * declared locally.
+ */
+interface SyncAccessHandle {
+  read(buffer: ArrayBufferView, options?: { at?: number }): number;
+  getSize(): number;
+  close(): void;
+}
+
+interface SyncCapableFileHandle {
+  createSyncAccessHandle(options?: {
+    mode?: 'read-only' | 'readwrite' | 'readwrite-unsafe';
+  }): Promise<SyncAccessHandle>;
+}
+
+/**
+ * Synchronous access handles kept open for the life of each streamed source.
+ *
+ * A streamed entry's `readAt` callback reads through its handle on every
+ * waveform, spectrogram, and analysis query, so the handle must outlive the
+ * import call. It is opened read-only, which lets the main thread still read the
+ * same file (playback, export) without contending for an exclusive lock.
+ */
+const streamedHandles = new Map<bigint, SyncAccessHandle>();
+
+/** Walks OPFS `dirSegments` and opens a read-only sync handle on `fileName`. */
+async function openSyncHandle(
+  dirSegments: string[],
+  fileName: string
+): Promise<SyncAccessHandle> {
+  let dir = await navigator.storage.getDirectory();
+  for (const segment of dirSegments) {
+    dir = await dir.getDirectoryHandle(segment);
+  }
+  const fileHandle = (await dir.getFileHandle(fileName)) as unknown as SyncCapableFileHandle;
+  try {
+    return await fileHandle.createSyncAccessHandle({ mode: 'read-only' });
+  } catch {
+    // Older engines reject the options bag; fall back to the default mode.
+    return await fileHandle.createSyncAccessHandle();
+  }
+}
+
+/** A `readAt(offset, length)` callback that serves ranges from a sync handle. */
+function readAtOf(handle: SyncAccessHandle) {
+  return (offset: number, length: number): Uint8Array => {
+    const buffer = new Uint8Array(length);
+    const read = handle.read(buffer, { at: offset });
+    if (read !== length) {
+      throw new Error(`OPFS read returned ${read} of ${length} bytes at ${offset}`);
+    }
+    return buffer;
+  };
+}
+
 function colormap(name: SpectrogramTileRequest['colormap']): WasmColormap {
   return WasmColormap[name];
 }
@@ -277,6 +346,62 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
           hash
         };
         postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'openAudioFile': {
+        // The file already lives in OPFS. A sync access handle serves its bytes
+        // without them ever crossing postMessage: a short take is read whole and
+        // decoded eagerly, a long one is opened streamed so only ranged reads
+        // reach wasm and the decoded signal never resides in memory.
+        const handle = await openSyncHandle(message.dirSegments, message.fileName);
+        const size = handle.getSize();
+        const readAt = readAtOf(handle);
+        let keepHandle = false;
+        try {
+          const header = wasmWavStreamHeader(size, readAt);
+          const streamed = header.frames > WasmEngine.eagerImportFrameLimit();
+
+          let audioId: bigint;
+          let hash: string;
+          if (streamed) {
+            audioId = wasm.openStreamingWav(size, message.name, readAt);
+            const hasher = new WasmContentHasher();
+            const chunk = new Uint8Array(OPFS_READ_CHUNK);
+            for (let offset = 0; offset < size; ) {
+              const want = Math.min(OPFS_READ_CHUNK, size - offset);
+              const read = handle.read(chunk.subarray(0, want), { at: offset });
+              if (read <= 0) break;
+              hasher.update(chunk.subarray(0, read));
+              offset += read;
+            }
+            hash = hasher.finalizeHex();
+            streamedHandles.set(audioId, handle);
+            keepHandle = true;
+          } else {
+            const bytes = new Uint8Array(size);
+            for (let offset = 0; offset < size; ) {
+              const read = handle.read(bytes.subarray(offset), { at: offset });
+              if (read <= 0) break;
+              offset += read;
+            }
+            audioId = wasm.importWavBytes(bytes);
+            hash = wasmContentHash(bytes);
+          }
+
+          const info = wasm.audioInfo(audioId);
+          const result = {
+            id: audioId,
+            duration: info.duration,
+            sampleRate: info.sampleRate,
+            channels: info.channels,
+            name: message.name || info.name || undefined,
+            hash,
+            streamed
+          };
+          postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        } finally {
+          if (!keepHandle) handle.close();
+        }
         return;
       }
       case 'beginRecording': {
