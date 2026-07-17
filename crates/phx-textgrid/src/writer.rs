@@ -7,9 +7,10 @@ use std::fmt::Write as _;
 /// Serializes an annotation as a long-format TextGrid.
 ///
 /// The output is UTF-8 with `LF` line endings and no byte-order mark, matching
-/// fixed design rule 4 (legacy encodings are read, never produced). Each tier's
-/// own `xmin`/`xmax` is written as the document time domain, which is what Praat
-/// emits for tiers that span the whole recording.
+/// fixed design rule 4 (legacy encodings are read, never produced). Each
+/// tier's own `xmin`/`xmax` is written as stored on the tier, which usually
+/// matches the document domain but may differ for a tier read from a source
+/// that declared its own narrower or wider span.
 ///
 /// # Errors
 /// Returns [`TextGridError::NonFiniteTime`] if the document carries a
@@ -41,8 +42,8 @@ pub fn write(annotation: &Annotation) -> Result<Vec<u8>, TextGridError> {
             Tier::Interval(tier) => {
                 let _ = writeln!(out, "        class = \"IntervalTier\"");
                 let _ = writeln!(out, "        name = \"{}\"", escape(&tier.name));
-                let _ = writeln!(out, "        xmin = {xmin}");
-                let _ = writeln!(out, "        xmax = {xmax}");
+                let _ = writeln!(out, "        xmin = {}", number(tier.xmin)?);
+                let _ = writeln!(out, "        xmax = {}", number(tier.xmax)?);
                 let _ = writeln!(out, "        intervals: size = {}", tier.intervals.len());
                 for (entry, interval) in tier.intervals.iter().enumerate() {
                     let _ = writeln!(out, "        intervals [{}]:", entry + 1);
@@ -54,8 +55,8 @@ pub fn write(annotation: &Annotation) -> Result<Vec<u8>, TextGridError> {
             Tier::Point(tier) => {
                 let _ = writeln!(out, "        class = \"TextTier\"");
                 let _ = writeln!(out, "        name = \"{}\"", escape(&tier.name));
-                let _ = writeln!(out, "        xmin = {xmin}");
-                let _ = writeln!(out, "        xmax = {xmax}");
+                let _ = writeln!(out, "        xmin = {}", number(tier.xmin)?);
+                let _ = writeln!(out, "        xmax = {}", number(tier.xmax)?);
                 let _ = writeln!(out, "        points: size = {}", tier.points.len());
                 for (entry, point) in tier.points.iter().enumerate() {
                     let _ = writeln!(out, "        points [{}]:", entry + 1);

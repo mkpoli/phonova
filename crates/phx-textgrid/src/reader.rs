@@ -169,20 +169,27 @@ pub fn parse(text: &str, encoding: Encoding) -> Result<(Annotation, SourceInfo),
         for _ in 0..tier_count {
             let tier_class = cursor.read_string()?;
             let name = cursor.read_string()?;
-            let _tier_xmin = cursor.read_number()?;
-            let _tier_xmax = cursor.read_number()?;
+            let tier_xmin = cursor.read_number()?;
+            let tier_xmax = cursor.read_number()?;
             let entry_count = cursor.read_count()?;
 
             let tier = match tier_class.as_str() {
                 "IntervalTier" => Tier::Interval(read_interval_tier(
                     &mut cursor,
                     name,
+                    tier_xmin,
+                    tier_xmax,
                     entry_count,
                     &mut ids,
                 )?),
-                "TextTier" => {
-                    Tier::Point(read_point_tier(&mut cursor, name, entry_count, &mut ids)?)
-                }
+                "TextTier" => Tier::Point(read_point_tier(
+                    &mut cursor,
+                    name,
+                    tier_xmin,
+                    tier_xmax,
+                    entry_count,
+                    &mut ids,
+                )?),
                 _ => return Err(TextGridError::UnknownTierClass { found: tier_class }),
             };
             slots.push(TierSlot {
@@ -202,6 +209,8 @@ pub fn parse(text: &str, encoding: Encoding) -> Result<(Annotation, SourceInfo),
 fn read_interval_tier(
     cursor: &mut Cursor<'_>,
     name: String,
+    tier_xmin: f64,
+    tier_xmax: f64,
     count: usize,
     ids: &mut IdMinter,
 ) -> Result<IntervalTier, TextGridError> {
@@ -223,12 +232,19 @@ fn read_interval_tier(
             label,
         });
     }
-    Ok(IntervalTier { name, intervals })
+    Ok(IntervalTier {
+        name,
+        xmin: tier_xmin,
+        xmax: tier_xmax,
+        intervals,
+    })
 }
 
 fn read_point_tier(
     cursor: &mut Cursor<'_>,
     name: String,
+    tier_xmin: f64,
+    tier_xmax: f64,
     count: usize,
     ids: &mut IdMinter,
 ) -> Result<PointTier, TextGridError> {
@@ -242,7 +258,12 @@ fn read_point_tier(
             label,
         });
     }
-    Ok(PointTier { name, points })
+    Ok(PointTier {
+        name,
+        xmin: tier_xmin,
+        xmax: tier_xmax,
+        points,
+    })
 }
 
 /// The long format is the only variant that carries a bare `xmin` field tag;

@@ -78,6 +78,8 @@ mod tests {
             relation: TierRelation::Independent,
             tier: Tier::Interval(IntervalTier {
                 name: "words".to_owned(),
+                xmin: 0.0,
+                xmax: 1.0,
                 intervals: vec![
                     Interval {
                         id: IntervalId::new(1),

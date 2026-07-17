@@ -22,6 +22,8 @@ fn interval(id: u64, b0: u64, b1: u64, xmin: f64, xmax: f64, label: &str) -> Int
 fn quoted_quotes_in_labels_survive_round_trip() {
     let tier = IntervalTier {
         name: "quote\"tier".to_owned(),
+        xmin: 0.0,
+        xmax: 1.0,
         intervals: vec![
             interval(1, 1, 2, 0.0, 0.5, "say \"hi\""),
             interval(2, 2, 3, 0.5, 1.0, ""),
@@ -64,6 +66,8 @@ fn point_tier_labels_round_trip() {
             relation: TierRelation::Independent,
             tier: Tier::Point(PointTier {
                 name: "marks".to_owned(),
+                xmin: 0.0,
+                xmax: 2.0,
                 points: vec![
                     Point {
                         id: PointId::new(1),

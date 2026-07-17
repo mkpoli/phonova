@@ -5,6 +5,7 @@
 //! from the fixture-expansion lane are exercised automatically. The `malformed/`
 //! subdirectory is skipped by the round-trip tests and drives the error paths.
 
+use phx_annot::Tier;
 use phx_textgrid::{Encoding, TextGridError, Variant, read, write};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -142,6 +143,31 @@ fn latin1_legacy_source_decodes() {
     assert_eq!(info.encoding, Encoding::Latin1);
     let written = write(&doc).expect("finite document writes");
     let (reparsed, _) = read(&written).expect("written latin1 source reads");
+    assert_eq!(doc, reparsed);
+}
+
+#[test]
+fn tier_domain_narrower_than_the_document_round_trips() {
+    let path = fixture_dir().join("narrow_tier_domain_long_utf8.TextGrid");
+    let bytes = fs::read(&path).expect("fixture is readable");
+    let (doc, _) = read(&bytes).expect("fixture reads");
+
+    let Tier::Interval(tier) = &doc.tiers()[0].tier else {
+        panic!("expected an interval tier");
+    };
+    assert_eq!(doc.xmin(), 0.0);
+    assert_eq!(doc.xmax(), 2.0);
+    assert_eq!(tier.xmin, 0.5);
+    assert_eq!(tier.xmax, 1.5);
+
+    let written = write(&doc).expect("finite document writes");
+    let text = std::str::from_utf8(&written).expect("written output is UTF-8");
+    assert!(
+        text.contains("xmin = 0.5") && text.contains("xmax = 1.5"),
+        "written output did not preserve the tier's own domain: {text}"
+    );
+
+    let (reparsed, _) = read(&written).expect("written document reads back");
     assert_eq!(doc, reparsed);
 }
 

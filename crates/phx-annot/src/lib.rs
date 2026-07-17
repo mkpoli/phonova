@@ -167,12 +167,16 @@ impl Annotation {
         for slot in &tiers {
             match &slot.tier {
                 Tier::Interval(tier) => {
+                    require_finite(tier.xmin, TimeRole::TierDomainStart)?;
+                    require_finite(tier.xmax, TimeRole::TierDomainEnd)?;
                     for interval in &tier.intervals {
                         require_finite(interval.xmin, TimeRole::IntervalStart)?;
                         require_finite(interval.xmax, TimeRole::IntervalEnd)?;
                     }
                 }
                 Tier::Point(tier) => {
+                    require_finite(tier.xmin, TimeRole::TierDomainStart)?;
+                    require_finite(tier.xmax, TimeRole::TierDomainEnd)?;
                     for point in &tier.points {
                         require_finite(point.time, TimeRole::Point)?;
                     }
@@ -229,6 +233,8 @@ impl Annotation {
             relation,
             tier: Tier::Interval(IntervalTier {
                 name: name.to_owned(),
+                xmin: candidate.xmin,
+                xmax: candidate.xmax,
                 intervals: vec![Interval {
                     id: interval,
                     start_boundary: start,
@@ -267,6 +273,8 @@ impl Annotation {
             relation,
             tier: Tier::Point(PointTier {
                 name: name.to_owned(),
+                xmin: candidate.xmin,
+                xmax: candidate.xmax,
                 points: stored,
             }),
         });
@@ -623,6 +631,16 @@ impl Annotation {
         boundary_ids: &mut HashSet<BoundaryId>,
         issues: &mut Vec<IntegrityIssue>,
     ) {
+        if !same_time(tier.xmin, self.xmin) || !same_time(tier.xmax, self.xmax) {
+            issues.push(IntegrityIssue::TierDomainMismatch {
+                tier: tier_id,
+                tier_xmin: tier.xmin,
+                tier_xmax: tier.xmax,
+                doc_xmin: self.xmin,
+                doc_xmax: self.xmax,
+            });
+        }
+
         if tier.intervals.is_empty() {
             issues.push(IntegrityIssue::IntervalTierEmpty { tier: tier_id });
             return;
@@ -630,11 +648,11 @@ impl Annotation {
 
         let mut tier_boundaries = Vec::with_capacity(tier.intervals.len() + 1);
         let first = &tier.intervals[0];
-        if !same_time(first.xmin, self.xmin) {
+        if !same_time(first.xmin, tier.xmin) {
             issues.push(IntegrityIssue::DomainStartMismatch {
                 tier: tier_id,
                 found: first.xmin,
-                expected: self.xmin,
+                expected: tier.xmin,
             });
         }
         tier_boundaries.push(first.start_boundary);
@@ -696,11 +714,11 @@ impl Annotation {
         }
 
         let last = tier.intervals.last().expect("non-empty interval tier");
-        if !same_time(last.xmax, self.xmax) {
+        if !same_time(last.xmax, tier.xmax) {
             issues.push(IntegrityIssue::DomainEndMismatch {
                 tier: tier_id,
                 found: last.xmax,
-                expected: self.xmax,
+                expected: tier.xmax,
             });
         }
         tier_boundaries.push(last.end_boundary);
@@ -722,6 +740,16 @@ impl Annotation {
         point_ids: &mut HashSet<PointId>,
         issues: &mut Vec<IntegrityIssue>,
     ) {
+        if !same_time(tier.xmin, self.xmin) || !same_time(tier.xmax, self.xmax) {
+            issues.push(IntegrityIssue::TierDomainMismatch {
+                tier: tier_id,
+                tier_xmin: tier.xmin,
+                tier_xmax: tier.xmax,
+                doc_xmin: self.xmin,
+                doc_xmax: self.xmax,
+            });
+        }
+
         for (index, point) in tier.points.iter().enumerate() {
             if !point_ids.insert(point.id) {
                 issues.push(IntegrityIssue::DuplicatePointId {
@@ -735,7 +763,7 @@ impl Annotation {
                     context: TimeRole::Point,
                 });
             }
-            if point.time < self.xmin || point.time > self.xmax {
+            if point.time < tier.xmin || point.time > tier.xmax {
                 issues.push(IntegrityIssue::PointOutsideDomain {
                     tier: tier_id,
                     point: point.id,
@@ -1284,11 +1312,19 @@ pub enum Tier {
     Point(PointTier),
 }
 
-/// Interval tier with sorted, contiguous intervals over the document domain.
+/// Interval tier with sorted, contiguous intervals over its own time domain.
+///
+/// A tier's `xmin`/`xmax` usually match the document's, but a source format
+/// may carry a tier whose domain differs from the document's; [`Annotation`]
+/// preserves whatever the tier itself declares.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct IntervalTier {
     /// Display name for the tier.
     pub name: String,
+    /// Start of this tier's own time domain in seconds.
+    pub xmin: f64,
+    /// End of this tier's own time domain in seconds.
+    pub xmax: f64,
     /// Ordered intervals.
     pub intervals: Vec<Interval>,
 }
@@ -1330,11 +1366,20 @@ pub struct Interval {
     pub label: String,
 }
 
-/// Point tier with sorted, strictly increasing points.
+/// Point tier with sorted, strictly increasing points over its own time
+/// domain.
+///
+/// A tier's `xmin`/`xmax` usually match the document's, but a source format
+/// may carry a tier whose domain differs from the document's; [`Annotation`]
+/// preserves whatever the tier itself declares.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PointTier {
     /// Display name for the tier.
     pub name: String,
+    /// Start of this tier's own time domain in seconds.
+    pub xmin: f64,
+    /// End of this tier's own time domain in seconds.
+    pub xmax: f64,
     /// Ordered point annotations.
     pub points: Vec<Point>,
 }
@@ -1779,6 +1824,10 @@ pub enum TimeRole {
     DomainStart,
     /// Document domain end.
     DomainEnd,
+    /// Tier's own domain start.
+    TierDomainStart,
+    /// Tier's own domain end.
+    TierDomainEnd,
     /// Boundary time.
     Boundary,
     /// Interval start.
@@ -1837,23 +1886,39 @@ pub enum IntegrityIssue {
         /// Empty tier.
         tier: TierId,
     },
-    /// First interval does not begin at the document start.
+    /// First interval does not begin at the tier's own domain start.
     DomainStartMismatch {
         /// Tier with the mismatch.
         tier: TierId,
         /// Found start time.
         found: f64,
-        /// Expected document start.
+        /// Expected tier domain start.
         expected: f64,
     },
-    /// Last interval does not end at the document end.
+    /// Last interval does not end at the tier's own domain end.
     DomainEndMismatch {
         /// Tier with the mismatch.
         tier: TierId,
         /// Found end time.
         found: f64,
-        /// Expected document end.
+        /// Expected tier domain end.
         expected: f64,
+    },
+    /// A tier's own time domain differs from the document's. This is not
+    /// itself a structural defect — Praat allows a tier whose domain differs
+    /// from the document's — but callers that assume every tier spans the
+    /// full document should check for it.
+    TierDomainMismatch {
+        /// Tier with the mismatch.
+        tier: TierId,
+        /// Tier's own domain start.
+        tier_xmin: f64,
+        /// Tier's own domain end.
+        tier_xmax: f64,
+        /// Document domain start.
+        doc_xmin: f64,
+        /// Document domain end.
+        doc_xmax: f64,
     },
     /// Interval boundaries are reversed or equal.
     IntervalUnsorted {
@@ -2019,6 +2084,17 @@ impl fmt::Display for IntegrityIssue {
             } => write!(
                 f,
                 "tier {} ends at {found}, expected {expected}",
+                tier.get()
+            ),
+            Self::TierDomainMismatch {
+                tier,
+                tier_xmin,
+                tier_xmax,
+                doc_xmin,
+                doc_xmax,
+            } => write!(
+                f,
+                "tier {} spans [{tier_xmin}, {tier_xmax}], document spans [{doc_xmin}, {doc_xmax}]",
                 tier.get()
             ),
             Self::IntervalUnsorted {
@@ -2352,6 +2428,8 @@ mod tests {
             id: TierId(u64::MAX),
             relation: TierRelation::Independent,
             tier: Tier::Point(PointTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "points".to_owned(),
                 points: Vec::new(),
             }),
@@ -2369,6 +2447,8 @@ mod tests {
             id: TierId(1),
             relation: TierRelation::Independent,
             tier: Tier::Interval(IntervalTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "raw".to_owned(),
                 intervals: vec![interval(1, u64::MAX, 2, 0.0, 1.0)],
             }),
@@ -2388,6 +2468,8 @@ mod tests {
             id: TierId(1),
             relation: TierRelation::Independent,
             tier: Tier::Interval(IntervalTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "raw".to_owned(),
                 intervals: vec![interval(u64::MAX, 1, 2, 0.0, 1.0)],
             }),
@@ -2407,6 +2489,8 @@ mod tests {
             id: TierId(1),
             relation: TierRelation::Independent,
             tier: Tier::Point(PointTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "points".to_owned(),
                 points: vec![Point {
                     id: PointId(u64::MAX),
@@ -2430,6 +2514,8 @@ mod tests {
             id: TierId(u64::MAX - 1),
             relation: TierRelation::Independent,
             tier: Tier::Point(PointTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "points".to_owned(),
                 points: Vec::new(),
             }),
@@ -2468,6 +2554,8 @@ mod tests {
             id: TierId(1),
             relation: TierRelation::Independent,
             tier: Tier::Point(PointTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "points".to_owned(),
                 points: vec![Point {
                     id: PointId(1),
@@ -2490,6 +2578,8 @@ mod tests {
             id: TierId(1),
             relation: TierRelation::Independent,
             tier: Tier::Interval(IntervalTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "raw".to_owned(),
                 intervals: vec![Interval {
                     id: IntervalId(1),
@@ -2509,6 +2599,26 @@ mod tests {
                 context: TimeRole::IntervalEnd
             }
         );
+    }
+
+    #[test]
+    fn from_raw_rejects_a_non_finite_tier_domain() {
+        let slot = TierSlot {
+            id: TierId(1),
+            relation: TierRelation::Independent,
+            tier: Tier::Point(PointTier {
+                name: "points".to_owned(),
+                xmin: f64::NAN,
+                xmax: 1.0,
+                points: Vec::new(),
+            }),
+        };
+        let err = Annotation::from_raw(0.0, 1.0, vec![slot]).unwrap_err();
+        let AnnotationError::NonFiniteTime { value, context } = err else {
+            panic!("expected NonFiniteTime, got {err:?}");
+        };
+        assert!(value.is_nan());
+        assert_eq!(context, TimeRole::TierDomainStart);
     }
 
     #[test]
@@ -2541,6 +2651,8 @@ mod tests {
                 id: TierId(1),
                 relation: TierRelation::Independent,
                 tier: Tier::Point(PointTier {
+                    xmin: 0.0,
+                    xmax: 1.0,
                     name: "points".to_owned(),
                     points: vec![
                         Point {
@@ -2580,6 +2692,8 @@ mod tests {
                 id: TierId(1),
                 relation: TierRelation::Independent,
                 tier: Tier::Interval(IntervalTier {
+                    xmin: 0.0,
+                    xmax: 1.0,
                     name: "empty".to_owned(),
                     intervals: Vec::new(),
                 }),
@@ -2608,6 +2722,121 @@ mod tests {
     }
 
     #[test]
+    fn validation_reports_tier_domain_mismatch_for_a_narrower_interval_tier() {
+        // The tier's own domain is [0.2, 0.8], narrower than the document's
+        // [0.0, 1.0]; its single interval spans the tier's own domain
+        // exactly, so this reports only the tier/document mismatch, not a
+        // DomainStartMismatch or DomainEndMismatch against the tier itself.
+        let doc = Annotation::from_raw(
+            0.0,
+            1.0,
+            vec![TierSlot {
+                id: TierId(1),
+                relation: TierRelation::Independent,
+                tier: Tier::Interval(IntervalTier {
+                    name: "narrow".to_owned(),
+                    xmin: 0.2,
+                    xmax: 0.8,
+                    intervals: vec![interval(1, 1, 2, 0.2, 0.8)],
+                }),
+            }],
+        )
+        .expect("valid raw document");
+        assert_single_issue(doc.validate(), |issue| {
+            matches!(issue, IntegrityIssue::TierDomainMismatch { .. })
+        });
+    }
+
+    #[test]
+    fn validation_reports_tier_domain_mismatch_for_a_point_tier() {
+        let doc = Annotation::from_raw(
+            0.0,
+            1.0,
+            vec![TierSlot {
+                id: TierId(1),
+                relation: TierRelation::Independent,
+                tier: Tier::Point(PointTier {
+                    name: "narrow".to_owned(),
+                    xmin: 0.2,
+                    xmax: 0.8,
+                    points: vec![Point {
+                        id: PointId(1),
+                        time: 0.5,
+                        label: String::new(),
+                    }],
+                }),
+            }],
+        )
+        .expect("valid raw document");
+        assert_single_issue(doc.validate(), |issue| {
+            matches!(issue, IntegrityIssue::TierDomainMismatch { .. })
+        });
+    }
+
+    #[test]
+    fn point_outside_domain_checks_the_tiers_own_domain_not_the_documents() {
+        // The point at 0.9 is inside the document's [0.0, 1.0] but outside
+        // this tier's own [0.0, 0.5], so it is reported even though it would
+        // be in-bounds against the document.
+        let doc = Annotation::from_raw(
+            0.0,
+            1.0,
+            vec![TierSlot {
+                id: TierId(1),
+                relation: TierRelation::Independent,
+                tier: Tier::Point(PointTier {
+                    name: "narrow".to_owned(),
+                    xmin: 0.0,
+                    xmax: 0.5,
+                    points: vec![Point {
+                        id: PointId(1),
+                        time: 0.9,
+                        label: String::new(),
+                    }],
+                }),
+            }],
+        )
+        .expect("valid raw document");
+        let issues = doc.validate();
+        assert!(
+            issues
+                .iter()
+                .any(|issue| matches!(issue, IntegrityIssue::PointOutsideDomain { .. }))
+        );
+        assert!(
+            issues
+                .iter()
+                .any(|issue| matches!(issue, IntegrityIssue::TierDomainMismatch { .. }))
+        );
+    }
+
+    #[test]
+    fn add_interval_tier_stamps_the_document_domain_onto_the_new_tier() {
+        let mut doc = Annotation::new(0.0, 2.0).unwrap();
+        let tier = doc
+            .add_interval_tier("words", TierRelation::Independent)
+            .unwrap();
+        let Tier::Interval(interval_tier) = &doc.tier(tier).unwrap().tier else {
+            panic!("expected an interval tier");
+        };
+        assert_eq!(interval_tier.xmin, 0.0);
+        assert_eq!(interval_tier.xmax, 2.0);
+    }
+
+    #[test]
+    fn add_point_tier_stamps_the_document_domain_onto_the_new_tier() {
+        let mut doc = Annotation::new(0.0, 2.0).unwrap();
+        let tier = doc
+            .add_point_tier("marks", Vec::new(), TierRelation::Independent)
+            .unwrap();
+        let Tier::Point(point_tier) = &doc.tier(tier).unwrap().tier else {
+            panic!("expected a point tier");
+        };
+        assert_eq!(point_tier.xmin, 0.0);
+        assert_eq!(point_tier.xmax, 2.0);
+    }
+
+    #[test]
     fn validation_reports_interval_unsorted() {
         let doc = Annotation::from_raw(
             0.0,
@@ -2616,6 +2845,8 @@ mod tests {
                 id: TierId(1),
                 relation: TierRelation::Independent,
                 tier: Tier::Interval(IntervalTier {
+                    xmin: 0.0,
+                    xmax: 0.6,
                     name: "raw".to_owned(),
                     intervals: vec![interval(1, 1, 2, 0.0, 0.7), interval(2, 2, 3, 0.7, 0.6)],
                 }),
@@ -2660,6 +2891,8 @@ mod tests {
                 id: TierId(1),
                 relation: TierRelation::Independent,
                 tier: Tier::Point(PointTier {
+                    xmin: 0.0,
+                    xmax: 1.0,
                     name: "points".to_owned(),
                     points: vec![Point {
                         id: PointId(1),
@@ -2684,6 +2917,8 @@ mod tests {
                 id: TierId(1),
                 relation: TierRelation::Independent,
                 tier: Tier::Point(PointTier {
+                    xmin: 0.0,
+                    xmax: 1.0,
                     name: "points".to_owned(),
                     points: vec![
                         Point {
@@ -2715,6 +2950,8 @@ mod tests {
                 id: TierId(1),
                 relation: TierRelation::Independent,
                 tier: Tier::Point(PointTier {
+                    xmin: 0.0,
+                    xmax: 1.0,
                     name: "points".to_owned(),
                     points: vec![
                         Point {
@@ -2748,6 +2985,8 @@ mod tests {
                     parent: TierId(999),
                 },
                 tier: Tier::Interval(IntervalTier {
+                    xmin: 0.0,
+                    xmax: 1.0,
                     name: "child".to_owned(),
                     intervals: vec![interval(1, 1, 2, 0.0, 1.0)],
                 }),
@@ -2769,6 +3008,8 @@ mod tests {
                     id: TierId(1),
                     relation: TierRelation::Independent,
                     tier: Tier::Interval(IntervalTier {
+                        xmin: 0.0,
+                        xmax: 1.0,
                         name: "parent".to_owned(),
                         intervals: vec![interval(1, 1, 2, 0.0, 1.0)],
                     }),
@@ -2777,6 +3018,8 @@ mod tests {
                     id: TierId(2),
                     relation: TierRelation::ChildOf { parent: TierId(1) },
                     tier: Tier::Point(PointTier {
+                        xmin: 0.0,
+                        xmax: 1.0,
                         name: "point-child".to_owned(),
                         points: vec![Point {
                             id: PointId(1),
@@ -2799,6 +3042,8 @@ mod tests {
             id: TierId(1),
             relation: TierRelation::AlignedBoundaries { with: TierId(2) },
             tier: Tier::Interval(IntervalTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "left".to_owned(),
                 intervals: vec![interval(1, 1, 2, 0.0, 0.5), interval(2, 2, 3, 0.5, 1.0)],
             }),
@@ -2807,6 +3052,8 @@ mod tests {
             id: TierId(2),
             relation: TierRelation::Independent,
             tier: Tier::Interval(IntervalTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "right".to_owned(),
                 intervals: vec![interval(3, 4, 5, 0.0, 1.0)],
             }),
@@ -2823,6 +3070,8 @@ mod tests {
             id: TierId(1),
             relation: TierRelation::Independent,
             tier: Tier::Interval(IntervalTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "parent".to_owned(),
                 intervals: vec![interval(1, 1, 2, 0.0, 0.5), interval(2, 2, 3, 0.5, 1.0)],
             }),
@@ -2831,6 +3080,8 @@ mod tests {
             id: TierId(2),
             relation: TierRelation::ChildOf { parent: TierId(1) },
             tier: Tier::Interval(IntervalTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "child".to_owned(),
                 intervals: vec![interval(3, 4, 5, 0.0, 1.0)],
             }),
@@ -2932,6 +3183,8 @@ mod tests {
             id: TierId(1),
             relation: TierRelation::Independent,
             tier: Tier::Interval(IntervalTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "parent".to_owned(),
                 intervals: vec![interval(1, 1, 2, 0.0, 0.5), interval(2, 2, 3, 0.5, 1.0)],
             }),
@@ -2940,6 +3193,8 @@ mod tests {
             id: TierId(2),
             relation: TierRelation::AlignedBoundaries { with: TierId(1) },
             tier: Tier::Interval(IntervalTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "aligned".to_owned(),
                 intervals: vec![interval(3, 4, 5, 0.0, 0.5), interval(4, 5, 6, 0.5, 1.0)],
             }),
@@ -2948,6 +3203,8 @@ mod tests {
             id: TierId(3),
             relation: TierRelation::ChildOf { parent: TierId(1) },
             tier: Tier::Interval(IntervalTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "child".to_owned(),
                 intervals: vec![interval(5, 7, 8, 0.0, 0.5), interval(6, 8, 9, 0.5, 1.0)],
             }),
@@ -2956,6 +3213,8 @@ mod tests {
             id: TierId(4),
             relation: TierRelation::Independent,
             tier: Tier::Point(PointTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: "points".to_owned(),
                 points: vec![
                     Point {
@@ -3228,6 +3487,8 @@ mod tests {
                 id: TierId(1),
                 relation: TierRelation::Independent,
                 tier: Tier::Interval(IntervalTier {
+                    xmin: 0.0,
+                    xmax: 1.0,
                     name: "raw".to_owned(),
                     intervals: intervals
                         .into_iter()
@@ -3255,6 +3516,8 @@ mod tests {
             id: TierId(id),
             relation: TierRelation::Independent,
             tier: Tier::Point(PointTier {
+                xmin: 0.0,
+                xmax: 1.0,
                 name: name.to_owned(),
                 points: Vec::new(),
             }),
