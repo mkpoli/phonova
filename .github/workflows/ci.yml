@@ -128,3 +128,32 @@ jobs:
           if [ "$count" -eq 0 ]; then
             echo "::notice::no committed figure exports under crates/phx-figure -- figcheck ran the harness self-test only"
           fi
+
+  deploy:
+    name: deploy phonia.app
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, wasm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: oven-sh/setup-bun@v2
+      - run: cargo install wasm-pack --locked || cargo install wasm-pack
+      - run: RUSTFLAGS="-C target-feature=+simd128" wasm-pack build crates/phx-wasm --target web --out-dir ../../apps/web/src/lib/wasm/pkg
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+        working-directory: apps/web
+      - name: deploy
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+        run: bun x wrangler deploy
+        working-directory: apps/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: note when secret missing
+        if: ${{ env.CLOUDFLARE_API_TOKEN == '' }}
+        run: echo "::warning::CLOUDFLARE_API_TOKEN secret not set - deploy skipped (local wrangler deploys remain the path)"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
