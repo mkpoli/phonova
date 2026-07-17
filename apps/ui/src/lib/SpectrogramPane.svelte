@@ -19,6 +19,7 @@
     slippyTransform,
     type DrawnViewport
   } from './rendering';
+  import FrequencyRuler from './FrequencyRuler.svelte';
   import SelectionLayer from './SelectionLayer.svelte';
   import TrackOverlay from './TrackOverlay.svelte';
 
@@ -310,6 +311,7 @@
     ></canvas>
   {/key}
   <TrackOverlay {client} {audio} {viewport} {theme} params={overlayParams} onStats={onOverlayStats} />
+  <FrequencyRuler {viewport} />
   {#if audio && onSelectionChange}
     <SelectionLayer
       {viewport}

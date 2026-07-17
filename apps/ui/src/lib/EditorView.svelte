@@ -9,6 +9,7 @@
   import ReadoutBar from './ReadoutBar.svelte';
   import SpectrogramPane from './SpectrogramPane.svelte';
   import TierPane from './TierPane.svelte';
+  import TimeRuler from './TimeRuler.svelte';
   import TransportBar from './TransportBar.svelte';
   import VoiceReportCard from './VoiceReportCard.svelte';
   import WaveformPane from './WaveformPane.svelte';
@@ -577,6 +578,7 @@
 
   <div class="workspace">
     <main class="timeline" data-testid="timeline" onwheel={handleWheel} onpointerdown={handlePointer} onpointermove={handlePointer}>
+      <TimeRuler {viewport} />
       <WaveformPane
         {client}
         {audio}
@@ -742,7 +744,7 @@
   .timeline {
     min-height: 0;
     display: grid;
-    grid-template-rows: minmax(9rem, 22vh) minmax(12rem, 1fr) minmax(7rem, 32vh);
+    grid-template-rows: 1.5rem minmax(9rem, 22vh) minmax(12rem, 1fr) minmax(7rem, 32vh);
     overflow: hidden;
     touch-action: none;
   }
