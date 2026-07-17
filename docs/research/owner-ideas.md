@@ -9,8 +9,8 @@ the near variants spectrogram, phonix, waveform, formant, pitch, annotation.
 
 Most hits in each source were unrelated academic notes, coursework records,
 or personal journal entries rather than tool ideas; those are not listed.
-One Notion page containing private personal content was excluded
-outright (see "Exclusions" below).
+One Notion page was excluded outright as private personal content (see
+"Exclusions" below).
 
 ## Analysis features
 
@@ -85,9 +85,84 @@ service or API integration.
 
 ## Telegram Saved Messages
 
-No Telegram export was found. The search covered the usual home directories
-and the mounted Windows user profile for `ChatExport` directories,
-`result.json`, and `messages*.html` (Telegram Desktop's export formats).
-The only Telegram-named folders found contain bot-development source code
-(`mkpoli_bot`, `shiritori_bot`), not a Saved Messages export. This source
-yielded nothing and was not searched further.
+A Telegram Desktop export of the owner's Saved Messages (23,982 messages,
+2017–2026) was located and its `result.json` scanned for tooling ideas, using
+the same kind of term list as the other sources (praat, phonetic, phonology,
+音声, 音韻, スペクトログラム, フォルマント, IPA, formant, pitch, spectrogram,
+annotation, アノテーション, voice, 声, TextGrid, ELAN, alignment, 転写,
+transcription, tone, アクセント, prosody, plus a supplementary pass for tts,
+読み上げ, wav, recording, corpus). Saved Messages is a personal scratchpad, so
+most hits were song lyrics, dictionary lookups, casual chat, coursework
+notes, and general corpus-linguistics/NLP research jottings unrelated to a
+tool or feature; those are not itemized. Content unrelated to tooling was not
+inventoried. A couple of hits echoed a third party's pasted text inline
+(a quoted chat message, a correspondent's sign-off); only the owner's own
+idea sentence from those messages is reflected below, with the third-party
+material dropped.
+
+### Analysis features
+
+- Bookmarked references for converting a WAV file to a spectrogram in Python
+  (via `pydub`), saved right alongside Electron app documentation — read
+  together as reconnaissance for a desktop spectrogram-rendering feature.
+  (saved note, 2020-03-20)
+- "flashlight for phonetic imaging" — a technique note about using a
+  flashlight as a light source for phonetic/articulatory imaging. (saved
+  note, 2023-08-11)
+- "Allow non praat input (recording)" — accept a live microphone recording as
+  an input method, rather than requiring pre-existing Praat-format audio.
+  (saved note, 2025-11-29)
+- "Use ai to auto get standard vowel" — have the tool infer a user's
+  reference/standard vowel automatically from a recording, instead of asking
+  them to specify it by hand. (saved note, 2025-11-30)
+- A calibration-dialogue flow: "Make so that when user access standard
+  recording, give a dialogue to force user to choose record your standard
+  vowels first to give accurate result, or use existing profile, and let user
+  remember my choice, and add a ask option to be able to show the dialogue
+  again." (saved note, 2025-12-01)
+
+### Annotation
+
+- "web annotations vs. inline markup" — a design-comparison note weighing an
+  external, web-annotation-style layer against inline markup for an
+  annotation format. (saved note, 2023-09-30)
+- "アイヌ語の登場人物の検出・アノテーション" (character detection and
+  annotation for Ainu-language text) — automatically detect
+  characters/entities in a text and annotate them. (saved note, 2024-09-22)
+- "簡易品詞検索　アノテーション" (simple part-of-speech search, annotation).
+  (saved note, 2024-12-12)
+- "partial annotation" — support annotating only part of a text or recording,
+  rather than requiring a full pass. (saved note, 2024-12-13)
+- "手動 annotation 補助" (manual-annotation assistance) — tooling to assist a
+  person doing annotation by hand. (saved note, 2024-12-29)
+
+### AI / auto-labeling
+
+- "アクセント自動付けツール" (automatic pitch-accent labeling tool), saved a
+  few days after bookmarking an online "accent guesser" web tool as a
+  reference point. (saved note, 2024-12-20 / 2024-12-17)
+
+### Voice training / pronunciation output
+
+- To set a transliteration policy for loanwords entering a language, first
+  build a chronologically dated loanword database as the basis for the
+  guidelines. (saved note, 2024-03-03)
+- Standardize a katakana-based text database first, then run it through
+  automatic speech synthesis to produce near-accurate synthetic speech —
+  written as a case for designing the orthography with that downstream
+  synthesis step already in mind. (saved note, 2024-05-13)
+- "アイヌ語の音声を合成したり取ってきたりするやつ　単語読み上げ" (something
+  that synthesizes or fetches speech for a language — word read-aloud).
+  (saved note, 2024-11-27)
+- A pipeline-tool sketch chaining source script through original-form lookup,
+  data, transcription, speech, morpheme, and meaning stages ("訓民正音→原点→
+  資料→転写→音声→形態素→意味　の流れのツール"). (saved note, 2024-12-03)
+- A ranked comparison of text-to-speech engines for a read-aloud feature:
+  "VOICEPEAK > VOICEVOX ~ AIVISSPEECH". (saved note, 2024-12-03)
+- "allow voiced in ainconv" — feature request for an existing
+  language-conversion tool to support voiced consonants. (saved note,
+  2024-12-22)
+- Bookmarked reference to a text-to-speech tool built on a historical
+  phonological reconstruction system. (saved note, 2025-11-11)
+- Bookmarked reference to an online voice-gender analyzer tool. (saved note,
+  2026-04-01)
