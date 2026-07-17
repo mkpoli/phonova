@@ -396,12 +396,26 @@
     }
   }
 
-  async function renameProject(id: string, currentName: string) {
+  async function renameProject(id: string, name: string) {
     if (!store) return;
-    const next = window.prompt('Rename project', currentName);
-    if (next === null) return;
     try {
-      await store.rename(id, next);
+      await store.rename(id, name);
+      if (project?.id === id) project = { ...project, name: name.trim() || project.name };
+      await refreshProjects();
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  async function renameRecording(mediaId: number, name: string) {
+    if (!store || !project) return;
+    try {
+      await store.renameRecording(project, mediaId, name);
+      project = { ...project };
+      if (recording?.mediaId === mediaId) {
+        recording = project.recordings.find((entry) => entry.mediaId === mediaId) ?? recording;
+        if (audio && recording) audio = { ...audio, name: recording.name };
+      }
       await refreshProjects();
     } catch (caught) {
       report(caught);
@@ -692,6 +706,7 @@
     recordings={recordingChoices}
     currentRecordingId={recording?.mediaId ?? null}
     onSwitchRecording={switchRecording}
+    onRenameRecording={renameRecording}
     onPlaySelection={(t0, t1) => {
       cursorTime = t0;
       void playback?.playRange(t0, t1);

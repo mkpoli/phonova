@@ -19,7 +19,7 @@
     onNewProject: (name: string) => void;
     onOpenSample?: () => void;
     onOpenProject: (id: string) => void;
-    onRenameProject: (id: string, currentName: string) => void;
+    onRenameProject: (id: string, name: string) => void;
     onDeleteProject: (id: string) => void;
     onDuplicateProject: (id: string) => void;
     onThemeChange: (theme: 'light' | 'dark') => void;

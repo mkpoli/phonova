@@ -1,13 +1,13 @@
 <script lang="ts">
-  import IconPencil from '~icons/lucide/pencil';
   import IconCopy from '~icons/lucide/copy';
   import IconTrash from '~icons/lucide/trash-2';
+  import InlineRename from './InlineRename.svelte';
   import type { ProjectSummary } from './types';
 
   interface Props {
     project: ProjectSummary;
     onOpen: (id: string) => void;
-    onRename: (id: string, currentName: string) => void;
+    onRename: (id: string, name: string) => void;
     onDelete: (id: string) => void;
     onDuplicate: (id: string) => void;
   }
@@ -24,6 +24,19 @@
       minute: '2-digit'
     });
   }
+
+  function handleOpenClick(event: MouseEvent) {
+    if (event.target instanceof Element && event.target.closest('.inline-rename')) return;
+    onOpen(project.id);
+  }
+
+  function handleOpenKeydown(event: KeyboardEvent) {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onOpen(project.id);
+    }
+  }
 </script>
 
 <div
@@ -32,8 +45,21 @@
   data-project-id={project.id}
   data-project-name={project.name}
 >
-  <button class="open" type="button" data-testid="open-project" onclick={() => onOpen(project.id)}>
-    <span class="name">{project.name}</span>
+  <div
+    class="open"
+    role="button"
+    tabindex="0"
+    data-testid="open-project"
+    onclick={handleOpenClick}
+    onkeydown={handleOpenKeydown}
+  >
+    <InlineRename
+      name={project.name}
+      class="card-name"
+      label="Rename project"
+      testId="rename-project"
+      onRename={(next) => onRename(project.id, next)}
+    />
     <span class="meta">
       {project.count}
       {project.count === 1 ? 'recording' : 'recordings'}
@@ -42,11 +68,8 @@
       {/if}
     </span>
     <span class="saved">{savedLabel(project.savedAt)}</span>
-  </button>
+  </div>
   <div class="actions">
-    <button type="button" data-testid="rename-project" onclick={() => onRename(project.id, project.name)}>
-      <IconPencil aria-hidden="true" /><span>Rename</span>
-    </button>
     <button type="button" data-testid="duplicate-project" onclick={() => onDuplicate(project.id)}>
       <IconCopy aria-hidden="true" /><span>Duplicate</span>
     </button>
@@ -83,18 +106,22 @@
     gap: 0.35rem;
     align-items: flex-start;
     padding: 1rem;
-    border: 0;
-    background: transparent;
     color: var(--text);
     text-align: left;
     min-height: 6.5rem;
+    cursor: pointer;
   }
 
   .open:hover {
     background: var(--accent-tint);
   }
 
-  .name {
+  .open:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  .open :global(.card-name) {
     font-size: 1.02rem;
     font-weight: 600;
     line-height: 1.25;

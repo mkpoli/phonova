@@ -3,6 +3,7 @@ export { default as CommandPalette } from './CommandPalette.svelte';
 export { default as EditorView } from './EditorView.svelte';
 export { default as ExportDialog } from './ExportDialog.svelte';
 export { default as HomeView } from './HomeView.svelte';
+export { default as InlineRename } from './InlineRename.svelte';
 export { default as InspectorPanel } from './InspectorPanel.svelte';
 export { default as LabelEditor } from './LabelEditor.svelte';
 export { default as OverviewStrip } from './OverviewStrip.svelte';

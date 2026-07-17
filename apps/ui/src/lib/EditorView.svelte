@@ -4,6 +4,7 @@
   import IconImage from '~icons/lucide/image';
   import IconPanelRight from '~icons/lucide/panel-right';
   import ExportDialog from './ExportDialog.svelte';
+  import InlineRename from './InlineRename.svelte';
   import InspectorPanel from './InspectorPanel.svelte';
   import OverviewStrip from './OverviewStrip.svelte';
   import ReadoutBar from './ReadoutBar.svelte';
@@ -54,6 +55,7 @@
     recordings?: RecordingChoice[];
     currentRecordingId?: number | null;
     onSwitchRecording?: (mediaId: number) => void;
+    onRenameRecording?: (mediaId: number, name: string) => void;
     onPlaySelection?: (t0: number, t1: number) => void;
     /** Starts a microphone recording; absent when the browser cannot capture. */
     onStartRecording?: () => void;
@@ -80,10 +82,15 @@
     recordings,
     currentRecordingId,
     onSwitchRecording,
+    onRenameRecording,
     onPlaySelection,
     onStartRecording,
     recording = false
   }: Props = $props();
+
+  let currentRecordingName = $derived(
+    recordings?.find((entry) => entry.mediaId === currentRecordingId)?.name ?? audio?.name ?? ''
+  );
 
   let viewport = $state<ViewportState>(defaultViewport());
   let overlayParams = $state<OverlayParams>(defaultOverlayParams());
@@ -520,6 +527,17 @@
           <span>{projectName ?? 'Project'}</span>
         </button>
       {/if}
+      {#if onRenameRecording && currentRecordingId !== null && currentRecordingId !== undefined}
+        <InlineRename
+          name={currentRecordingName}
+          class="crumb-current"
+          label="Rename recording"
+          testId="rename-recording"
+          onRename={(next) => onRenameRecording?.(currentRecordingId as number, next)}
+        />
+      {:else}
+        <span class="crumb-current">{currentRecordingName}</span>
+      {/if}
       {#if recordings && recordings.length > 1 && onSwitchRecording}
         <select
           class="recording-switch"
@@ -532,8 +550,6 @@
             <option value={recording.mediaId}>{recording.name}</option>
           {/each}
         </select>
-      {:else}
-        <span class="crumb-current">{audio?.name ?? ''}</span>
       {/if}
       {#if onStartRecording}
         <button
