@@ -12,6 +12,13 @@ use std::fmt;
 use std::io::Cursor;
 use std::ops::Range;
 
+mod stream;
+
+pub use stream::{
+    ByteReader, BytesReader, DECODED_CHUNK_FRAMES, StreamChunkFold, StreamSampleFormat,
+    StreamingWav, WavStreamInfo,
+};
+
 use rubato::audioadapter_buffers::owned::{InterleavedOwned, SequentialOwned};
 use rubato::{
     Async, FixedAsync, Resampler, SincInterpolationParameters, SincInterpolationType,
@@ -449,6 +456,12 @@ pub enum AudioError {
     WavWrite(String),
     /// Resampling failed.
     Resample(String),
+    /// A backing byte reader failed to serve a requested range.
+    ///
+    /// Produced only on the streamed decode path, when the underlying store
+    /// (a file, an OPFS access handle) returns short of the bytes a sample
+    /// range needs or reports its own I/O error.
+    Io(String),
 }
 
 impl fmt::Display for AudioError {
@@ -477,6 +490,7 @@ impl fmt::Display for AudioError {
             ),
             Self::WavWrite(reason) => write!(f, "WAV writing failed: {reason}"),
             Self::Resample(reason) => write!(f, "resampling failed: {reason}"),
+            Self::Io(reason) => write!(f, "backing store read failed: {reason}"),
         }
     }
 }
