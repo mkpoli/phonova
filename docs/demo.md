@@ -1,4 +1,4 @@
-# Phonix v0.1 demo walkthrough
+# Phonia v0.1 demo walkthrough
 
 A click-by-click run of the five demo moments against a local build. Each moment
 starts from the Home screen and takes under a minute. The steps use the bundled
@@ -73,7 +73,7 @@ back through an import as well.
    engine directly, at the selection's own coordinates:
 
    ```js
-   const { client, audioId } = window.__phonix;
+   const { client, audioId } = window.__phonia;
    const bar = document.querySelector('[data-testid="readout-bar"]');
    const t0 = Number(bar.getAttribute('data-t0'));
    const t1 = Number(bar.getAttribute('data-t1'));

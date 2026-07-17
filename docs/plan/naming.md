@@ -25,3 +25,5 @@ docs; nothing user-facing ships before v0.1 demo prep, so the decision can
 wait until phase 5 without cost. Whichever way it goes, register the bare
 crate (`phonia` or nothing) and `phx-core` immediately (crates.io has no
 namespace protection; RFC 3243 unimplemented).
+
+Decided 2026-07-17: the product is Phonia; crates keep the phx- prefix.

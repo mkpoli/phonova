@@ -1,12 +1,12 @@
-# Phonix project container
+# Phonia project container
 
-A Phonix project is a single file that stores an editing session: which
+A Phonia project is a single file that stores an editing session: which
 recordings are open, the annotations on each, named analysis parameter
 profiles, and the view state the interface last showed. Audio is referenced by
 path and content hash; the recordings themselves stay where they are on disk.
 
 This document specifies version 1 of the format so a third-party tool can read
-or write a project without the Phonix source.
+or write a project without the Phonia source.
 
 ## Physical layout
 
@@ -47,8 +47,8 @@ the same bytes each time.
 }
 ```
 
-- `format` — the constant string `phonix-project`. A reader rejects any other
-  value.
+- `format` — the constant string `phonix-project`, unchanged since the format
+  predates the product's current name. A reader rejects any other value.
 - `version` — the schema version, currently `1`. A reader rejects a version
   higher than it understands rather than dropping fields it cannot represent.
 - `saved_at` — milliseconds since the Unix epoch when the file was written.

@@ -6,9 +6,9 @@ research workflow — analyze voice, manage audio, show spectrograms, annotate,
 draw publication figures — and is planned to grow into a superset of Praat's
 research-critical features.
 
-"Phonix" is a working name. The crate name `phonix` is registered to an
+The product name is Phonia. The crate name `phonix` is registered to an
 unrelated project on crates.io, so published crates use the `phx-` prefix
-until the product name is settled.
+regardless.
 
 ## Why a rebuild
 
