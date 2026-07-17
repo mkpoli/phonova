@@ -46,6 +46,13 @@
   let isPlaying = $state(false);
   let theme = $state<'light' | 'dark'>('light');
   let colormap = $state<WasmColormapName>('Viridis');
+  // App-wide UI scale as a fraction of the base root font size. rem-based layout
+  // grows and shrinks with it; the bounds keep both extremes usable.
+  let uiScale = $state(1);
+  const UI_SCALE_MIN = 0.9;
+  const UI_SCALE_MAX = 1.5;
+  const UI_SCALE_STEP = 0.1;
+  const UI_SCALE_BASE_PX = 16;
   let error = $state('');
   let busy = $state(false);
   let busyLabel = $state('');
@@ -112,6 +119,11 @@
           ? 'dark'
           : 'light';
     applyTheme(theme);
+
+    const savedScale = Number(localStorage.getItem('phonix-ui-scale'));
+    uiScale = Number.isFinite(savedScale) && savedScale > 0 ? clampScale(savedScale) : 1;
+    applyUiScale(uiScale);
+
     void refreshProjects();
 
     recordingSupported = canRecord();
@@ -147,6 +159,28 @@
     applyTheme(next);
   }
 
+  function clampScale(value: number): number {
+    return Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, Math.round(value * 100) / 100));
+  }
+
+  function applyUiScale(next: number) {
+    document.documentElement.style.fontSize = `${(UI_SCALE_BASE_PX * next).toFixed(3)}px`;
+    localStorage.setItem('phonix-ui-scale', String(next));
+  }
+
+  function setUiScale(next: number) {
+    uiScale = clampScale(next);
+    applyUiScale(uiScale);
+  }
+
+  function nudgeUiScale(direction: number) {
+    setUiScale(uiScale + direction * UI_SCALE_STEP);
+  }
+
+  function resetUiScale() {
+    setUiScale(1);
+  }
+
   registerCommands([
     {
       id: 'switchTheme',
@@ -154,6 +188,30 @@
       group: 'Appearance',
       keywords: ['dark', 'light', 'appearance', 'toggle theme'],
       run: () => handleThemeChange(theme === 'light' ? 'dark' : 'light')
+    },
+    {
+      id: 'uiScaleUp',
+      title: 'Increase UI scale',
+      group: 'Appearance',
+      shortcut: 'Ctrl/Cmd++',
+      keywords: ['zoom interface', 'font size', 'bigger', 'text size'],
+      run: () => nudgeUiScale(1)
+    },
+    {
+      id: 'uiScaleDown',
+      title: 'Decrease UI scale',
+      group: 'Appearance',
+      shortcut: 'Ctrl/Cmd+-',
+      keywords: ['zoom interface', 'font size', 'smaller', 'text size'],
+      run: () => nudgeUiScale(-1)
+    },
+    {
+      id: 'uiScaleReset',
+      title: 'Reset UI scale',
+      group: 'Appearance',
+      shortcut: 'Ctrl/Cmd+0',
+      keywords: ['zoom interface', 'font size', 'default'],
+      run: resetUiScale
     }
   ]);
 
@@ -779,6 +837,26 @@
   ]);
 
   function handleWindowKeydown(event: KeyboardEvent) {
+    // App-wide UI scale on Ctrl/Cmd +/-/0, ahead of the record shortcut and
+    // regardless of recording support. Preventing default also stops the
+    // browser's own page zoom from firing.
+    if (event.ctrlKey || event.metaKey) {
+      if (event.key === '=' || event.key === '+') {
+        event.preventDefault();
+        nudgeUiScale(1);
+        return;
+      }
+      if (event.key === '-' || event.key === '_') {
+        event.preventDefault();
+        nudgeUiScale(-1);
+        return;
+      }
+      if (event.key === '0') {
+        event.preventDefault();
+        resetUiScale();
+        return;
+      }
+    }
     if (!recordingSupported) return;
     if (event.key.toLowerCase() !== 'r' || event.metaKey || event.ctrlKey || event.altKey) return;
     const target = event.target;
@@ -899,6 +977,15 @@
     onPlaySelection={(t0, t1) => {
       cursorTime = t0;
       void playback?.playRange(t0, t1);
+    }}
+    onPlayFilteredSelection={async (t0, t1, f0, f1) => {
+      if (!client || !audio || !playback) return;
+      try {
+        const samples = await client.bandFilteredSpan(audio.id, t0, t1, f0, f1);
+        await playback.playBuffer(samples, audio.sampleRate);
+      } catch (caught) {
+        report(caught);
+      }
     }}
     onStartRecording={recordingSupported ? startRecording : undefined}
     recording={capturing}
