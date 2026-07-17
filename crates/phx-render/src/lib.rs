@@ -81,11 +81,7 @@ fn sample_u8_lut(lut: &[[u8; 3]; 256], t: f32) -> [u8; 3] {
         let v = a as f32 + (b as f32 - a as f32) * frac;
         v.round().clamp(0.0, 255.0) as u8
     };
-    [
-        lerp(c0[0], c1[0]),
-        lerp(c0[1], c1[1]),
-        lerp(c0[2], c1[2]),
-    ]
+    [lerp(c0[0], c1[0]), lerp(c0[1], c1[1]), lerp(c0[2], c1[2])]
 }
 
 /// Shared dB→RGBA driver: resolve the clip window once, then map each value to

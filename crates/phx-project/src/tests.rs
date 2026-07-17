@@ -342,7 +342,10 @@ fn bundle_embeds_media_and_container_still_loads() {
     let wav0 = wav_bytes(0);
     let wav1 = wav_bytes(7);
     let project = sample_project_v2();
-    let media = vec![(MediaId::new(1), wav0.clone()), (MediaId::new(2), wav1.clone())];
+    let media = vec![
+        (MediaId::new(1), wav0.clone()),
+        (MediaId::new(2), wav1.clone()),
+    ];
     let bytes = save_bundle(&project, &media);
 
     // A reader ignoring the embedded entries loads the same project a
@@ -373,9 +376,15 @@ fn bundle_is_deterministic_regardless_of_media_order() {
     let wav0 = wav_bytes(0);
     let wav1 = wav_bytes(7);
     let project = sample_project_v2();
-    let forward = vec![(MediaId::new(1), wav0.clone()), (MediaId::new(2), wav1.clone())];
+    let forward = vec![
+        (MediaId::new(1), wav0.clone()),
+        (MediaId::new(2), wav1.clone()),
+    ];
     let reversed = vec![(MediaId::new(2), wav1), (MediaId::new(1), wav0)];
-    assert_eq!(save_bundle(&project, &forward), save_bundle(&project, &reversed));
+    assert_eq!(
+        save_bundle(&project, &forward),
+        save_bundle(&project, &reversed)
+    );
 }
 
 #[test]

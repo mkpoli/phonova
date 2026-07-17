@@ -1122,12 +1122,9 @@ impl WasmEngine {
             dynamic_range_db,
             max_db,
         };
-        let rgba = self.inner.spectrogram_tile_rgba_lut(
-            AudioId::from_u64(id),
-            &req,
-            &display,
-            &table,
-        )?;
+        let rgba =
+            self.inner
+                .spectrogram_tile_rgba_lut(AudioId::from_u64(id), &req, &display, &table)?;
         Ok(Uint8Array::from(rgba.as_slice()))
     }
 
@@ -1816,12 +1813,7 @@ impl WasmEngine {
     /// Rejects when `id` names no live store entry, when a bound is not finite,
     /// or when a streamed span cannot be decoded.
     #[wasm_bindgen(js_name = samplesInRange)]
-    pub fn samples_in_range(
-        &self,
-        id: u64,
-        t0: f64,
-        t1: f64,
-    ) -> Result<Float32Array, JsError> {
+    pub fn samples_in_range(&self, id: u64, t0: f64, t1: f64) -> Result<Float32Array, JsError> {
         let samples = self.inner.span_samples(AudioId::from_u64(id), t0, t1)?;
         Ok(Float32Array::from(samples.as_slice()))
     }
@@ -2674,7 +2666,9 @@ mod tests {
         let mut engine = WasmEngine::new();
         let audio = engine.import_wav_bytes(VOWEL_WAV).unwrap();
         let info = engine.audio_info(audio).unwrap();
-        let doc = engine.create_annotation(audio, 0.0, info.duration()).unwrap();
+        let doc = engine
+            .create_annotation(audio, 0.0, info.duration())
+            .unwrap();
 
         let spec = serde_json::json!({
             "name": "Bundle",
@@ -2716,7 +2710,12 @@ mod tests {
         assert!(meta["media"][0]["annotationJson"].is_string());
 
         let refs = engine.save_project_container(&spec).unwrap().to_vec();
-        assert!(read_project_bundle(&refs).unwrap().embedded_ids().is_empty());
+        assert!(
+            read_project_bundle(&refs)
+                .unwrap()
+                .embedded_ids()
+                .is_empty()
+        );
     }
 
     #[wasm_bindgen_test]
@@ -2860,12 +2859,20 @@ mod tests {
         assert!(
             engine
                 .spectrogram_tile_rgba_lut(
-                    id, 0.05, 0.35, 0.0, 5000.0, 16, 12,
+                    id,
+                    0.05,
+                    0.35,
+                    0.0,
+                    5000.0,
+                    16,
+                    12,
                     default_params.window_length,
                     default_params.max_frequency,
                     default_params.time_step,
                     default_params.frequency_step,
-                    50.0, None, &[0u8; 10]
+                    50.0,
+                    None,
+                    &[0u8; 10]
                 )
                 .is_err()
         );
