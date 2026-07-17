@@ -889,6 +889,28 @@ impl Engine {
         ))
     }
 
+    /// Returns the exact unfiltered mono samples of the time span `[t0, t1]` of
+    /// `id`, at the source sample rate — the same range and mono mix
+    /// [`Engine::band_filtered_span`] filters, without the filter. The waveform
+    /// pane reads this at high zoom to draw a sample-accurate polyline instead of
+    /// a min/max envelope.
+    ///
+    /// # Errors
+    /// Returns [`EngineError::UnknownAudioId`] when `id` names no live store
+    /// entry, [`EngineError::InvalidRequest`] when a bound is not finite, and
+    /// [`EngineError::Audio`] when a streamed span cannot be decoded.
+    pub fn span_samples(&self, id: AudioId, t0: f64, t1: f64) -> Result<Vec<f32>, EngineError> {
+        if !t0.is_finite() || !t1.is_finite() {
+            return Err(EngineError::InvalidRequest {
+                reason: "span_samples t0/t1 must be finite".to_string(),
+            });
+        }
+        let info = self.store.info(id)?;
+        let (start, end) = span_frames(info.sample_rate, info.duration, t0, t1);
+        let audio = self.store.range_owned(id, start, end)?;
+        Ok(audio.mono_mix().into_owned())
+    }
+
     /// Encodes the time span `[t0, t1]` of `id` as WAV bytes at `bits`, with no
     /// filtering.
     ///

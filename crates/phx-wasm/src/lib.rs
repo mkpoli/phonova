@@ -1731,6 +1731,24 @@ impl WasmEngine {
         Ok(Float32Array::from(samples.as_slice()))
     }
 
+    /// Returns the exact unfiltered mono samples of `[t0, t1]` of `id` at the
+    /// source sample rate, for the waveform pane's sample-accurate polyline at
+    /// high zoom.
+    ///
+    /// # Errors
+    /// Rejects when `id` names no live store entry, when a bound is not finite,
+    /// or when a streamed span cannot be decoded.
+    #[wasm_bindgen(js_name = samplesInRange)]
+    pub fn samples_in_range(
+        &self,
+        id: u64,
+        t0: f64,
+        t1: f64,
+    ) -> Result<Float32Array, JsError> {
+        let samples = self.inner.span_samples(AudioId::from_u64(id), t0, t1)?;
+        Ok(Float32Array::from(samples.as_slice()))
+    }
+
     /// Encodes the time span `[t0, t1]` of `id` as WAV bytes at `bits`, with no
     /// filtering — the exact sample slice, bit-for-bit with a direct slice at
     /// [`WasmBitDepth::Float32`].
