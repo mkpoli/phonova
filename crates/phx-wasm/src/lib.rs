@@ -19,6 +19,9 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WasmColormap {
+    /// The app's default ramp: warm charcoal through the teal identity into a
+    /// warm soft-yellow highlight.
+    Phonia,
     /// Perceptually uniform purple→teal→yellow ramp.
     Viridis,
     /// Perceptually uniform black→purple→orange→pale-yellow ramp.
@@ -37,6 +40,7 @@ pub enum WasmColormap {
 impl From<WasmColormap> for EngineColormap {
     fn from(value: WasmColormap) -> Self {
         match value {
+            WasmColormap::Phonia => EngineColormap::Phonia,
             WasmColormap::Viridis => EngineColormap::Viridis,
             WasmColormap::Magma => EngineColormap::Magma,
             WasmColormap::Inferno => EngineColormap::Inferno,
@@ -1050,6 +1054,79 @@ impl WasmEngine {
             &display,
             colormap.into(),
             theme.into(),
+        )?;
+        Ok(Uint8Array::from(rgba.as_slice()))
+    }
+
+    /// Computes a spectrogram tile for `id` and colorizes it with a custom
+    /// ramp: `lut` is 768 bytes, 256 `R, G, B` triples in ramp order.
+    ///
+    /// The parameters mirror [`WasmEngine::spectrogram_tile_rgba`] apart from
+    /// the color source. A custom ramp is theme-independent, so no theme is
+    /// taken. The dB is read from the same block cache the built-in path uses,
+    /// so switching between a built-in palette and a custom ramp re-colorizes
+    /// cached dB without recomputing the STFT.
+    ///
+    /// Returns `4 * width_px * height_px` bytes, `R, G, B, A` per pixel, row 0
+    /// first.
+    ///
+    /// # Errors
+    /// Rejects on the same conditions as
+    /// [`WasmEngine::spectrogram_tile_rgba`], and when `lut` is not exactly 768
+    /// bytes long.
+    #[allow(clippy::too_many_arguments)]
+    #[wasm_bindgen(js_name = spectrogramTileRgbaLut)]
+    pub fn spectrogram_tile_rgba_lut(
+        &self,
+        id: u64,
+        t0: f64,
+        t1: f64,
+        f0: f64,
+        f1: f64,
+        width_px: u32,
+        height_px: u32,
+        window_length: f64,
+        max_frequency: f64,
+        time_step: f64,
+        frequency_step: f64,
+        dynamic_range_db: f64,
+        max_db: Option<f64>,
+        lut: &[u8],
+    ) -> Result<Uint8Array, JsError> {
+        if lut.len() != 768 {
+            return Err(JsError::new(&format!(
+                "custom ramp LUT must be 768 bytes (256 RGB triples), got {}",
+                lut.len()
+            )));
+        }
+        let mut table = [[0u8; 3]; 256];
+        for (i, entry) in table.iter_mut().enumerate() {
+            *entry = [lut[i * 3], lut[i * 3 + 1], lut[i * 3 + 2]];
+        }
+        let req = TileRequest {
+            t0,
+            t1,
+            f0,
+            f1,
+            width_px,
+            height_px,
+            params: SpectrogramParams {
+                window_length,
+                max_frequency,
+                time_step,
+                frequency_step,
+                ..SpectrogramParams::default()
+            },
+        };
+        let display = DisplayMapping {
+            dynamic_range_db,
+            max_db,
+        };
+        let rgba = self.inner.spectrogram_tile_rgba_lut(
+            AudioId::from_u64(id),
+            &req,
+            &display,
+            &table,
         )?;
         Ok(Uint8Array::from(rgba.as_slice()))
     }
@@ -2752,6 +2829,46 @@ mod tests {
             )
             .unwrap();
         assert_eq!(rgba.length(), 16 * 12 * 4);
+
+        // The custom-LUT path takes a 768-byte ramp and returns the same tile
+        // shape; a mis-sized LUT is rejected rather than panicking.
+        let mut lut = [0u8; 768];
+        for i in 0..256 {
+            lut[i * 3] = i as u8;
+            lut[i * 3 + 1] = (255 - i) as u8;
+            lut[i * 3 + 2] = i as u8;
+        }
+        let rgba_lut = engine
+            .spectrogram_tile_rgba_lut(
+                id,
+                0.05,
+                0.35,
+                0.0,
+                5000.0,
+                16,
+                12,
+                default_params.window_length,
+                default_params.max_frequency,
+                default_params.time_step,
+                default_params.frequency_step,
+                50.0,
+                None,
+                &lut,
+            )
+            .unwrap();
+        assert_eq!(rgba_lut.length(), 16 * 12 * 4);
+        assert!(
+            engine
+                .spectrogram_tile_rgba_lut(
+                    id, 0.05, 0.35, 0.0, 5000.0, 16, 12,
+                    default_params.window_length,
+                    default_params.max_frequency,
+                    default_params.time_step,
+                    default_params.frequency_step,
+                    50.0, None, &[0u8; 10]
+                )
+                .is_err()
+        );
 
         let pitch = engine.pitch_track(id, 75.0, 600.0).unwrap();
         assert_eq!(pitch.times().length(), pitch.f0().length());
