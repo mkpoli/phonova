@@ -1,10 +1,7 @@
 # Task specs — phases 0 and 1
 
-Lane key: `grok` = Grok 4.5 (routine, fully specified) · `codex` = GPT-5.6
-(hard implementation / adversarial review) · `sonnet` = Sonnet 5
-(investigation, mechanical work) · `architect` = main session only.
 Every implementation task inherits the standing constraints below; specs
-handed to a lane must copy them in, since lanes share no context.
+handed out for implementation must copy them in.
 
 **Standing constraints (copy into every delegation):**
 - License MIT OR Apache-2.0. Clean-room: implement from the citations given
@@ -25,14 +22,14 @@ handed to a lane must copy them in, since lanes share no context.
 
 ## Phase 0
 
-### T0.1 · architect · repo reset
+### T0.1 · repo reset
 Delete the 2025 Tauri/SvelteKit scaffold (src/, src-tauri/, static/, node
 config files), keep `docs/` and git history, commit as
 `chore: remove prototype scaffold`. Register `phx-core` on crates.io as a
-0.0.1 placeholder. Architect-only: destructive git surgery plus a publish
+0.0.1 placeholder. Requires destructive git surgery plus a publish
 credential.
 
-### T0.2 · grok · workspace scaffold
+### T0.2 · workspace scaffold
 **Objective.** Compilable skeleton of the full workspace.
 **Files.** Root `Cargo.toml` (workspace members = the 14 crates in
 `../architecture.md`, `[workspace.package]` + `[workspace.dependencies]`
@@ -50,7 +47,7 @@ BSD-2/3-Clause, ISC, Zlib, Unicode-3.0, MPL-2.0; deny copyleft otherwise);
 `cargo deny check licenses`, `cargo clippy --workspace -- -D warnings` all
 green; report command output.
 
-### T0.3 · grok · CI pipeline
+### T0.3 · CI pipeline
 **Objective.** GitHub Actions workflow enforcing the phase-0 gate.
 **Files.** `.github/workflows/ci.yml`.
 **Interfaces.** Jobs: fmt-check, clippy (`-D warnings`), test on
@@ -61,7 +58,7 @@ via Swatinem/rust-cache.
 rust-toolchain, rust-cache, cargo-deny action.
 **Verification.** Workflow passes on a PR branch; link the green run.
 
-### T0.4 · sonnet · fixtures
+### T0.4 · fixtures
 **Objective.** Small permissively licensed test corpus.
 **Files.** `tests/fixtures/audio/` (6–10 clips: CMU ARCTIC sentences
 male+female, 1 LibriSpeech excerpt, 1 sustained vowel, 1 synthetic tone
@@ -78,7 +75,7 @@ size reported.
 
 ## Phase 1
 
-### T1.1 · codex · phx-audio
+### T1.1 · phx-audio
 **Objective.** Audio container + WAV I/O + resampling.
 **Files.** `crates/phx-audio/src/*`.
 **Interfaces.**
@@ -103,7 +100,7 @@ a typed error.
 440 Hz tone 44.1k→16k and assert peak frequency within 0.1 Hz via FFT; all
 tests pass under `--target wasm32-unknown-unknown` compile check.
 
-### T1.2 · codex · phx-dsp
+### T1.2 · phx-dsp
 **Objective.** Shared DSP primitives with an absolute-time frame grid.
 **Files.** `crates/phx-dsp/src/*`.
 **Interfaces.**
@@ -131,7 +128,7 @@ per Boersma 1993 eq. 22 (citation in
 recovers the peak of a sampled sinusoid to < 0.01 sample; FFT of known
 signals matches analytic magnitudes to 1e-9.
 
-### T1.3 · codex · phx-spectrogram
+### T1.3 · phx-spectrogram
 **Objective.** Gaussian-window STFT power spectrogram with tile API.
 **Files.** `crates/phx-spectrogram/src/*`.
 **Interfaces.**
@@ -155,7 +152,7 @@ object-level FrameGrid so adjacent tiles share columns exactly.
 shared columns; magnitude comparison against a scipy STFT reference script
 (tools/oracle can host it) within 1e-6 relative.
 
-### T1.4 · grok · phx-render
+### T1.4 · phx-render
 **Objective.** dB→RGBA tile colorization.
 **Files.** `crates/phx-render/src/*`.
 **Interfaces.** `pub enum Colormap { Viridis, Magma, Grayscale }`,
@@ -169,7 +166,7 @@ licensed — cite); grayscale runs white→black on light theme and is re-tuned
 **Verification.** Golden-image tests for each (colormap × theme); monotonic
 luminance property test for viridis/magma.
 
-### T1.5 · grok · phx-engine + phx-wasm (walking-skeleton surface)
+### T1.5 · phx-engine + phx-wasm (walking-skeleton surface)
 **Objective.** Minimal engine and WASM bindings: import, waveform pyramid,
 tiles.
 **Files.** `crates/phx-engine/src/*`, `crates/phx-wasm/src/*`.
@@ -185,7 +182,7 @@ apart from the audio store; no unwrap on user input paths.
 correctness against direct min/max; `cargo build --target
 wasm32-unknown-unknown` with simd128.
 
-### T1.6 · codex · web app skeleton
+### T1.6 · web app skeleton
 **Objective.** SvelteKit app: drop a WAV, see waveform + spectrogram, zoom,
 pan, play.
 **Files.** `apps/ui/` (component library: EditorView, WaveformPane,
@@ -205,14 +202,7 @@ minimal); no wavesurfer.js.
 light+dark attached; 10-minute fixture scrolls with frame time < 32 ms in
 Chromium.
 
-### T1.7 · architect · phase gate review
+### T1.7 · phase gate review
 Read diffs, re-run verifications, run the zoom-independence and
 scipy-comparison checks, screenshot review in both themes, then close the
 phase against roadmap.md's gate.
-
-## Racing note
-
-T1.2 and T1.3 carry the numeric core of the walking skeleton; if either
-lane's diff shows shaky DSP judgment, race the other vendor on the same spec
-and keep the stronger implementation (orchestration doctrine, three-vendor
-confidence).

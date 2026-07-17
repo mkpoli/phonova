@@ -1,16 +1,16 @@
 # Task specs — phase 3 (annotation)
 
-Lane key and **standing constraints block** as in `phase-1.md` — copy that
+**Standing constraints block** as in `phase-1.md` — copy that
 block into every delegation. Algorithm/format sources for this phase:
 `../../research/praat-features-and-pain-points.md` §1.7/§1.11 (TextGrid
 behaviour and format landscape) and the Praat manual pages cited inline.
 
-Committed context lanes can rely on: `phx_engine::Engine` (audio store,
+Available at this point: `phx_engine::Engine` (audio store,
 `waveform_slice`, `spectrogram_tile_rgba` — no journal yet),
 `phx_annot`/`phx_textgrid` are empty skeletons; `apps/ui` and `apps/web` are
-being built in T1.6 (codex) — T3.4 depends on its merge.
+being built in T1.6 — T3.4 depends on its merge.
 
-### T3.1 · codex · phx-annot
+### T3.1 · phx-annot
 **Objective.** Annotation document model with typed tier relations and
 integrity validation.
 **Files.** `crates/phx-annot/src/*`.
@@ -48,7 +48,7 @@ No dependency on any other phx crate.
 structurally equal document. Unit tests per `IntegrityIssue` variant. Search
 tested against a document with IPA and combining-character labels.
 
-### T3.2 · codex · phx-textgrid
+### T3.2 · phx-textgrid
 **Objective.** Read every TextGrid Praat writes; write exactly one format.
 **Files.** `crates/phx-textgrid/src/*`, new fixtures under
 `tests/fixtures/textgrids/`.
@@ -79,7 +79,7 @@ Oracle check: `tools/oracle` opens each written file in Praat and re-saves
 it; the re-read matches. Fuzz the reader (arbitrary bytes → error, never
 panic).
 
-### T3.3 · codex · engine journal + annotation commands
+### T3.3 · engine journal + annotation commands
 **Objective.** The unified undo journal (design rule 5) and the annotation
 surface of the engine.
 **Files.** `crates/phx-engine/src/{journal,document,commands}.rs`, additions
@@ -110,7 +110,7 @@ is the only mutation path — no public method mutates the document directly.
 hash equals initial, redo-all → hash equals final (roadmap phase-3 gate).
 wasm-pack test covering apply/undo through the bindings.
 
-### T3.4 · grok · tier UI + keyboard annotation loop
+### T3.4 · tier UI + keyboard annotation loop
 **Depends on T1.6 (apps/ui, apps/web merged).**
 **Objective.** The annotation panes and interaction loop of `ux.md` §Editor.
 **Files.** `apps/ui/src/lib/` (TierPane, TierLane, BoundaryHandle,
@@ -132,7 +132,7 @@ asserting engine state via a test hook after each step; screenshots
 light+dark of a 4-tier document; drag a shared boundary and assert both
 tiers moved.
 
-### T3.5 · sonnet · TextGrid fixture expansion
+### T3.5 · TextGrid fixture expansion
 **Objective.** Broaden `tests/fixtures/textgrids/` to cover the wild.
 **Files.** New fixtures + MANIFEST.md updates.
 **Requirements.** Add: point-tier file, mixed interval+point multi-tier
@@ -143,7 +143,7 @@ license is verifiable; author the rest by hand or through the oracle.
 **Verification.** MANIFEST lists provenance per file; every fixture loads in
 Praat via the oracle without error.
 
-### T3.6 · architect · phase gate review
+### T3.6 · phase gate review
 Diff review across T3.1–T3.4; run the round-trip corpus, the 50-op
 undo property, and the keyboard-only Playwright script; screenshot review
 both themes; close against roadmap.md phase-3 gate.
@@ -152,4 +152,4 @@ both themes; close against roadmap.md phase-3 gate.
 
 T3.1 → {T3.2, T3.3} → T3.4; T3.5 parallel with everything after T3.2's
 reader exists in draft (its oracle scripts help generate fixtures). T3.2 and
-T3.3 touch disjoint crates and run in parallel lanes.
+T3.3 touch disjoint crates and run in parallel.

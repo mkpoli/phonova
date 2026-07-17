@@ -1,11 +1,11 @@
 # Task specs — phase 2 (analysis tracks)
 
-Standing constraints and lane key as in `phase-1.md`. Algorithm details and
+Standing constraints as in `phase-1.md`. Algorithm details and
 citations: `../../research/algorithms-and-validation.md` (§1 pitch, §2
 formants, §4 intensity, §7 validation) — copy the relevant section into each
-delegation, since lanes cannot follow references.
+delegation, since references are not carried over.
 
-### T2.1 · codex · phx-pitch
+### T2.1 · phx-pitch
 **Objective.** Boersma-1993 autocorrelation pitch with the Viterbi path
 finder.
 **Files.** `crates/phx-pitch/src/*`.
@@ -36,7 +36,7 @@ speech — voiced-frame F0 within 1% where both voiced at the same octave,
 voicing decisions majority-consistent, GPE cases listed individually in the
 report.
 
-### T2.2 · codex · phx-formant
+### T2.2 · phx-formant
 **Objective.** Burg LPC formant estimation with DP tracking.
 **Files.** `crates/phx-formant/src/*`.
 **Interfaces.**
@@ -61,7 +61,7 @@ F1–F3 within 2%, bandwidths within 20%; oracle comparison on fixture vowels
 within validation.md bands; a male-speech fixture analyzed at 5000 vs 5500 Hz
 ceiling shows the documented shift (sanity of the ceiling semantics).
 
-### T2.3 · grok · phx-intensity
+### T2.3 · phx-intensity
 **Objective.** Praat-equivalent intensity contour.
 **Files.** `crates/phx-intensity/src/*`.
 **Interfaces.** `IntensityParams { pitch_floor_hz /* 100 */, time_step:
@@ -74,7 +74,7 @@ local DC removal, FrameGrid placement.
 **Verification.** Constant-amplitude sine → flat contour (ripple < 1e-4 dB);
 known-RMS signals map to exact dB; oracle within 1 dB on fixtures.
 
-### T2.4 · grok · editor overlays + inspector
+### T2.4 · editor overlays + inspector
 **Objective.** Pitch/formant/intensity rendered over the spectrogram; live
 non-modal inspector.
 **Files.** `apps/ui/` (TrackOverlay, InspectorPanel), `apps/web/` wiring,
@@ -88,13 +88,13 @@ background-fill; floor/ceiling clipping warnings per ux.md.
 assert re-render < 500 ms on the visible span, warning badge appears when
 ceiling < max tracked value; screenshots light+dark.
 
-### T2.5 · sonnet · oracle harness bring-up
+### T2.5 · oracle harness bring-up
 **Objective.** `tools/oracle/` per validation.md: uv project, parselmouth
 runner, JSON diff reports, CI job (skips gracefully when oracle deps are
 absent).
 **Verification.** CI run showing pass on phases' cases; a deliberately
 perturbed value fails.
 
-### T2.6 · architect · phase gate review
+### T2.6 · phase gate review
 Diff review, oracle report judgment (gross vs fine errors separated),
 zoom-independence re-check with overlays on, screenshot review, close phase.

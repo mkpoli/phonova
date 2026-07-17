@@ -5,8 +5,8 @@ as CV §n) and `../research/owner-ideas.md` (OI §name) against what the
 codebase already ships. Items are grouped into three horizons: H1 builds on
 primitives that exist today, H2 opens new subsystems, H3 grows the ecosystem.
 Each item states what it is, its evidence, what it builds on, and a
-lane-sized first step. Items marked *investigation-first* start with a
-research lane and a written verdict before any implementation is scheduled.
+concrete first step. Items marked *investigation-first* start with a
+research phase and a written verdict before any implementation is scheduled.
 
 DESIGN.md binds all UI work here. Clean-room rules from
 `tasks/phase-1.md` bind all algorithm work: published literature and public
@@ -34,8 +34,8 @@ documentation only, oracles as black boxes, no GPL source consulted.
    journaled commands with a channel strip in the corpus row and editor.
    Evidence: CV §7 (the unanswerable "delete channel 1" question; Praat
    offers only copy-out commands). Builds on: planar per-channel buffers in
-   `phx-audio`, the engine journal, the streamed store. First step: opus lane
-   — `Command::{ExtractChannel, RemoveChannel, MixToMono}` with id-stable
+   `phx-audio`, the engine journal, the streamed store. First step:
+   `Command::{ExtractChannel, RemoveChannel, MixToMono}` with id-stable
    inverses, wasm bindings, channel badge UI.
 2. **Vowel-space analytics** — an F1×F2 chart (IPA targets, per-language
    reference sets, points from labeled intervals) as both an app panel and a
@@ -43,14 +43,14 @@ documentation only, oracles as black boxes, no GPL source consulted.
    the delta-segmentation panel in the owner's screenshot is the owner's own
    extension, unpublished elsewhere). Builds on: `phx-formant` means over
    spans (T8.2 `formant_span_means`), the figure model, dataviz-conformant
-   palettes. First step: opus lane — `Layer::VowelSpace` in `phx-figure` with
+   palettes. First step: `Layer::VowelSpace` in `phx-figure` with
    a reference-dataset format (license-checked), then the app panel.
 3. **ELAN interop** — read and write `.eaf` so fieldwork round-trips stop
    degrading. Evidence: CV §8 (ELAN-first fieldworkers; export/import cycles
    are a named engineering concern for ELAN's own authors). Builds on:
    `phx-annot`'s hierarchical tiers (modeled on ELAN already),
    `phx-textgrid`'s reader discipline (fixtures, fuzzing, typed errors).
-   First step: opus lane — `phx-eaf` crate, EAF XML schema from ELAN's
+   First step: `phx-eaf` crate, EAF XML schema from ELAN's
    published documentation, round-trip fixtures authored + oracle-generated
    via ELAN itself if redistributable.
 4. **Broad decode: formats and video containers as audio sources** — open
@@ -58,7 +58,7 @@ documentation only, oracles as black boxes, no GPL source consulted.
    phone-video recording opens like any WAV. Evidence: CV §2 (the
    iPhone-video workflow), OI §Mobile. Builds on: symphonia already pinned
    behind `decode-extended`, the streamed-source path (T8.3), format-probe at
-   import. First step: opus lane — enable symphonia demux/decode features
+   import. First step: enable symphonia demux/decode features
    with a wasm binary-size audit (report the cost per codec), fixtures per
    format, streamed equality tests.
 5. **IPA input, stage 1** — a click-to-insert IPA pad on the label editor
@@ -66,7 +66,7 @@ documentation only, oracles as black boxes, no GPL source consulted.
    user-selectable IPA display font. Evidence: CV §6 (Praat added its pad in
    2017; before that, trigraph folklore), OI §UX (input tool; font choice).
    Builds on: TierPane label editor, the palette's fuzzy-search pattern,
-   `--font-ipa` tokens. First step: kimi-driver lane — pad popover fed by a
+   `--font-ipa` tokens. First step: a pad popover fed by a
    feature-tagged symbol table (source and license verified, e.g. the IPA
    chart data used by established open keyboards), font preference in
    settings.
@@ -75,7 +75,7 @@ documentation only, oracles as black boxes, no GPL source consulted.
    niche formats) against Phonia's importers, so "at least what Praat can"
    (the owner's floor) becomes a tracked table rather than an impression.
    Evidence: CV §2; owner directive. Builds on: format probe above. First
-   step: sonnet lane — the table in `../research/format-parity.md` with
+   step: the table in `../research/format-parity.md` with
    citations to Praat's manual pages.
 
 ## H2 — mid: new subsystems
@@ -87,14 +87,14 @@ documentation only, oracles as black boxes, no GPL source consulted.
    auto-IPA); CV §8 (fieldwork segmentation pipelines). Landscape to judge:
    Montreal Forced Aligner (Kaldi lineage), Charsiu (torch), WebMAUS
    (service API) — licensing, model weights, offline viability, and whether
-   Phonia integrates, reimplements, or shells out. First step: sonnet
-   investigation lane with a written verdict; no implementation before it.
+   Phonia integrates, reimplements, or shells out. First step: an
+   investigation phase with a written verdict; no implementation before it.
 8. **VOT auto-detection** (*investigation-first*) — burst and voicing-onset
    candidates on stop tokens with confidence display. Evidence: owner
    directive. Landscape: AutoVOT and the published VOT-measurement
-   literature; ground truth exists in open corpora. First step: sonnet
-   literature survey + oracle-dataset selection; then an opus DSP lane if
-   the verdict is build.
+   literature; ground truth exists in open corpora. First step: a
+   literature survey + oracle-dataset selection; then a DSP implementation
+   phase if the verdict is build.
 9. **Repair pipeline, stage 1** — noise-profile spectral subtraction
    (capture a noise span, subtract its profile) and a bounded-interpolation
    declick/repair action, as journaled, previewable operations. Evidence:
@@ -102,26 +102,26 @@ documentation only, oracles as black boxes, no GPL source consulted.
    two-step noise reduction and 128-sample Repair as the documented
    baseline; RX's arbitrary-region model as the harder target). Builds on:
    the T8.2 spectral filter primitive, the tile cache for preview, the
-   journal. First step: opus lane — `phx-repair` crate with
+   journal. First step: `phx-repair` crate with
    literature-cited spectral subtraction (Boll 1979 lineage; artifacts
    documented honestly), synthetic gates (SNR improvement, artifact bounds).
 10. **Arbitrary-region spectral edit** — RX-register box/lasso attenuation
     on the spectrogram, beyond Audacity's filter-topology-only selections
     (CV §13 draws that distinction). Builds on: stage-1 repair, box
-    selection, band-filtered render. First step: opus lane — rectangular
+    selection, band-filtered render. First step: rectangular
     region attenuate/boost with preview, after item 9 lands.
 11. **Mobile PWA** — installable, touch-first operation of the existing web
     app. Evidence: CV §1 (a decade-old unmet ask), OI §Mobile. Builds on:
     the client-side WASM architecture (already runs in mobile browsers),
     pinch handling (task #11's ctrl-wheel path is what mobile pinch emits
     via visual-viewport events — verify), OPFS persistence. First step:
-    kimi-driver lane — manifest + service worker + touch-target/responsive
+    manifest + service worker + touch-target/responsive
     audit under DESIGN.md, tested via Playwright device emulation.
 12. **Video-synced annotation** — show the video track beside the acoustic
     panes, synced to the engine clock. Evidence: CV §2 and §14
     (PraatPlusPlus ships this; fieldwork gesture/mouth context). Builds on:
     item 4 (container demux), the sample-counter clock, the shared viewport.
-    First step: opus lane — a `<video>` element slaved to the playback
+    First step: a `<video>` element slaved to the playback
     clock on web, frame-step controls, DESIGN.md pane treatment.
 13. **Voice-training instruments** — a real-time practice view: live pitch
     and formant readouts against user-set target ranges with in/out-of-range
@@ -130,23 +130,23 @@ documentation only, oracles as black boxes, no GPL source consulted.
     register and makes no clinical claims. Evidence: owner directive; OI
     §Voice (IPA-driven TTS interest adjacent). Builds on: the recording
     worklet's chunk stream, `pitch_track_span` speed (task #12 fix),
-    formant span means. First step: opus lane — streaming pitch estimate on
-    the live mic path with a target-band meter; then a kimi-driver lane for
-    the practice-view UI.
+    formant span means. First step: streaming pitch estimate on
+    the live mic path with a target-band meter; then the
+    practice-view UI.
 14. **Labeling workflows, stage 1** — named label schemes (closed
     vocabularies with colors) stored in project v2 metadata, digit-hotkey
     label application, and a review-queue view (unlabeled/low-confidence
     spans next). Evidence: owner directive citing CVAT/labelImg/EchoML et
     al.; CV §14 (confidence-scored regions precedent). Builds on: the tier
     keyboard loop, project v2 tags (T8.1), the palette. First step:
-    kimi-driver lane — scheme editor + hotkey application; review queue
+    scheme editor + hotkey application; review queue
     after.
 
 ## H3 — far: ecosystem and collaboration
 
 15. **Python bindings** — a parselmouth-shaped `phonia` Python package over
     the engine API, because scripting users live there (the architecture
-    was library-first for exactly this). First step: opus lane — pyo3 crate
+    was library-first for exactly this). First step: pyo3 crate
     exposing pitch/formant/intensity/voice over `phx-*`, with the oracle
     harness converted to consume it as its first real user.
 16. **Praat-script compatibility** (*investigation-first*) — run existing
@@ -161,7 +161,7 @@ documentation only, oracles as black boxes, no GPL source consulted.
 18. **Analysis plugin surface** (*investigation-first*) — third-party
     analyses rendering as tracks/tiers without forking Phonia (the Vamp
     precedent, CV §13); candidate shape: WASM component plugins. First
-    step: investigation lane on plugin ABI options and sandboxing.
+    step: an investigation phase on plugin ABI options and sandboxing.
 19. **Corpus-scale auto-labeling** — batch runs of items 7/8 with the
     review queue as the gate, per the assist-never-autocommit rule. Builds
     on: items 7, 8, 14. Scheduled only after those land.
@@ -172,7 +172,7 @@ documentation only, oracles as black boxes, no GPL source consulted.
 ## Sequencing notes
 
 - H1 items 1–5 are independent of each other and of phase 8's wave B; they
-  can interleave into the lane schedule as capacity opens.
+  can interleave into the schedule as capacity opens.
 - Item 9 must precede 10; item 4 precedes 12; items 7/8/14 precede 19.
 - Mobile (11) benefits from phase 8's T8.6 view work landing first so the
   touch audit hits final layouts once.
