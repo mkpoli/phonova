@@ -1,0 +1,18 @@
+[package]
+name = "phx-playback"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+description = "Native audio playback: a cpal output stream driven by an atomic sample-counter clock, behind a PlaybackEngine trait"
+
+[dependencies]
+cpal = { workspace = true, optional = true }
+phx-audio = { workspace = true }
+
+[features]
+# The realtime clock, render step, buffer, and mock backend are pure Rust and
+# always build. The cpal output stream is opt-in so headless hosts (CI, WSL2
+# with no ALSA dev headers) can still test the core; the desktop shell enables
+# it.
+default = []
+cpal-backend = ["dep:cpal"]

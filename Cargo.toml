@@ -13,6 +13,7 @@ members = [
     "crates/phx-render",
     "crates/phx-figure",
     "crates/phx-project",
+    "crates/phx-playback",
     "crates/phx-engine",
     "crates/phx-wasm",
     "tools/oracle-bridge",
@@ -25,6 +26,7 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 hound = "3.5"
 symphonia = "0.6"
+cpal = "0.18"
 rubato = "4"
 rustfft = "6.4"
 realfft = "3.5"
@@ -50,5 +52,6 @@ phx-textgrid = { path = "crates/phx-textgrid", version = "0.0.1" }
 phx-render = { path = "crates/phx-render", version = "0.0.1" }
 phx-figure = { path = "crates/phx-figure", version = "0.0.1" }
 phx-project = { path = "crates/phx-project", version = "0.0.1" }
+phx-playback = { path = "crates/phx-playback", version = "0.0.1" }
 phx-engine = { path = "crates/phx-engine", version = "0.0.1" }
 phx-wasm = { path = "crates/phx-wasm", version = "0.0.1" }
