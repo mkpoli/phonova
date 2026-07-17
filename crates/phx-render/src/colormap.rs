@@ -1,14 +1,18 @@
 //! Colormap selection and dB→color sampling.
 
 use crate::data::{
-    cividis::CIVIDIS_DATA, inferno::INFERNO_DATA, magma::MAGMA_DATA, plasma::PLASMA_DATA,
-    viridis::VIRIDIS_DATA,
+    cividis::CIVIDIS_DATA, inferno::INFERNO_DATA, magma::MAGMA_DATA, phonia::PHONIA_DATA,
+    plasma::PLASMA_DATA, viridis::VIRIDIS_DATA,
 };
 use crate::theme::Theme;
 
 /// Perceptual colormap used to render a normalized dB tile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Colormap {
+    /// The app's default ramp: warm charcoal floor through the teal identity
+    /// ramp into a warm soft-yellow paper highlight, drawn from the Phonia
+    /// brand family. Monotonically increasing in relative luminance.
+    Phonia,
     /// Perceptually uniform purple→teal→yellow ramp (matplotlib default
     /// since 2.0). Monotonically increasing in relative luminance.
     Viridis,
@@ -36,6 +40,7 @@ impl Colormap {
     /// returning 8-bit sRGB channel values.
     pub(crate) fn sample(self, t: f32, theme: Theme) -> [u8; 3] {
         match self {
+            Colormap::Phonia => sample_lut(&PHONIA_DATA, t),
             Colormap::Viridis => sample_lut(&VIRIDIS_DATA, t),
             Colormap::Magma => sample_lut(&MAGMA_DATA, t),
             Colormap::Inferno => sample_lut(&INFERNO_DATA, t),
@@ -121,6 +126,17 @@ mod tests {
             }
         }
         0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+    }
+
+    #[test]
+    fn phonia_endpoints_are_the_charcoal_floor_and_warm_highlight() {
+        assert_eq!(sample_lut(&PHONIA_DATA, 0.0), [23, 22, 15]);
+        assert_eq!(sample_lut(&PHONIA_DATA, 1.0), [247, 237, 203]);
+    }
+
+    #[test]
+    fn phonia_luminance_is_monotonic() {
+        assert_monotonic_luminance(&PHONIA_DATA, "phonia");
     }
 
     #[test]

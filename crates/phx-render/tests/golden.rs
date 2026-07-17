@@ -27,6 +27,24 @@ fn check(colormap: Colormap, theme: Theme, fixture_bytes: &[u8]) {
 }
 
 #[test]
+fn phonia_light_matches_golden() {
+    check(
+        Colormap::Phonia,
+        Theme::Light,
+        include_bytes!("golden/phonia_light.rgba"),
+    );
+}
+
+#[test]
+fn phonia_dark_matches_golden() {
+    check(
+        Colormap::Phonia,
+        Theme::Dark,
+        include_bytes!("golden/phonia_dark.rgba"),
+    );
+}
+
+#[test]
 fn viridis_light_matches_golden() {
     check(
         Colormap::Viridis,
@@ -145,6 +163,10 @@ fn viridis_and_magma_ignore_theme() {
 
     let light = colorize(&TILE_DB, 4, 1, &MAPPING, Colormap::Magma, Theme::Light);
     let dark = colorize(&TILE_DB, 4, 1, &MAPPING, Colormap::Magma, Theme::Dark);
+    assert_eq!(light, dark);
+
+    let light = colorize(&TILE_DB, 4, 1, &MAPPING, Colormap::Phonia, Theme::Light);
+    let dark = colorize(&TILE_DB, 4, 1, &MAPPING, Colormap::Phonia, Theme::Dark);
     assert_eq!(light, dark);
 }
 

@@ -120,10 +120,27 @@ icon family, ever — mixed stroke registers read as clutter.
 
 ## Data display
 
-- **Spectrogram palettes**: Viridis (default), Magma, Inferno, Plasma,
-  Cividis — perceptually uniform, colorblind-safe — plus Grayscale tuned per
-  theme for print. Palette changes recolor instantly; they never recompute
-  analysis.
+- **Spectrogram palettes**: Phonia (default), Viridis, Magma, Inferno,
+  Plasma, Cividis, and Grayscale tuned per theme for print. Palette changes
+  recolor instantly; they never recompute analysis.
+- **Phonia** is the default because the spectrogram should read as the same
+  material as the rest of the interface: it runs from a warm charcoal floor,
+  just below the dark-theme paper, up through the teal identity ramp into a
+  warm soft-yellow highlight. Its 256 control points are placed in Oklab for
+  even perceptual spacing, and the whole table is verified to increase
+  monotonically in WCAG relative luminance, so a louder region never renders
+  darker than a quieter one. The floor stops short of pure black and the
+  highlight short of pure white, keeping headroom at both ends.
+- **Viridis** is the colorblind-validated alternative, kept for any figure a
+  reader must trust under color-vision deficiency; the other perceptual ramps
+  and the grayscale print ramp stay selectable alongside it.
+- **Custom ramps**: the gradient editor builds a named ramp from draggable
+  color stops and stores it in `localStorage` (`phonia:custom-ramps`), so a
+  ramp is available to every project on the machine without entering any one
+  project file. Saved ramps list in the palette picker beside the built-ins
+  and recolor through the same cached-dB path. Each carries a live
+  luminance-monotonicity badge; a ramp is not checked for color-vision
+  deficiency, so the built-ins remain the choice when that guarantee matters.
 - **Overlay conventions are frozen**: pitch `#9cc4ff` (blue line, right-hand
   Hz scale), formants `#ff5a52` (speckles sized by bandwidth), intensity
   `#ffcc33` (thin line). These match the colors a Praat user already reads

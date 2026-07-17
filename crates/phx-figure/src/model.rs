@@ -493,6 +493,7 @@ enum ThemeDef {
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "Colormap")]
 enum ColormapDef {
+    Phonia,
     Viridis,
     Magma,
     Inferno,

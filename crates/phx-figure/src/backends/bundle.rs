@@ -152,6 +152,11 @@ pub(crate) fn axis_title(axis: &crate::model::Axis) -> Option<String> {
 #[must_use]
 pub(crate) fn colormap_name(cm: Colormap) -> &'static str {
     match cm {
+        // Phonia is the on-screen brand ramp; figures export the perceptual and
+        // grayscale built-ins, so a code backend never names it in practice.
+        // Viridis is the closest widely available reproduction for a re-colorizing
+        // script that somehow receives it.
+        Colormap::Phonia => "viridis",
         Colormap::Viridis => "viridis",
         Colormap::Magma => "magma",
         Colormap::Inferno => "inferno",
