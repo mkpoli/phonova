@@ -54,7 +54,7 @@ pub use phx_annot::{
     Interval, IntervalId, IntervalTier, LabelPattern, LabelQuery, LabelTarget, MatchSpan, Merged,
     Moved, Point, PointId, PointTier, Tier, TierId, TierKind, TierMerge, TierRelation, TierSlot,
 };
-pub use phx_audio::{ByteReader, BytesReader, StreamSampleFormat, WavStreamInfo};
+pub use phx_audio::{AudioError, ByteReader, BytesReader, StreamSampleFormat, WavStreamInfo};
 pub use phx_figure::Figure;
 pub use phx_formant::{FormantFrame, FormantParams, FormantPoint, FormantTrack};
 pub use phx_intensity::{IntensityParams, IntensityTrack};

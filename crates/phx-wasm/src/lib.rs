@@ -617,6 +617,54 @@ impl WasmHits {
     }
 }
 
+/// A [`phx_engine::ByteReader`] that pulls ranges from a JavaScript callback.
+///
+/// The callback is `readAt(offset, length) -> Uint8Array`, invoked
+/// synchronously; the host backs it with whatever store holds the file — an
+/// OPFS synchronous access handle in a worker, or an in-memory buffer. Because
+/// reads are synchronous, [`WasmEngine::open_streaming_wav`] can build the
+/// waveform pyramid in one pass without the signal ever crossing whole into
+/// wasm memory.
+struct JsByteReader {
+    read_at: js_sys::Function,
+    len: u64,
+}
+
+// SAFETY: the wasm build is single-threaded; the engine that owns this reader is
+// never sent across threads, so the non-`Send` JS function it holds is never
+// touched from more than one thread. The bound is required only because the
+// engine's streamed-entry storage is declared `Send + Sync` for the native
+// build, where the reader is a real file handle.
+unsafe impl Send for JsByteReader {}
+unsafe impl Sync for JsByteReader {}
+
+impl phx_engine::ByteReader for JsByteReader {
+    fn total_len(&self) -> u64 {
+        self.len
+    }
+
+    fn read_exact_at(&self, offset: u64, buf: &mut [u8]) -> Result<(), phx_engine::AudioError> {
+        let result = self
+            .read_at
+            .call2(
+                &JsValue::NULL,
+                &JsValue::from_f64(offset as f64),
+                &JsValue::from_f64(buf.len() as f64),
+            )
+            .map_err(|err| phx_engine::AudioError::Io(format!("readAt threw: {err:?}")))?;
+        let bytes = Uint8Array::new(&result);
+        if bytes.length() as usize != buf.len() {
+            return Err(phx_engine::AudioError::Io(format!(
+                "readAt returned {} bytes for a {}-byte request",
+                bytes.length(),
+                buf.len()
+            )));
+        }
+        bytes.copy_to(buf);
+        Ok(())
+    }
+}
+
 /// Session engine surface exposed to JavaScript.
 ///
 /// Wraps [`phx_engine::Engine`]: import, audio metadata, waveform pyramid
@@ -651,6 +699,45 @@ impl WasmEngine {
     pub fn import_wav_bytes(&mut self, bytes: &[u8]) -> Result<u64, JsError> {
         let id = self.inner.import_wav_bytes(bytes)?;
         Ok(id.as_u64())
+    }
+
+    /// Opens a WAV as a streamed source, reading bytes on demand through a
+    /// JavaScript `readAt(offset, length) -> Uint8Array` callback, and returns
+    /// the id of the new store entry.
+    ///
+    /// The header is parsed and the bounded waveform pyramid built during this
+    /// call, so metadata is ready at header speed and scrolling never pays the
+    /// full-decode footprint. `totalLen` is the file's byte length and `name`
+    /// its display name. Recordings past the eager threshold
+    /// ([`WasmEngine::eager_import_frame_limit`]) belong here; the worker backs
+    /// `readAt` with an OPFS synchronous access handle so the decoded signal
+    /// never enters wasm memory whole.
+    ///
+    /// # Errors
+    /// Rejects when the header is malformed, the sample format is unsupported,
+    /// or `readAt` fails while the pyramid is built.
+    #[wasm_bindgen(js_name = openStreamingWav)]
+    pub fn open_streaming_wav(
+        &mut self,
+        total_len: f64,
+        name: Option<String>,
+        read_at: js_sys::Function,
+    ) -> Result<u64, JsError> {
+        let reader = JsByteReader {
+            read_at,
+            len: total_len as u64,
+        };
+        let id = self.inner.open_streaming_wav(reader, name)?;
+        Ok(id.as_u64())
+    }
+
+    /// Frame count at or below which an import stays on the eager whole-decode
+    /// path; longer takes should be opened through
+    /// [`WasmEngine::open_streaming_wav`]. Two minutes of 48 kHz audio.
+    #[wasm_bindgen(js_name = eagerImportFrameLimit)]
+    #[must_use]
+    pub fn eager_import_frame_limit() -> usize {
+        Engine::eager_import_frame_limit()
     }
 
     /// Opens a streaming recording at `sampleRate` hertz with `channels`
@@ -2095,6 +2182,49 @@ mod tests {
         assert!(report["jitter"]["local"].as_f64().unwrap() < 0.05);
         assert!(report["meanHnrDb"].as_f64().unwrap() > 10.0);
         assert!(report["moments"]["centreOfGravityHz"].as_f64().unwrap() > 0.0);
+    }
+
+    #[wasm_bindgen_test]
+    fn streamed_open_over_a_js_reader_matches_the_eager_import() {
+        use wasm_bindgen::JsCast;
+        use wasm_bindgen::closure::Closure;
+
+        let bytes = FIXTURE_WAV.to_vec();
+        let len = bytes.len() as f64;
+        let callback = Closure::wrap(Box::new(move |offset: f64, length: f64| -> Uint8Array {
+            let start = offset as usize;
+            let end = start + length as usize;
+            Uint8Array::from(&bytes[start..end])
+        }) as Box<dyn Fn(f64, f64) -> Uint8Array>);
+        let read_at: js_sys::Function = callback
+            .as_ref()
+            .unchecked_ref::<js_sys::Function>()
+            .clone();
+        // The engine retains the callback for later ranged reads.
+        callback.forget();
+
+        let mut streamed = WasmEngine::new();
+        let sid = streamed
+            .open_streaming_wav(len, Some("streamed".to_string()), read_at)
+            .unwrap();
+        let mut eager = WasmEngine::new();
+        let eid = eager.import_wav_bytes(FIXTURE_WAV).unwrap();
+
+        let si = streamed.audio_info(sid).unwrap();
+        let ei = eager.audio_info(eid).unwrap();
+        assert_eq!(si.duration().to_bits(), ei.duration().to_bits());
+        assert_eq!(si.channels(), ei.channels());
+
+        let streamed_wave = streamed
+            .waveform_slice(sid, 0.0, ei.duration(), 512)
+            .unwrap();
+        let eager_wave = eager.waveform_slice(eid, 0.0, ei.duration(), 512).unwrap();
+        assert_eq!(streamed_wave.length(), eager_wave.length());
+        let sv = streamed_wave.to_vec();
+        let ev = eager_wave.to_vec();
+        for (i, (s, e)) in sv.iter().zip(&ev).enumerate() {
+            assert_eq!(s.to_bits(), e.to_bits(), "waveform sample {i}");
+        }
     }
 
     #[wasm_bindgen_test]
