@@ -40,6 +40,65 @@ pub fn colorize(
     cm: Colormap,
     theme: Theme,
 ) -> Vec<u8> {
+    colorize_with(tile_db, w, h, map, |t| cm.sample(t, theme))
+}
+
+/// Colorize a row-major tile of dB power values with a caller-supplied
+/// 256-entry 8-bit sRGB lookup table — a custom ramp built in the gradient
+/// editor rather than one of the built-in [`Colormap`]s.
+///
+/// The display mapping and pixel layout match [`colorize`] exactly; only the
+/// dB→color step differs, sampling `lut` (linearly interpolated between its
+/// entries) in place of a [`Colormap`]. `lut[0]` is the display floor and
+/// `lut[255]` the ceiling. A custom ramp is not luminance-monotonicity
+/// checked here — the editor surfaces that property to the user instead.
+///
+/// # Panics
+/// Panics if `tile_db.len() != w as usize * h as usize`.
+pub fn colorize_with_lut(
+    tile_db: &[f32],
+    w: u32,
+    h: u32,
+    map: &DisplayMapping,
+    lut: &[[u8; 3]; 256],
+) -> Vec<u8> {
+    colorize_with(tile_db, w, h, map, |t| sample_u8_lut(lut, t))
+}
+
+/// Linearly interpolate a caller-supplied 256-entry 8-bit sRGB lookup table at
+/// `t` (clamped to `[0, 1]`). The interpolation mirrors the built-in ramps'
+/// sampling, so a custom ramp and a built-in ramp with the same 256 entries
+/// render identically.
+fn sample_u8_lut(lut: &[[u8; 3]; 256], t: f32) -> [u8; 3] {
+    let t = t.clamp(0.0, 1.0);
+    let pos = t * (lut.len() - 1) as f32;
+    let i0 = pos.floor() as usize;
+    let i1 = (i0 + 1).min(lut.len() - 1);
+    let frac = pos - i0 as f32;
+    let c0 = lut[i0];
+    let c1 = lut[i1];
+    let lerp = |a: u8, b: u8| {
+        let v = a as f32 + (b as f32 - a as f32) * frac;
+        v.round().clamp(0.0, 255.0) as u8
+    };
+    [
+        lerp(c0[0], c1[0]),
+        lerp(c0[1], c1[1]),
+        lerp(c0[2], c1[2]),
+    ]
+}
+
+/// Shared dB→RGBA driver: resolve the clip window once, then map each value to
+/// a normalized `t` and hand it to `sample`. Keeps the display mapping, the
+/// non-finite-is-floor rule, and the always-opaque alpha identical between the
+/// built-in and custom-LUT paths.
+fn colorize_with(
+    tile_db: &[f32],
+    w: u32,
+    h: u32,
+    map: &DisplayMapping,
+    sample: impl Fn(f32) -> [u8; 3],
+) -> Vec<u8> {
     let expected_len = w as usize * h as usize;
     assert_eq!(
         tile_db.len(),
@@ -62,7 +121,7 @@ pub fn colorize(
         } else {
             0.0
         };
-        let [r, g, b] = cm.sample(t, theme);
+        let [r, g, b] = sample(t);
         out.extend_from_slice(&[r, g, b, 255]);
     }
     out
@@ -123,6 +182,25 @@ mod tests {
         // -10 dB is the autoscaled ceiling -> t=1 -> black on the light
         // grayscale ramp.
         assert_eq!(&out[4..8], &[0, 0, 0, 255]);
+    }
+
+    #[test]
+    fn colorize_with_lut_maps_floor_and_ceiling_to_the_lut_endpoints() {
+        let mut lut = [[0u8; 3]; 256];
+        for (i, entry) in lut.iter_mut().enumerate() {
+            *entry = [i as u8, i as u8, i as u8];
+        }
+        let map = DisplayMapping {
+            dynamic_range_db: 50.0,
+            max_db: Some(0.0),
+        };
+        // t = [0.0, 0.5, 1.0] over the 50 dB window.
+        let tile = [-100.0f32, -25.0, 0.0];
+        let out = colorize_with_lut(&tile, 3, 1, &map, &lut);
+        assert_eq!(&out[0..4], &[0, 0, 0, 255]);
+        assert_eq!(&out[8..12], &[255, 255, 255, 255]);
+        // Midpoint interpolates between entries 127 and 128.
+        assert_eq!(&out[4..8], &[128, 128, 128, 255]);
     }
 
     #[test]
