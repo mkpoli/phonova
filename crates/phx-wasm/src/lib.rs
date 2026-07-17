@@ -10,7 +10,7 @@ use phx_engine::{
     Theme as EngineTheme, Tier, TierId, TierRelation, TileRequest,
     export_figure as engine_export_figure, figure_to_svg,
 };
-use phx_project::{ContentHash, MediaId, MediaRef, Project};
+use phx_project::{ContentHash, LibraryNode, MediaId, MediaRef, Project};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use wasm_bindgen::prelude::*;
@@ -2099,6 +2099,10 @@ impl WasmEngine {
         let mut project = Project::new(spec.name);
         project.saved_at = spec.saved_at;
         project.view = spec.view;
+        project.description = spec.description;
+        project.authors = spec.authors;
+        project.tags = spec.tags;
+        project.groups = spec.groups;
         for media in spec.media {
             let hash =
                 ContentHash::from_hex(&media.hash).map_err(|err| JsError::new(&err.to_string()))?;
@@ -2110,9 +2114,9 @@ impl WasmEngine {
                 duration: media.duration,
                 sample_rate: media.sample_rate,
                 channels: media.channels,
-                description: String::new(),
-                authors: Vec::new(),
-                tags: Vec::new(),
+                description: media.description,
+                authors: media.authors,
+                tags: media.tags,
             });
             if let Some(annotation_id) = media.annotation {
                 let annotation = self
@@ -2122,6 +2126,10 @@ impl WasmEngine {
                 project.annotations.insert(media_id, annotation);
             }
         }
+        // The host sends the tree it holds; normalize repairs it against the
+        // media list that was just built rather than trusting the host to keep
+        // the two in lockstep.
+        project.normalize_library();
         Ok(Uint8Array::from(phx_project::save(&project).as_slice()))
     }
 }
@@ -2138,6 +2146,12 @@ struct SaveProjectMedia {
     channels: usize,
     #[serde(default)]
     annotation: Option<u64>,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    authors: Vec<String>,
+    #[serde(default)]
+    tags: Vec<String>,
 }
 
 /// The `saveProjectContainer` argument: project metadata and its media entries.
@@ -2148,7 +2162,15 @@ struct SaveProjectSpec {
     saved_at: u64,
     #[serde(default)]
     view: Value,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    authors: Vec<String>,
+    #[serde(default)]
+    tags: Vec<String>,
     media: Vec<SaveProjectMedia>,
+    #[serde(default)]
+    groups: Vec<LibraryNode>,
 }
 
 /// One media entry returned by [`load_project_container`], with its document
@@ -2163,6 +2185,9 @@ struct LoadProjectMedia {
     sample_rate: f64,
     channels: usize,
     annotation_json: Option<String>,
+    description: String,
+    authors: Vec<String>,
+    tags: Vec<String>,
 }
 
 /// The `loadProjectContainer` result: project metadata and its media entries.
@@ -2172,7 +2197,11 @@ struct LoadProjectResult {
     name: String,
     saved_at: u64,
     view: Value,
+    description: String,
+    authors: Vec<String>,
+    tags: Vec<String>,
     media: Vec<LoadProjectMedia>,
+    groups: Vec<LibraryNode>,
 }
 
 /// Parses a project container into JSON the host can drive the session from.
@@ -2206,12 +2235,19 @@ pub fn load_project_container(bytes: &[u8]) -> Result<String, JsError> {
             sample_rate: reference.sample_rate,
             channels: reference.channels,
             annotation_json,
+            description: reference.description.clone(),
+            authors: reference.authors.clone(),
+            tags: reference.tags.clone(),
         });
     }
     let result = LoadProjectResult {
         name: project.name,
         saved_at: project.saved_at,
         view: project.view,
+        description: project.description,
+        authors: project.authors,
+        tags: project.tags,
+        groups: project.groups,
         media,
     };
     serde_json::to_string(&result).map_err(|err| JsError::new(&err.to_string()))
