@@ -939,8 +939,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "phx-annot"
+name = "phonia"
 version = "0.0.1"
+
+[[package]]
+name = "phx-annot"
+version = "0.1.0"
 dependencies = [
  "regex",
  "serde",
@@ -1058,7 +1062,7 @@ dependencies = [
 
 [[package]]
 name = "phx-textgrid"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "phx-annot",
 ]
