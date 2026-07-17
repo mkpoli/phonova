@@ -344,6 +344,55 @@ impl Engine {
         ))
     }
 
+    /// Computes a spectrogram tile for `id` and colorizes it with a custom
+    /// 256-entry 8-bit sRGB lookup table — a ramp built in the gradient editor
+    /// rather than a built-in [`Colormap`].
+    ///
+    /// The raw dB is read from the same block cache
+    /// [`Engine::spectrogram_tile_rgba`] uses, so switching between a built-in
+    /// palette and a custom ramp, or between two custom ramps, re-colorizes
+    /// cached dB and never recomputes the STFT. The custom path takes no
+    /// [`Theme`]: a custom LUT is a fixed ramp defined against both
+    /// backgrounds, like the perceptual built-ins.
+    ///
+    /// Returns `4 * req.width_px * req.height_px` bytes, `R, G, B, A` per
+    /// pixel, row 0 first.
+    ///
+    /// # Errors
+    /// Same conditions as [`Engine::spectrogram_tile_rgba`].
+    pub fn spectrogram_tile_rgba_lut(
+        &self,
+        id: AudioId,
+        req: &TileRequest,
+        display: &DisplayMapping,
+        lut: &[[u8; 3]; 256],
+    ) -> Result<Vec<u8>, EngineError> {
+        validate_tile_request(req)?;
+        let tile_db = self.spectrogram_tile_db(id, req)?;
+
+        let expected_len = req.width_px as usize * req.height_px as usize;
+        if tile_db.len() != expected_len {
+            return Err(EngineError::InvalidRequest {
+                reason: format!(
+                    "tile produced {} values for a {}x{} request; the audio is likely too \
+                     short, or the time/frequency range too narrow, to fit a single analysis \
+                     frame",
+                    tile_db.len(),
+                    req.width_px,
+                    req.height_px
+                ),
+            });
+        }
+
+        Ok(phx_render::colorize_with_lut(
+            &tile_db,
+            req.width_px,
+            req.height_px,
+            display,
+            lut,
+        ))
+    }
+
     /// Assembles the raw dB values for a tile from the block cache, in the
     /// row-major, lowest-frequency-first order [`phx_render::colorize`] expects.
     ///
@@ -1788,11 +1837,26 @@ mod tests {
             "different palettes produce different pixels"
         );
 
+        // A custom LUT re-colorizes the same cached dB: still no new STFT.
+        let mut lut = [[0u8; 3]; 256];
+        for (i, entry) in lut.iter_mut().enumerate() {
+            *entry = [i as u8, (255 - i) as u8, i as u8];
+        }
+        let custom = engine
+            .spectrogram_tile_rgba_lut(id, &req, &display, &lut)
+            .unwrap();
+        assert_eq!(engine.spectrogram_cached_block_count(), after_first);
+        assert_ne!(custom, magma, "a custom ramp produces its own pixels");
+
         // Deterministic through the cache: the same request twice is identical.
         let viridis_again = engine
             .spectrogram_tile_rgba(id, &req, &display, Colormap::Viridis, Theme::Dark)
             .unwrap();
         assert_eq!(viridis, viridis_again);
+        let custom_again = engine
+            .spectrogram_tile_rgba_lut(id, &req, &display, &lut)
+            .unwrap();
+        assert_eq!(custom, custom_again);
     }
 
     #[test]
