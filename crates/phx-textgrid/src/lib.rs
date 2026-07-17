@@ -1,18 +1,23 @@
 //! Praat TextGrid read (long and short text formats; UTF-8/UTF-16/Latin-1) and
 //! write (long format, UTF-8 always).
 //!
-//! The reader accepts every TextGrid Praat writes in its two text formats and
-//! reports the detected [`Variant`] and [`Encoding`] alongside the document. The
-//! writer emits one canonical shape: the long text format, UTF-8, `LF` line
-//! endings, no byte-order mark. TextGrid carries no cross-tier relation data, so
-//! every imported tier is [`TierRelation::Independent`]; tier relations are a
-//! project-level concept that lives outside this format.
+//! The reader accepts both text-format variants and reports the detected
+//! [`Variant`] and [`Encoding`] alongside the document. A byte-order mark
+//! selects UTF-8 or UTF-16; without one, a stream that is valid UTF-8 is read
+//! as UTF-8, and anything else is decoded as Latin-1, which is how Praat wrote
+//! files predating its Unicode support. A file from that era saved under Mac OS
+//! Classic may instead carry MacRoman-encoded bytes, which are also valid
+//! Latin-1 byte-for-byte and are not distinguished from it; Praat's own manual
+//! describes the two encodings as ambiguous without external knowledge of a
+//! file's origin.
 //!
-//! The binary TextGrid variant is not supported. Its layout is undocumented in
-//! the Praat manual, and the clean-room protocol for this crate rules out
-//! reading Praat's source; no oracle-generated binary samples or verifiable
-//! permissively licensed reference were available to derive it. Binary support
-//! is deferred as a follow-up.
+//! The writer emits one canonical shape: the long text format, UTF-8, `LF`
+//! line endings, no byte-order mark. TextGrid carries no cross-tier relation
+//! data, so every imported tier is [`TierRelation::Independent`]; tier
+//! relations are a project-level concept that lives outside this format.
+//!
+//! The binary TextGrid variant is not read; [`read`] reports it as
+//! [`TextGridError::BinaryUnsupported`].
 //!
 //! [`TierRelation::Independent`]: phx_annot::TierRelation::Independent
 #![warn(missing_docs)]

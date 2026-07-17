@@ -5,13 +5,17 @@ annotation model.
 
 The reader accepts both text formats Praat writes — long (tagged) and short
 (bare values) — and decodes UTF-8, UTF-16 (via byte-order mark), and Latin-1.
-It reports the detected format variant and encoding alongside the document and
+Files predating Praat's Unicode support decode as Latin-1; a file from that era
+saved under Mac OS Classic may instead carry MacRoman-encoded bytes, which are
+also valid Latin-1 byte-for-byte and are not distinguished from it, matching
+the ambiguity Praat's own manual describes for encoding-less files. The reader
+reports the detected format variant and encoding alongside the document and
 never panics on malformed input. The writer emits one canonical shape: long
 format, UTF-8, `LF` line endings, no byte-order mark.
 
-The binary TextGrid variant is not supported; its layout is undocumented and
-outside this crate's clean-room scope. TextGrid carries no cross-tier relation
-data, so every imported tier is independent.
+The binary TextGrid variant is not supported and is reported as a typed error.
+TextGrid carries no cross-tier relation data, so every imported tier is
+independent.
 
 ## Example
 
