@@ -1,10 +1,13 @@
 import type { FinishedRecordingResult, WasmCoreClient } from '$lib/core/WasmCoreClient';
 import { flatLibrary, pruneMedia } from '@phonia/ui';
 import type {
+  HomeIndex,
+  HomeProjectGroup,
   LibraryNode,
   ProjectExportMode,
   ProjectSummary,
   RecordingEntry,
+  SaveProjectMediaSpec,
   SaveProjectSpec
 } from '$lib/core/types';
 
@@ -23,6 +26,19 @@ export interface ImportResult {
 
 /** Directory under OPFS that holds one subdirectory per project. */
 const PROJECTS_DIR = 'phonix-projects';
+/**
+ * Home-screen index file, beside the project directories.
+ *
+ * Schema (JSON):
+ *   { "pinned": string[], "groups": [ { "id": string, "name": string,
+ *     "members": string[], "collapsed": boolean } ] }
+ *
+ * `pinned` and each group's `members` hold project directory ids. A missing
+ * file, unparseable content, or the wrong shape all read back as an empty
+ * index; ids naming a project that no longer exists are simply ignored by the
+ * home screen, so the file tolerates stale references without repair.
+ */
+const HOME_FILE = 'home.json';
 /** Container file name inside a project directory. */
 const PROJECT_FILE = 'project.phxproj';
 /** Sidecar suffix, matching `phx_project::AUTOSAVE_SUFFIX`. */
@@ -215,11 +231,41 @@ export class ProjectStore {
         name: newest.name,
         savedAt: newest.savedAt,
         count: newest.media.length,
-        hasRecovery: Boolean(sidecar && (!project || sidecar.savedAt > project.savedAt))
+        hasRecovery: Boolean(sidecar && (!project || sidecar.savedAt > project.savedAt)),
+        tags: newest.tags
       });
     }
     summaries.sort((a, b) => b.savedAt - a.savedAt);
     return summaries;
+  }
+
+  /**
+   * Reads the home-screen index (pins and project groups). A missing file,
+   * unparseable JSON, or an off-shape value all return an empty index, so the
+   * caller never has to guard the file's absence or corruption.
+   */
+  async readHomeIndex(): Promise<HomeIndex> {
+    const empty: HomeIndex = { pinned: [], groups: [] };
+    let dir: FileSystemDirectoryHandle;
+    try {
+      dir = await projectsDir(false);
+    } catch {
+      return empty;
+    }
+    const bytes = await readFileBytes(dir, HOME_FILE);
+    if (!bytes) return empty;
+    try {
+      return sanitizeHomeIndex(JSON.parse(new TextDecoder().decode(bytes)));
+    } catch {
+      return empty;
+    }
+  }
+
+  /** Writes the home-screen index, creating the projects directory if needed. */
+  async writeHomeIndex(index: HomeIndex): Promise<void> {
+    const dir = await projectsDir(true);
+    const bytes = new TextEncoder().encode(JSON.stringify(sanitizeHomeIndex(index)));
+    await writeFileBytes(dir, HOME_FILE, bytes);
   }
 
   /** Creates an empty project directory and writes its base container. */
@@ -599,6 +645,74 @@ export class ProjectStore {
   }
 
   /**
+   * Builds a self-contained `.phxproj` bundle for a stored project without
+   * opening it into the app. The container's saved state is read straight from
+   * OPFS; its recordings are decoded into the session only long enough to embed
+   * their bytes and annotations, then detached, so a home-screen batch export
+   * leaves the session as it found it. Recordings whose audio is missing are
+   * omitted from the bundle.
+   */
+  async exportStored(id: string): Promise<{ name: string; bytes: Uint8Array }> {
+    const dir = await projectDir(id, false);
+    const projectBytes = await readFileBytes(dir, PROJECT_FILE);
+    if (!projectBytes) throw new Error('Project container is missing.');
+    const container = await this.#client.loadProjectContainer(projectBytes);
+    const audioDir = await dir.getDirectoryHandle(AUDIO_DIR, { create: true });
+
+    const opened: bigint[] = [];
+    const media: Array<{ mediaId: number; bytes: Uint8Array }> = [];
+    const specMedia: SaveProjectMediaSpec[] = [];
+    try {
+      for (const entry of container.media) {
+        const fileName = entry.relativePath.split('/').pop() ?? entry.relativePath;
+        const bytes = await readFileBytes(audioDir, fileName);
+        if (!bytes) continue;
+        const info = await this.#client.openAudioFile(audioSegments(id), fileName, fileName);
+        opened.push(info.id);
+        let annotation: number | null = null;
+        if (entry.annotationJson) {
+          const annId = await this.#client.attachAnnotationJson(info.id, entry.annotationJson);
+          annotation = Number(annId);
+        }
+        media.push({ mediaId: entry.mediaId, bytes });
+        specMedia.push({
+          mediaId: entry.mediaId,
+          relativePath: entry.relativePath,
+          hash: entry.hash,
+          duration: entry.duration,
+          sampleRate: entry.sampleRate,
+          channels: entry.channels,
+          annotation,
+          description: entry.description,
+          authors: entry.authors,
+          tags: entry.tags
+        });
+      }
+      const spec: SaveProjectSpec = {
+        name: container.name,
+        savedAt: Math.max(Date.now(), container.savedAt),
+        view: container.view ?? null,
+        description: container.description,
+        authors: container.authors,
+        tags: container.tags,
+        groups: container.groups,
+        media: specMedia
+      };
+      const bytes = await this.#client.saveProjectBundle(spec, media);
+      return { name: container.name, bytes };
+    } finally {
+      for (const audioId of opened) {
+        try {
+          await this.#client.detachAudio(audioId);
+        } catch {
+          // A failed cleanup only leaves an extra recording in the transient
+          // session; the export bytes are already built.
+        }
+      }
+    }
+  }
+
+  /**
    * Imports a `.phxproj` into a fresh project directory and opens it.
    *
    * A self-contained bundle restores its embedded recordings into OPFS
@@ -704,6 +818,28 @@ export class ProjectStore {
     await writeFileBytes(target, PROJECT_FILE, renamed);
     await removeIfPresent(target, PROJECT_FILE + AUTOSAVE_SUFFIX);
   }
+}
+
+/** Coerces arbitrary parsed JSON into a well-formed {@link HomeIndex}. */
+function sanitizeHomeIndex(value: unknown): HomeIndex {
+  const source = (value ?? {}) as { pinned?: unknown; groups?: unknown };
+  const strings = (list: unknown): string[] =>
+    Array.isArray(list) ? list.filter((item): item is string => typeof item === 'string') : [];
+  const groups: HomeProjectGroup[] = Array.isArray(source.groups)
+    ? source.groups.flatMap((raw): HomeProjectGroup[] => {
+        const group = raw as Partial<HomeProjectGroup>;
+        if (typeof group?.id !== 'string') return [];
+        return [
+          {
+            id: group.id,
+            name: typeof group.name === 'string' ? group.name : 'Group',
+            members: strings(group.members),
+            collapsed: group.collapsed === true
+          }
+        ];
+      })
+    : [];
+  return { pinned: strings(source.pinned), groups };
 }
 
 async function removeIfPresent(dir: FileSystemDirectoryHandle, name: string): Promise<void> {

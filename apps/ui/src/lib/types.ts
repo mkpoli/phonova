@@ -297,6 +297,31 @@ export interface ProjectSummary {
   count: number;
   /** A newer autosave sidecar holds unsaved work from an interrupted session. */
   hasRecovery: boolean;
+  /** Project-level tags, read from the container so Home can search by them. */
+  tags?: string[];
+}
+
+/** A named collection of projects on the home screen. */
+export interface HomeProjectGroup {
+  /** Stable id, independent of the projects it holds. */
+  id: string;
+  name: string;
+  /** Member project ids, in display order. A project belongs to one group. */
+  members: string[];
+  /** Whether the group renders collapsed. */
+  collapsed: boolean;
+}
+
+/**
+ * The home-screen index: which projects are pinned and how the rest are
+ * grouped. Persisted as `phonix-projects/home.json`; both fields default to
+ * empty when the file is absent or its content does not parse.
+ */
+export interface HomeIndex {
+  /** Pinned project ids, in display order — the Pinned section, above the rest. */
+  pinned: string[];
+  /** Named project collections; ungrouped projects flow below them. */
+  groups: HomeProjectGroup[];
 }
 
 /** How a selection was drawn, and therefore what it bounds. */
