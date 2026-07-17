@@ -86,6 +86,9 @@
   let recordClipLatched = $state(false);
   let recordElapsed = $state(0);
   let recordSampleRate = $state(0);
+  // True while capturing into a project that this take just created (recording
+  // started from Home with no project open), so the strip can name it plainly.
+  let recordDestinationNew = $state(false);
 
   const commands = provideCommandRegistry();
 
@@ -625,6 +628,15 @@
     );
   }
 
+  function sessionName(): string {
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return (
+      `Recordings ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
+      `${pad(now.getHours())}.${pad(now.getMinutes())}`
+    );
+  }
+
   function handleRecordLevel(level: RecorderLevel) {
     recordLevel = level;
     if (level.clipped) recordClipLatched = true;
@@ -634,13 +646,17 @@
     if (!client || !store || !recorder || capturing) return;
     error = '';
     try {
-      // Recording always lands in a project; make one on the home screen.
+      // Recording always lands in a project; make one, named from the moment,
+      // on the home screen so the take has a home the strip can announce.
       if (!project) {
-        const created = await store.create('Recordings');
+        const created = await store.create(sessionName());
         project = created;
+        recordDestinationNew = true;
         route = 'project';
         resetAutosaveBaseline();
         await refreshProjects();
+      } else {
+        recordDestinationNew = false;
       }
       recordingName = timestampName();
       recordClipLatched = false;
@@ -897,6 +913,11 @@
     clipLatched={recordClipLatched}
     elapsedSeconds={recordElapsed}
     sampleRate={recordSampleRate}
+    destinationName={project?.name}
+    destinationIsNew={recordDestinationNew}
+    onRenameDestination={(name) => {
+      if (project) void renameProject(project.id, name);
+    }}
     onSelectDevice={selectRecordDevice}
     onStop={stopRecording}
     onCancel={cancelRecording}

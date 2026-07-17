@@ -1,6 +1,7 @@
 <script lang="ts">
   import IconSquare from '~icons/lucide/square';
   import IconX from '~icons/lucide/x';
+  import InlineRename from './InlineRename.svelte';
   import { formatTime } from './types';
 
   interface RecorderDevice {
@@ -18,6 +19,12 @@
     elapsedSeconds: number;
     /** True capture rate in hertz, or 0 before the device reports it. */
     sampleRate: number;
+    /** The project this take lands in; the strip names it so the destination is never a surprise. */
+    destinationName?: string;
+    /** True when the project was created for this take (recording started with none open). */
+    destinationIsNew?: boolean;
+    /** Renames the destination project in place; absent when it cannot be renamed here. */
+    onRenameDestination?: (name: string) => void;
     onSelectDevice: (deviceId: string) => void;
     onStop: () => void;
     onCancel: () => void;
@@ -30,6 +37,9 @@
     clipLatched,
     elapsedSeconds,
     sampleRate,
+    destinationName,
+    destinationIsNew = false,
+    onRenameDestination,
     onSelectDevice,
     onStop,
     onCancel
@@ -54,7 +64,24 @@
 
 <div class="strip" data-testid="recording-strip" role="region" aria-label="Recording">
   <div class="pulse" aria-hidden="true"></div>
-  <span class="label">Recording</span>
+  {#if destinationName}
+    <span class="announce" data-testid="recording-destination">
+      <span class="label">Recording into{destinationIsNew ? ' new project' : ''}</span>
+      {#if onRenameDestination}
+        <InlineRename
+          name={destinationName}
+          class="dest-name"
+          label="Rename project"
+          testId="recording-destination-name"
+          onRename={onRenameDestination}
+        />
+      {:else}
+        <span class="dest-name" data-testid="recording-destination-name">{destinationName}</span>
+      {/if}
+    </span>
+  {:else}
+    <span class="label">Recording</span>
+  {/if}
 
   <label class="device">
     <span class="device-label">Input</span>
@@ -143,6 +170,24 @@
   .label {
     font-weight: 600;
     letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+
+  .announce {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    max-width: 30rem;
+  }
+
+  :global(.dest-name) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    color: var(--accent-strong);
   }
 
   .device {

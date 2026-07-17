@@ -34,6 +34,16 @@ test('record from the microphone, land a corpus row, open it in the editor', asy
     .poll(() => page.getByTestId('recording-samplerate').textContent())
     .not.toBe('—');
 
+  // Recording from Home made a project from the timestamp; the strip names it.
+  const destination = page.getByTestId('recording-destination');
+  await expect(destination).toBeVisible();
+  await expect(destination).toContainText('Recording into new project');
+  const destinationName = (await page.getByTestId('recording-destination-name').textContent())?.trim();
+  expect(destinationName).toMatch(/^Recordings \d{4}-\d{2}-\d{2}/);
+
+  // The take is already landing in that project's corpus while capture runs.
+  await expect(page.getByTestId('corpus')).toBeVisible();
+
   // The fake device feeds a tone, so the meter registers a non-zero level.
   await expect.poll(() => meterFill(page), { timeout: 15_000 }).toBeGreaterThan(0);
   await expect.poll(() => elapsed(page)).toBeGreaterThan(0.4);
