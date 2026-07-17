@@ -2042,6 +2042,9 @@ impl WasmEngine {
                 duration: media.duration,
                 sample_rate: media.sample_rate,
                 channels: media.channels,
+                description: String::new(),
+                authors: Vec::new(),
+                tags: Vec::new(),
             });
             if let Some(annotation_id) = media.annotation {
                 let annotation = self
