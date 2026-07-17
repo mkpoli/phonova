@@ -5,11 +5,22 @@
   import IconSun from '~icons/lucide/sun';
   import IconMoon from '~icons/lucide/moon';
   import IconFolderOpen from '~icons/lucide/folder-open';
-  import IconTags from '~icons/lucide/tags';
-  import WaveThumb from './WaveThumb.svelte';
+  import IconFolderPlus from '~icons/lucide/folder-plus';
+  import IconInfo from '~icons/lucide/info';
+  import IconSearch from '~icons/lucide/search';
+  import IconRotateCcw from '~icons/lucide/rotate-ccw';
+  import LibraryTree from './LibraryTree.svelte';
+  import MetadataPanel from './MetadataPanel.svelte';
   import { filesFromDataTransfer } from './dnd';
   import { registerCommands } from './commands.svelte';
-  import { formatTime, type CoreClientLike, type RecordingEntry } from './types';
+  import { flatLibrary, filterTree } from './library';
+  import { type CoreClientLike, type LibraryNode, type RecordingEntry } from './types';
+
+  interface Metadata {
+    description: string;
+    authors: string[];
+    tags: string[];
+  }
 
   interface Props {
     client: CoreClientLike | null;
@@ -19,6 +30,8 @@
     busy: boolean;
     busyLabel: string;
     dirty: boolean;
+    /** Last container write time; advances as edits persist. */
+    savedAt?: number;
     onOpenRecording: (recording: RecordingEntry) => void;
     onImportFiles: (files: File[]) => void;
     onBack: () => void;
@@ -28,6 +41,31 @@
     onStartRecording?: () => void;
     /** Whether a take is currently being captured. */
     recording?: boolean;
+
+    // --- Library management (the web shell wires these; desktop omits them and
+    // the corpus falls back to a flat, read-only listing). ---
+
+    /** The ordered library tree; a flat listing when omitted. */
+    groups?: LibraryNode[];
+    /** Ids of collapsed groups, persisted in the project's view state. */
+    collapsed?: number[];
+    onToggleCollapse?: (groupId: number) => void;
+    onCreateGroup?: () => void;
+    onRenameGroup?: (groupId: number, name: string) => void;
+    onDissolveGroup?: (groupId: number) => void;
+    onMoveNode?: (key: string, targetGroupId: number | null, index: number) => void;
+    onRenameRecording?: (mediaId: number, name: string) => void;
+    onDeleteRecording?: (mediaId: number) => void;
+    onUpdateRecordingMetadata?: (mediaId: number, metadata: Metadata) => void;
+    onUpdateProjectMetadata?: (metadata: Metadata) => void;
+    projectDescription?: string;
+    projectAuthors?: string[];
+    projectTags?: string[];
+    /** Media ids removed within the still-open undo window. */
+    pendingRemovals?: number[];
+    /** The most recent removal offered for undo, or null. */
+    removalUndo?: { name: string } | null;
+    onUndoRemoval?: () => void;
   }
 
   let {
@@ -38,17 +76,137 @@
     busy,
     busyLabel,
     dirty,
+    savedAt,
     onOpenRecording,
     onImportFiles,
     onBack,
     onSave,
     onThemeChange,
     onStartRecording,
-    recording = false
+    recording = false,
+    groups,
+    collapsed = [],
+    onToggleCollapse,
+    onCreateGroup,
+    onRenameGroup,
+    onDissolveGroup,
+    onMoveNode,
+    onRenameRecording,
+    onDeleteRecording,
+    onUpdateRecordingMetadata,
+    onUpdateProjectMetadata,
+    projectDescription = '',
+    projectAuthors = [],
+    projectTags = [],
+    pendingRemovals = [],
+    removalUndo = null,
+    onUndoRemoval
   }: Props = $props();
 
   let dragging = $state(false);
   let fileInput = $state<HTMLInputElement | null>(null);
+
+  // The details inspector: the project, one recording, or closed.
+  let details = $state<{ scope: 'project' } | { scope: 'recording'; mediaId: number } | null>(null);
+
+  // Search over recording name, tags, and annotation labels.
+  let query = $state('');
+  let labelMatches = $state<Set<number>>(new Set());
+
+  const byId = $derived(new Map(recordings.map((r) => [r.mediaId, r])));
+  const hidden = $derived(new Set(pendingRemovals));
+  const collapsedSet = $derived(new Set(collapsed));
+
+  const baseTree = $derived(groups ?? flatLibrary(recordings.map((r) => r.mediaId)));
+
+  // The visible media set after search. An empty query shows everything.
+  const visible = $derived.by(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return null;
+    const keep = new Set<number>();
+    for (const rec of recordings) {
+      if (hidden.has(rec.mediaId)) continue;
+      const nameHit = rec.name.toLowerCase().includes(q);
+      const tagHit = rec.tags.some((t) => t.toLowerCase().includes(q));
+      if (nameHit || tagHit || labelMatches.has(rec.mediaId)) keep.add(rec.mediaId);
+    }
+    return keep;
+  });
+
+  // When a search is active the tree is filtered to matching recordings and
+  // their enclosing groups, and collapse is ignored so every hit shows.
+  const tree = $derived(visible ? filterTree(baseTree, visible) : baseTree);
+  const effectiveCollapsed = $derived(visible ? new Set<number>() : collapsedSet);
+
+  const visibleCount = $derived(
+    recordings.filter((r) => !hidden.has(r.mediaId) && (!visible || visible.has(r.mediaId))).length
+  );
+
+  // Annotation-label search runs through the engine, debounced, and resolves to
+  // the recordings whose documents carry a matching label.
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  $effect(() => {
+    const q = query.trim();
+    if (searchTimer) clearTimeout(searchTimer);
+    if (!q || !client) {
+      labelMatches = new Set();
+      return;
+    }
+    const current = client;
+    searchTimer = setTimeout(async () => {
+      try {
+        const hits = await current.searchLabels(q, false);
+        const annToMedia = new Map<string, number>();
+        for (const rec of recordings) {
+          if (rec.annotationId !== null) annToMedia.set(String(rec.annotationId), rec.mediaId);
+        }
+        const next = new Set<number>();
+        for (const hit of hits) {
+          const mediaId = annToMedia.get(String(hit.annotation));
+          if (mediaId !== undefined) next.add(mediaId);
+        }
+        labelMatches = next;
+      } catch {
+        labelMatches = new Set();
+      }
+    }, 180);
+  });
+
+  const detailsSubject = $derived.by(() => {
+    if (!details) return null;
+    if (details.scope === 'project') {
+      return {
+        key: 'project',
+        scope: 'project' as const,
+        title: projectName,
+        description: projectDescription,
+        authors: projectAuthors,
+        tags: projectTags
+      };
+    }
+    const rec = byId.get(details.mediaId);
+    if (!rec) return null;
+    return {
+      key: `recording:${rec.mediaId}`,
+      scope: 'recording' as const,
+      title: rec.name,
+      description: rec.description,
+      authors: rec.authors,
+      tags: rec.tags
+    };
+  });
+
+  const selectedMediaId = $derived(details?.scope === 'recording' ? details.mediaId : null);
+
+  function showRecordingDetails(mediaId: number) {
+    details = { scope: 'recording', mediaId };
+  }
+
+  function saveDetails(metadata: Metadata) {
+    if (!details) return;
+    if (details.scope === 'project') onUpdateProjectMetadata?.(metadata);
+    else onUpdateRecordingMetadata?.(details.mediaId, metadata);
+  }
 
   async function handleDrop(event: DragEvent) {
     event.preventDefault();
@@ -65,10 +223,6 @@
     if (files.length > 0) onImportFiles(files);
   }
 
-  function sampleRateLabel(hz: number): string {
-    return hz >= 1000 ? `${(hz / 1000).toFixed(hz % 1000 === 0 ? 0 : 1)} kHz` : `${hz} Hz`;
-  }
-
   registerCommands([
     {
       id: 'saveProject',
@@ -78,6 +232,24 @@
       keywords: ['write', 'store'],
       enabled: () => dirty,
       run: () => onSave()
+    },
+    {
+      id: 'newGroup',
+      title: 'New group',
+      group: 'Project',
+      keywords: ['folder', 'collection', 'organize', 'library'],
+      enabled: () => onCreateGroup !== undefined,
+      run: () => onCreateGroup?.()
+    },
+    {
+      id: 'projectDetails',
+      title: 'Project details',
+      group: 'Project',
+      keywords: ['metadata', 'description', 'authors', 'tags', 'inspector'],
+      enabled: () => onUpdateProjectMetadata !== undefined,
+      run: () => {
+        details = { scope: 'project' };
+      }
     },
     {
       id: 'backToHome',
@@ -94,7 +266,8 @@
   class:dragging
   data-testid="corpus"
   data-project-name={projectName}
-  data-recording-count={recordings.length}
+  data-recording-count={visibleCount}
+  data-saved-at={savedAt}
   role="region"
   aria-label={`Project ${projectName}`}
   ondragover={(event) => {
@@ -160,98 +333,130 @@
     onchange={handleInput}
   />
 
-  <main class="body">
-    {#if recordings.length === 0}
-      <div class="empty" data-testid="corpus-empty">
-        <p class="empty-lead">No recordings yet.</p>
-        <p class="empty-sub">
-          Drop WAV files here, or choose them. A TextGrid beside a WAV of the same name attaches as
-          its annotation.
-        </p>
-        <div class="empty-actions">
-          <button type="button" class="empty-action" data-testid="corpus-choose-files" onclick={() => fileInput?.click()}>
-            <IconFolderOpen aria-hidden="true" />
-            <span>Choose files</span>
-          </button>
-          {#if onStartRecording}
-            <button
-              type="button"
-              class="empty-action record"
-              data-testid="empty-record"
-              disabled={recording}
-              onclick={() => onStartRecording?.()}
-            >
-              <IconMic aria-hidden="true" />
-              <span>Record</span>
+  <div class="workbench">
+    <main class="body">
+      {#if recordings.length === 0}
+        <div class="empty" data-testid="corpus-empty">
+          <p class="empty-lead">No recordings yet.</p>
+          <p class="empty-sub">
+            Drop WAV files here, or choose them. A TextGrid beside a WAV of the same name attaches as
+            its annotation.
+          </p>
+          <div class="empty-actions">
+            <button type="button" class="empty-action" data-testid="corpus-choose-files" onclick={() => fileInput?.click()}>
+              <IconFolderOpen aria-hidden="true" />
+              <span>Choose files</span>
             </button>
-          {/if}
+            {#if onStartRecording}
+              <button
+                type="button"
+                class="empty-action record"
+                data-testid="empty-record"
+                disabled={recording}
+                onclick={() => onStartRecording?.()}
+              >
+                <IconMic aria-hidden="true" />
+                <span>Record</span>
+              </button>
+            {/if}
+          </div>
         </div>
-      </div>
-    {:else}
-      <table class="corpus">
-        <thead>
-          <tr>
-            <th class="thumb-col">Waveform</th>
-            <th>Name</th>
-            <th class="num">Duration</th>
-            <th class="num">Sample rate</th>
-            <th class="num">Channels</th>
-            <th>Annotation</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each recordings as recording (recording.mediaId)}
-            <tr
-              class="row"
-              data-testid="corpus-row"
-              data-recording-name={recording.name}
-              data-has-annotation={recording.hasAnnotation}
-              tabindex="0"
-              role="button"
-              onclick={() => onOpenRecording(recording)}
-              onkeydown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  onOpenRecording(recording);
-                }
-              }}
-            >
-              <td class="thumb-col">
-                <WaveThumb
-                  {client}
-                  audioId={recording.audioId}
-                  duration={recording.duration}
-                  {theme}
-                />
-              </td>
-              <td class="name-cell">{recording.name}</td>
-              <td class="num">{formatTime(recording.duration)}</td>
-              <td class="num">{sampleRateLabel(recording.sampleRate)}</td>
-              <td class="num">{recording.channels}</td>
-              <td>
-                {#if recording.hasAnnotation}
-                  <span class="tag" data-testid="annotation-present">
-                    <IconTags aria-hidden="true" />tiers
-                  </span>
-                {:else}
-                  <span class="tag muted">—</span>
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+      {:else}
+        <div class="toolbar">
+          <div class="search">
+            <IconSearch class="search-icon" aria-hidden="true" />
+            <input
+              type="search"
+              class="search-input"
+              data-testid="corpus-search"
+              placeholder="Search recordings, tags, labels"
+              autocomplete="off"
+              spellcheck="false"
+              bind:value={query}
+            />
+          </div>
+          <div class="toolbar-actions">
+            {#if onCreateGroup}
+              <button type="button" class="tool" data-testid="new-group" onclick={() => onCreateGroup?.()}>
+                <IconFolderPlus aria-hidden="true" />
+                <span>New group</span>
+              </button>
+            {/if}
+            {#if onUpdateProjectMetadata}
+              <button
+                type="button"
+                class="tool"
+                class:active={details?.scope === 'project'}
+                data-testid="project-details"
+                onclick={() => (details = details?.scope === 'project' ? null : { scope: 'project' })}
+              >
+                <IconInfo aria-hidden="true" />
+                <span>Details</span>
+              </button>
+            {/if}
+          </div>
+        </div>
+
+        <LibraryTree
+          {client}
+          {theme}
+          {recordings}
+          {tree}
+          collapsed={effectiveCollapsed}
+          {hidden}
+          {selectedMediaId}
+          onOpen={(mediaId) => {
+            const rec = byId.get(mediaId);
+            if (rec) onOpenRecording(rec);
+          }}
+          onRenameRecording={(mediaId, name) => onRenameRecording?.(mediaId, name)}
+          onDeleteRecording={(mediaId) => onDeleteRecording?.(mediaId)}
+          onShowDetails={showRecordingDetails}
+          onToggleCollapse={(groupId) => onToggleCollapse?.(groupId)}
+          onRenameGroup={(groupId, name) => onRenameGroup?.(groupId, name)}
+          onDissolveGroup={(groupId) => onDissolveGroup?.(groupId)}
+          onMove={(key, target, index) => onMoveNode?.(key, target, index)}
+        />
+
+        {#if visibleCount === 0 && query.trim()}
+          <p class="no-hits" data-testid="corpus-search-empty">No recordings match “{query.trim()}”.</p>
+        {/if}
+      {/if}
+    </main>
+
+    {#if detailsSubject}
+      {#key detailsSubject.key}
+        <MetadataPanel
+          scope={detailsSubject.scope}
+          title={detailsSubject.title}
+          description={detailsSubject.description}
+          authors={detailsSubject.authors}
+          tags={detailsSubject.tags}
+          onSave={saveDetails}
+          onClose={() => (details = null)}
+        />
+      {/key}
     {/if}
-  </main>
-
-  {#if dragging}
-    <div class="drop-hint" aria-hidden="true"><span>Drop to add recordings</span></div>
-  {/if}
-
-  {#if busy}
-    <div class="busy" role="status" data-testid="corpus-busy">{busyLabel}</div>
-  {/if}
+  </div>
 </div>
+
+{#if removalUndo}
+  <div class="undo-banner" role="status" data-testid="removal-undo">
+    <span>Recording “{removalUndo.name}” removed.</span>
+    <button type="button" class="undo" data-testid="removal-undo-action" onclick={() => onUndoRemoval?.()}>
+      <IconRotateCcw aria-hidden="true" />
+      <span>Undo</span>
+    </button>
+  </div>
+{/if}
+
+{#if dragging}
+  <div class="drop-hint" aria-hidden="true"><span>Drop to add recordings</span></div>
+{/if}
+
+{#if busy}
+  <div class="busy" role="status" data-testid="corpus-busy">{busyLabel}</div>
+{/if}
 
 <style>
   .project {
@@ -368,10 +573,80 @@
     color: var(--warn);
   }
 
+  .workbench {
+    min-height: 0;
+    display: flex;
+    overflow: hidden;
+  }
+
   .body {
+    flex: 1;
+    min-width: 0;
     min-height: 0;
     overflow: auto;
     padding: 1.25rem 1.5rem;
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.9rem;
+    flex-wrap: wrap;
+  }
+
+  .search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1;
+    max-width: 24rem;
+  }
+
+  .search :global(.search-icon) {
+    position: absolute;
+    left: 0.6rem;
+    color: var(--muted);
+    font-size: 0.95rem;
+    pointer-events: none;
+  }
+
+  .search-input {
+    width: 100%;
+    font: inherit;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--chrome-strong);
+    border-radius: var(--radius-md);
+    padding: 0.4rem 0.6rem 0.4rem 2rem;
+  }
+
+  .search-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent);
+  }
+
+  .toolbar-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .tool {
+    color: var(--muted);
+  }
+
+  .tool.active {
+    color: var(--accent-strong);
+    border-color: color-mix(in oklab, var(--accent) 45%, var(--chrome-strong));
+    background: var(--accent-tint);
+  }
+
+  .no-hits {
+    margin-top: 1rem;
+    color: var(--muted);
+    font-size: 0.9rem;
   }
 
   .empty {
@@ -403,6 +678,10 @@
     margin-top: 0.4rem;
   }
 
+  .empty-action.record :global(svg) {
+    color: var(--danger);
+  }
+
   .record:disabled {
     opacity: 0.5;
   }
@@ -411,96 +690,34 @@
     display: none;
   }
 
-  .corpus {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-    font-size: 0.9rem;
-    border: 1px solid var(--chrome-strong);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    background: var(--panel);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .corpus thead th {
-    text-align: left;
-    padding: 0.55rem 0.8rem;
-    border-bottom: 1px solid var(--chrome-strong);
-    color: var(--muted);
-    font-weight: 500;
-    font-size: 0.72rem;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    position: sticky;
-    top: 0;
-    background: var(--panel-soft);
-    z-index: 1;
-  }
-
-  .corpus th.num,
-  .corpus td.num {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .row {
-    cursor: pointer;
-    transition: background var(--t-fast);
-  }
-
-  .row td {
-    padding: 0.5rem 0.8rem;
-    border-bottom: 1px solid color-mix(in oklab, var(--chrome-strong) 65%, transparent);
-    vertical-align: middle;
-  }
-
-  .row:last-child td {
-    border-bottom: none;
-  }
-
-  .row:hover td {
-    background: var(--accent-tint);
-  }
-
-  .row:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: -2px;
-  }
-
-  .thumb-col {
-    width: 156px;
-  }
-
-  .thumb-col :global(.thumb) {
-    border: 1px solid var(--chrome-strong);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .name-cell {
-    font-weight: 500;
-  }
-
-  .tag {
-    display: inline-flex;
+  .undo-banner {
+    position: fixed;
+    left: 50%;
+    bottom: 1.25rem;
+    transform: translateX(-50%);
+    display: flex;
     align-items: center;
-    gap: 0.28rem;
-    padding: 0.12rem 0.55rem;
-    border-radius: var(--radius-pill, 999px);
-    background: var(--accent-tint);
-    color: var(--accent-strong);
-    font-size: 0.76rem;
-    border: 1px solid color-mix(in oklab, var(--accent) 30%, transparent);
-  }
-
-  .tag :global(svg) {
+    gap: 0.9rem;
+    padding: 0.5rem 0.6rem 0.5rem 0.95rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--chrome-strong);
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: var(--shadow-lg);
     font-size: 0.85rem;
+    z-index: 15;
   }
 
-  .tag.muted {
+  .undo-banner .undo {
+    color: var(--accent-strong);
     background: transparent;
-    color: var(--muted);
+    box-shadow: none;
     border-color: transparent;
+  }
+
+  .undo-banner .undo:hover {
+    background: var(--accent-tint);
+    border-color: color-mix(in oklab, var(--accent) 30%, transparent);
   }
 
   .drop-hint {

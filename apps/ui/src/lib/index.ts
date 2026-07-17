@@ -6,6 +6,8 @@ export { default as HomeView } from './HomeView.svelte';
 export { default as InlineRename } from './InlineRename.svelte';
 export { default as InspectorPanel } from './InspectorPanel.svelte';
 export { default as LabelEditor } from './LabelEditor.svelte';
+export { default as LibraryTree } from './LibraryTree.svelte';
+export { default as MetadataPanel } from './MetadataPanel.svelte';
 export { default as OverviewStrip } from './OverviewStrip.svelte';
 export { default as ProjectCard } from './ProjectCard.svelte';
 export { default as ProjectView } from './ProjectView.svelte';
@@ -25,6 +27,7 @@ export { filesFromDataTransfer } from './dnd';
 export {
   createGroup,
   dissolveGroup,
+  filterTree,
   flatLibrary,
   flattenTree,
   isGroup,
