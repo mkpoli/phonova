@@ -101,6 +101,7 @@
   }
 
   .open {
+    flex: 1;
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
