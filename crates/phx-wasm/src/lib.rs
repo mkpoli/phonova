@@ -728,6 +728,74 @@ impl phx_engine::ByteReader for JsByteReader {
     }
 }
 
+/// Header facts of a WAV read through a `readAt(offset, length) -> Uint8Array`
+/// callback, without decoding any samples.
+///
+/// The worker reads this before importing so it can route a file over the eager
+/// frame threshold to [`WasmEngine::open_streaming_wav`] and a shorter one to
+/// [`WasmEngine::import_wav_bytes`], each at header speed. `frames` is `f64`
+/// because a JavaScript number holds a frame count exactly well past any real
+/// recording length.
+#[wasm_bindgen]
+pub struct WavStreamHeader {
+    frames: f64,
+    sample_rate: f64,
+    channels: u32,
+}
+
+#[wasm_bindgen]
+impl WavStreamHeader {
+    /// Frame count (per-channel samples).
+    #[wasm_bindgen(getter)]
+    #[must_use]
+    pub fn frames(&self) -> f64 {
+        self.frames
+    }
+
+    /// Sample rate in hertz.
+    #[wasm_bindgen(getter, js_name = sampleRate)]
+    #[must_use]
+    pub fn sample_rate(&self) -> f64 {
+        self.sample_rate
+    }
+
+    /// Channel count.
+    #[wasm_bindgen(getter)]
+    #[must_use]
+    pub fn channels(&self) -> u32 {
+        self.channels
+    }
+}
+
+/// Reads a WAV's header through a synchronous `readAt(offset, length)` callback
+/// and returns its facts without decoding any samples.
+///
+/// `totalLen` is the file's byte length. The worker calls this to decide,
+/// before any decode, whether a file belongs on the eager or the streamed
+/// import path.
+///
+/// # Errors
+/// Rejects when the header is malformed, the sample format is unsupported, or
+/// `readAt` fails.
+#[wasm_bindgen(js_name = wavStreamHeader)]
+pub fn wav_stream_header(
+    total_len: f64,
+    read_at: js_sys::Function,
+) -> Result<WavStreamHeader, JsError> {
+    let reader = JsByteReader {
+        read_at,
+        len: total_len as u64,
+    };
+    let info = phx_engine::StreamingWav::open(reader)
+        .map_err(|err| JsError::new(&err.to_string()))?
+        .info();
+    Ok(WavStreamHeader {
+        frames: info.frames as f64,
+        sample_rate: info.sample_rate,
+        channels: info.channels as u32,
+    })
+}
+
 /// Session engine surface exposed to JavaScript.
 ///
 /// Wraps [`phx_engine::Engine`]: import, audio metadata, waveform pyramid
@@ -2173,6 +2241,52 @@ pub fn rename_project_container(bytes: &[u8], name: &str) -> Result<Uint8Array, 
 #[must_use]
 pub fn content_hash(bytes: &[u8]) -> String {
     ContentHash::of(bytes).to_hex()
+}
+
+/// Incremental content hasher for a file hashed in chunks.
+///
+/// A streamed import never holds the whole file, so the worker reads it in
+/// bounded slices through its OPFS handle and feeds each to [`update`]; the
+/// final [`finalizeHex`] equals [`contentHash`] over the concatenation, so a
+/// recording carries the same content address whether it was imported eager or
+/// streamed.
+///
+/// [`update`]: WasmContentHasher::update
+/// [`finalizeHex`]: WasmContentHasher::finalize_hex
+#[wasm_bindgen]
+pub struct WasmContentHasher {
+    inner: blake3::Hasher,
+}
+
+#[wasm_bindgen]
+impl WasmContentHasher {
+    /// Creates an empty hasher.
+    #[wasm_bindgen(constructor)]
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            inner: blake3::Hasher::new(),
+        }
+    }
+
+    /// Absorbs the next chunk of file bytes.
+    pub fn update(&mut self, bytes: &[u8]) {
+        self.inner.update(bytes);
+    }
+
+    /// Finishes the hash as 64 lowercase hex characters, equal to
+    /// [`contentHash`] over the same bytes.
+    #[wasm_bindgen(js_name = finalizeHex)]
+    #[must_use]
+    pub fn finalize_hex(&self) -> String {
+        self.inner.finalize().to_hex().to_string()
+    }
+}
+
+impl Default for WasmContentHasher {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// A figure export bundle crossing the boundary: the main document plus any
