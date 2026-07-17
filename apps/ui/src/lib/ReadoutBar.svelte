@@ -115,6 +115,7 @@
     justify-content: space-between;
     gap: 1rem;
     flex-wrap: wrap;
+    min-height: 2.1rem;
     padding: 0.3rem 0.75rem;
     border-bottom: 1px solid var(--chrome-strong);
     background: var(--panel);
@@ -170,6 +171,7 @@
     border-radius: var(--radius-sm);
     background: var(--panel-soft);
     color: var(--text);
+    min-height: 1.6rem;
     padding: 0.22rem 0.55rem;
     font-size: 0.76rem;
     transition:

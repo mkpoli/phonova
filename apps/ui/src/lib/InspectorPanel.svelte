@@ -264,6 +264,7 @@
 
   input[type='number'] {
     width: 100%;
+    min-height: 2rem;
     padding: 0.32rem 0.45rem;
     border: 1px solid var(--chrome-strong);
     border-radius: var(--radius-sm);

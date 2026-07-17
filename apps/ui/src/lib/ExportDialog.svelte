@@ -494,7 +494,7 @@
     align-items: center;
     justify-content: center;
     padding: 0.75rem;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--chrome-strong);
     background:
       linear-gradient(45deg, rgba(148, 163, 184, 0.12) 25%, transparent 25%) 0 0 / 16px 16px,
@@ -525,7 +525,7 @@
 
   fieldset {
     border: 1px solid var(--chrome-strong);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 0.55rem 0.7rem 0.7rem;
     margin: 0;
   }
@@ -556,6 +556,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
+    margin: 0.5rem 0;
     font-size: 0.72rem;
     color: var(--muted);
     flex: 1 1 4rem;
@@ -565,9 +566,10 @@
   .field select,
   .controls > fieldset select {
     border: 1px solid var(--chrome-strong);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     background: var(--panel-soft);
     color: var(--text);
+    min-height: 2rem;
     padding: 0.25rem 0.4rem;
     font-size: 0.82rem;
     width: 100%;
@@ -576,7 +578,7 @@
   .segmented {
     display: inline-flex;
     border: 1px solid var(--chrome-strong);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
   }
 

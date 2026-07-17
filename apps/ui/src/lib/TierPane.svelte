@@ -783,6 +783,7 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
+    min-height: 2.1rem;
     padding: 0.35rem 0.6rem;
     border-bottom: 1px solid var(--chrome-strong);
     background: var(--panel-soft);
@@ -801,6 +802,7 @@
     border-radius: var(--radius-sm);
     background: var(--panel);
     color: var(--text);
+    min-height: 1.6rem;
     padding: 0.2rem 0.5rem;
     font-size: 0.8rem;
     transition:
