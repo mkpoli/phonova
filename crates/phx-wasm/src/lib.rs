@@ -3,11 +3,12 @@
 
 use js_sys::{Float32Array, Float64Array, Uint8Array};
 use phx_engine::{
-    AlignMode, Annotation, AnnotationId, Applied, AudioId, BoundaryId, Colormap as EngineColormap,
-    Command, DisplayMapping, Engine, ExportBundle, Figure, FigureFormat, FigureRequest,
-    FormantParams, IntensityParams, IntervalId, LabelPattern, LabelQuery, LabelTarget, PitchParams,
-    PointId, RecordingId, SpectrogramParams, Theme as EngineTheme, Tier, TierId, TierRelation,
-    TileRequest, export_figure as engine_export_figure, figure_to_svg,
+    AlignMode, Annotation, AnnotationId, Applied, AudioId, BitDepth, BoundaryId,
+    Colormap as EngineColormap, Command, DisplayMapping, Engine, ExportBundle, Figure,
+    FigureFormat, FigureRequest, FormantParams, IntensityParams, IntervalId, LabelPattern,
+    LabelQuery, LabelTarget, PitchParams, PointId, RecordingId, SpectrogramParams,
+    Theme as EngineTheme, Tier, TierId, TierRelation, TileRequest,
+    export_figure as engine_export_figure, figure_to_svg,
 };
 use phx_project::{ContentHash, MediaId, MediaRef, Project};
 use serde::{Deserialize, Serialize};
@@ -42,6 +43,31 @@ impl From<WasmColormap> for EngineColormap {
             WasmColormap::Plasma => EngineColormap::Plasma,
             WasmColormap::Cividis => EngineColormap::Cividis,
             WasmColormap::Grayscale => EngineColormap::Grayscale,
+        }
+    }
+}
+
+/// WAV output bit depth and sample format exposed to JavaScript.
+#[wasm_bindgen]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WasmBitDepth {
+    /// 16-bit signed PCM.
+    Pcm16,
+    /// 24-bit signed PCM.
+    Pcm24,
+    /// 32-bit signed PCM.
+    Pcm32,
+    /// 32-bit IEEE float, lossless for the engine's `[-1, 1]` signal.
+    Float32,
+}
+
+impl From<WasmBitDepth> for BitDepth {
+    fn from(value: WasmBitDepth) -> Self {
+        match value {
+            WasmBitDepth::Pcm16 => BitDepth::Pcm16,
+            WasmBitDepth::Pcm24 => BitDepth::Pcm24,
+            WasmBitDepth::Pcm32 => BitDepth::Pcm32,
+            WasmBitDepth::Float32 => BitDepth::Float32,
         }
     }
 }
@@ -258,6 +284,8 @@ pub struct WasmApplied {
     tier: Option<u64>,
     boundary: Option<u64>,
     point: Option<u64>,
+    name: Option<String>,
+    annotations: Vec<u64>,
 }
 
 #[wasm_bindgen]
@@ -297,16 +325,49 @@ impl WasmApplied {
     pub fn point(&self) -> Option<u64> {
         self.point
     }
+
+    /// Name now in place, when the effect renamed an audio buffer.
+    #[wasm_bindgen(getter)]
+    pub fn name(&self) -> Option<String> {
+        self.name.clone()
+    }
+
+    /// Documents detached or restored alongside an audio buffer, when the
+    /// effect cascaded to any.
+    #[wasm_bindgen(getter)]
+    pub fn annotations(&self) -> Vec<u64> {
+        self.annotations.clone()
+    }
 }
 
 impl From<Applied> for WasmApplied {
     fn from(applied: Applied) -> Self {
+        let mut name: Option<String> = None;
+        let mut annotations: Vec<u64> = Vec::new();
         let (kind, annotation, audio, tier, boundary, point) = match applied {
             Applied::AudioImported { audio } => {
                 ("audioImported", None, Some(audio), None, None, None)
             }
             Applied::AudioRemoved { audio } => {
                 ("audioRemoved", None, Some(audio), None, None, None)
+            }
+            Applied::AudioRenamed { audio, name: n } => {
+                name = Some(n);
+                ("audioRenamed", None, Some(audio), None, None, None)
+            }
+            Applied::AudioDetached {
+                audio,
+                annotations: anns,
+            } => {
+                annotations = anns.into_iter().map(IdExt::id).collect();
+                ("audioDetached", None, Some(audio), None, None, None)
+            }
+            Applied::AudioRestored {
+                audio,
+                annotations: anns,
+            } => {
+                annotations = anns.into_iter().map(IdExt::id).collect();
+                ("audioRestored", None, Some(audio), None, None, None)
             }
             Applied::AnnotationAttached { annotation, audio } => (
                 "annotationAttached",
@@ -417,6 +478,8 @@ impl From<Applied> for WasmApplied {
             tier: tier.map(IdExt::id),
             boundary: boundary.map(IdExt::id),
             point: point.map(IdExt::id),
+            name,
+            annotations,
         }
     }
 }
@@ -1552,6 +1615,102 @@ impl WasmEngine {
         Ok(applied.into())
     }
 
+    /// Renames a stored audio buffer. Undo restores the prior name.
+    ///
+    /// # Errors
+    /// Rejects when `id` names no live store entry.
+    #[wasm_bindgen(js_name = renameAudio)]
+    pub fn rename_audio(&mut self, id: u64, name: String) -> Result<WasmApplied, JsError> {
+        let applied = self.inner.apply(Command::RenameAudio {
+            id: AudioId::from_u64(id),
+            name,
+        })?;
+        Ok(applied.into())
+    }
+
+    /// Detaches a stored audio buffer, cascading to every annotation document
+    /// that references it. Undo restores the audio and those documents together.
+    ///
+    /// # Errors
+    /// Rejects when `id` names no live store entry.
+    #[wasm_bindgen(js_name = detachAudio)]
+    pub fn detach_audio(&mut self, id: u64) -> Result<WasmApplied, JsError> {
+        let applied = self.inner.apply(Command::DetachAudio {
+            id: AudioId::from_u64(id),
+        })?;
+        Ok(applied.into())
+    }
+
+    /// Renders the time span `[t0, t1]` of `id` band-filtered to `[fLow, fHigh]`
+    /// as a mono `Float32Array` at the source sample rate, for audible playback
+    /// of a box selection.
+    ///
+    /// # Errors
+    /// Rejects when `id` names no live store entry, when a bound is not finite,
+    /// or when a streamed span cannot be decoded.
+    #[wasm_bindgen(js_name = bandFilteredSpan)]
+    pub fn band_filtered_span(
+        &mut self,
+        id: u64,
+        t0: f64,
+        t1: f64,
+        f_low: f64,
+        f_high: f64,
+    ) -> Result<Float32Array, JsError> {
+        let samples =
+            self.inner
+                .band_filtered_span(AudioId::from_u64(id), t0, t1, f_low, f_high)?;
+        Ok(Float32Array::from(samples.as_slice()))
+    }
+
+    /// Encodes the time span `[t0, t1]` of `id` as WAV bytes at `bits`, with no
+    /// filtering — the exact sample slice, bit-for-bit with a direct slice at
+    /// [`WasmBitDepth::Float32`].
+    ///
+    /// # Errors
+    /// Rejects when `id` names no live store entry, when a bound is not finite,
+    /// or when the span cannot be decoded or encoded.
+    #[wasm_bindgen(js_name = exportSpanWav)]
+    pub fn export_span_wav(
+        &self,
+        id: u64,
+        t0: f64,
+        t1: f64,
+        bits: WasmBitDepth,
+    ) -> Result<Uint8Array, JsError> {
+        let wav = self
+            .inner
+            .export_span_wav(AudioId::from_u64(id), t0, t1, bits.into())?;
+        Ok(Uint8Array::from(wav.as_slice()))
+    }
+
+    /// Encodes the band-filtered time span `[t0, t1]` of `id` as mono WAV bytes
+    /// at `bits` — the "save selection as audio" path for a filtered selection.
+    ///
+    /// # Errors
+    /// Rejects when `id` names no live store entry, when a bound is not finite,
+    /// or when the span cannot be decoded or encoded.
+    #[wasm_bindgen(js_name = exportBandFilteredSpanWav)]
+    pub fn export_band_filtered_span_wav(
+        &mut self,
+        id: u64,
+        t0: f64,
+        t1: f64,
+        f_low: f64,
+        f_high: f64,
+        bits: WasmBitDepth,
+    ) -> Result<Uint8Array, JsError> {
+        let wav = self.inner.export_band_filtered_span_wav(
+            AudioId::from_u64(id),
+            t0,
+            t1,
+            f_low,
+            f_high,
+            bits.into(),
+        )?;
+        Ok(Uint8Array::from(wav.as_slice()))
+    }
+
     /// Undoes the most recent command. Returns `undefined` when nothing is left
     /// to undo.
     ///
@@ -2632,5 +2791,54 @@ mod tests {
         engine.undo().unwrap();
         assert_eq!(engine.state_hash(), before_reorder);
         assert_eq!(engine.annotation_tiers(doc).unwrap().ids()[0], primary);
+    }
+
+    #[wasm_bindgen_test]
+    fn rename_detach_and_span_audio_cross_the_boundary() {
+        let mut engine = WasmEngine::new();
+        let audio = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let info = engine.audio_info(audio).unwrap();
+        let dur = info.duration();
+
+        // Rename: the effect names the new name and the read-back agrees.
+        let renamed = engine.rename_audio(audio, "vowel-a".to_string()).unwrap();
+        assert_eq!(renamed.kind(), "audioRenamed");
+        assert_eq!(renamed.name().as_deref(), Some("vowel-a"));
+        assert_eq!(
+            engine.audio_info(audio).unwrap().name().as_deref(),
+            Some("vowel-a")
+        );
+        engine.undo().unwrap();
+        assert_eq!(engine.audio_info(audio).unwrap().name(), info.name());
+
+        // Unfiltered span export decodes bit-for-bit to a direct waveform read
+        // is covered in the engine; here assert the bytes are a valid WAV that
+        // reimports to the same span duration.
+        let (t0, t1) = (dur * 0.25, dur * 0.75);
+        let wav = engine
+            .export_span_wav(audio, t0, t1, WasmBitDepth::Float32)
+            .unwrap();
+        let mut check = WasmEngine::new();
+        let reimported = check.import_wav_bytes(&wav.to_vec()).unwrap();
+        let span_info = check.audio_info(reimported).unwrap();
+        assert!((span_info.duration() - (t1 - t0)).abs() < 2.0 / info.sample_rate());
+
+        // Band-filtered span returns a mono buffer roughly the span length.
+        let filtered = engine
+            .band_filtered_span(audio, t0, t1, 300.0, 3000.0)
+            .unwrap();
+        let expected = ((t1 - t0) * info.sample_rate()).round() as u32;
+        assert!(filtered.length().abs_diff(expected) <= 2);
+
+        // Detach cascades to the document and undo restores both.
+        let doc = engine.create_annotation(audio, 0.0, dur).unwrap();
+        let before = engine.state_hash();
+        let detached = engine.detach_audio(audio).unwrap();
+        assert_eq!(detached.kind(), "audioDetached");
+        assert_eq!(detached.annotations(), vec![doc]);
+        assert!(engine.audio_info(audio).is_err());
+        engine.undo().unwrap();
+        assert_eq!(engine.state_hash(), before);
+        assert!(engine.audio_info(audio).is_ok());
     }
 }
