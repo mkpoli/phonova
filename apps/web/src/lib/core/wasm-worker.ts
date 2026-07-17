@@ -1,4 +1,5 @@
 import init, {
+	WasmBitDepth,
 	WasmColormap,
 	WasmContentHasher,
 	WasmEngine,
@@ -7,6 +8,7 @@ import init, {
 	contentHash as wasmContentHash,
 	exportFigure as wasmExportFigure,
 	loadProjectContainer as wasmLoadProjectContainer,
+	readProjectBundle as wasmReadProjectBundle,
 	renameProjectContainer as wasmRenameProjectContainer,
 	renderFigureSvg as wasmRenderFigureSvg,
 	wavStreamHeader as wasmWavStreamHeader
@@ -21,7 +23,8 @@ import type {
   PointId,
   SpectrogramTileRequest,
   TierId,
-  TierInfo
+  TierInfo,
+  WavBitDepth
 } from './types';
 
 type RequestMessage =
@@ -170,8 +173,22 @@ type RequestMessage =
   | { id: number; method: 'annotationJson'; annotationId: AnnotationId }
   | { id: number; method: 'attachAnnotationJson'; audioId: AudioId; json: string }
   | { id: number; method: 'saveProjectContainer'; specJson: string }
+  | { id: number; method: 'saveProjectBundle'; specJson: string; ids: number[]; media: ArrayBuffer[] }
   | { id: number; method: 'loadProjectContainer'; bytes: ArrayBuffer }
+  | { id: number; method: 'readProjectBundle'; bytes: ArrayBuffer }
   | { id: number; method: 'renameProjectContainer'; bytes: ArrayBuffer; name: string }
+  | { id: number; method: 'contentHash'; bytes: ArrayBuffer }
+  | { id: number; method: 'exportSpanWav'; audioId: AudioId; t0: number; t1: number; bits: WavBitDepth }
+  | {
+      id: number;
+      method: 'exportBandFilteredSpanWav';
+      audioId: AudioId;
+      t0: number;
+      t1: number;
+      fLow: number;
+      fHigh: number;
+      bits: WavBitDepth;
+    }
   | { id: number; method: 'buildFigure'; spec: FigureSpec }
   | { id: number; method: 'renderFigureSvg'; figureJson: string }
   | { id: number; method: 'exportFigure'; figureJson: string; format: FigureExportFormat };
@@ -807,10 +824,61 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
         postMessage({ id: message.id, ok: true, result: copy }, { transfer: [copy.buffer] });
         return;
       }
+      case 'saveProjectBundle': {
+        const ids = BigUint64Array.from(message.ids.map((id) => BigInt(id)));
+        const media = message.media.map((buffer) => new Uint8Array(buffer));
+        const bytes = wasm.saveProjectBundle(message.specJson, ids, media);
+        const copy = new Uint8Array(bytes.length);
+        copy.set(bytes);
+        postMessage({ id: message.id, ok: true, result: copy }, { transfer: [copy.buffer] });
+        return;
+      }
       case 'loadProjectContainer': {
         const bytes = new Uint8Array(message.bytes);
         const result = wasmLoadProjectContainer(bytes);
         postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'readProjectBundle': {
+        const bytes = new Uint8Array(message.bytes);
+        const bundle = wasmReadProjectBundle(bytes);
+        const ids = Array.from(bundle.embeddedIds, (id) => Number(id));
+        const transfer: Transferable[] = [];
+        const media = ids.map((_, index) => {
+          const source = bundle.embeddedWav(index);
+          const copy = new Uint8Array(source.length);
+          copy.set(source);
+          transfer.push(copy.buffer);
+          return copy.buffer;
+        });
+        const result = { meta: bundle.meta, ids, media };
+        postMessage({ id: message.id, ok: true, result }, { transfer });
+        return;
+      }
+      case 'contentHash': {
+        const result = wasmContentHash(new Uint8Array(message.bytes));
+        postMessage({ id: message.id, ok: true, result } satisfies ResponseMessage);
+        return;
+      }
+      case 'exportSpanWav': {
+        const bytes = wasm.exportSpanWav(message.audioId, message.t0, message.t1, WasmBitDepth[message.bits]);
+        const copy = new Uint8Array(bytes.length);
+        copy.set(bytes);
+        postMessage({ id: message.id, ok: true, result: copy }, { transfer: [copy.buffer] });
+        return;
+      }
+      case 'exportBandFilteredSpanWav': {
+        const bytes = wasm.exportBandFilteredSpanWav(
+          message.audioId,
+          message.t0,
+          message.t1,
+          message.fLow,
+          message.fHigh,
+          WasmBitDepth[message.bits]
+        );
+        const copy = new Uint8Array(bytes.length);
+        copy.set(bytes);
+        postMessage({ id: message.id, ok: true, result: copy }, { transfer: [copy.buffer] });
         return;
       }
       case 'renameProjectContainer': {

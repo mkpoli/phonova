@@ -1,6 +1,25 @@
 import type { FinishedRecordingResult, WasmCoreClient } from '$lib/core/WasmCoreClient';
 import { flatLibrary, pruneMedia } from '@phonia/ui';
-import type { LibraryNode, ProjectSummary, RecordingEntry, SaveProjectSpec } from '$lib/core/types';
+import type {
+  LibraryNode,
+  ProjectExportMode,
+  ProjectSummary,
+  RecordingEntry,
+  SaveProjectSpec
+} from '$lib/core/types';
+
+/** A recording an imported project references but whose media could not be found. */
+export interface MissingMedia {
+  mediaId: number;
+  name: string;
+  hash: string;
+}
+
+/** The outcome of importing a project file: the opened project and any media gaps. */
+export interface ImportResult {
+  project: ProjectState;
+  gaps: MissingMedia[];
+}
 
 /** Directory under OPFS that holds one subdirectory per project. */
 const PROJECTS_DIR = 'phonix-projects';
@@ -555,6 +574,99 @@ export class ProjectStore {
     }
     project.recordings = project.recordings.filter((r) => !remove.has(r.mediaId));
     project.groups = pruneMedia(project.groups, remove);
+  }
+
+  /**
+   * Serializes the open project as a downloadable `.phxproj`.
+   *
+   * A `bundle` export embeds every recording's WAV bytes so the file restores
+   * on any machine; a `references` export writes the manifest only, and an
+   * importer re-links each recording by content hash against media it already
+   * holds.
+   */
+  async exportProject(project: ProjectState, mode: ProjectExportMode): Promise<Uint8Array> {
+    const spec = this.#spec(project, Math.max(Date.now(), project.savedAt));
+    if (mode === 'references') return this.#client.saveProjectContainer(spec);
+    const dir = await projectDir(project.id, false);
+    const audioDir = await dir.getDirectoryHandle(AUDIO_DIR, { create: false });
+    const media: Array<{ mediaId: number; bytes: Uint8Array }> = [];
+    for (const recording of project.recordings) {
+      if (recording.audioId === null) continue;
+      const bytes = await readFileBytes(audioDir, recording.fileName);
+      if (bytes) media.push({ mediaId: recording.mediaId, bytes });
+    }
+    return this.#client.saveProjectBundle(spec, media);
+  }
+
+  /**
+   * Imports a `.phxproj` into a fresh project directory and opens it.
+   *
+   * A self-contained bundle restores its embedded recordings into OPFS
+   * directly. A references-only file re-links each recording by content hash
+   * against media already present in other projects; a recording that resolves
+   * to no local file is reported as a {@link MissingMedia} gap and stays in the
+   * corpus unresolved.
+   */
+  async importProjectFile(file: File): Promise<ImportResult> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const { meta, media } = await this.#client.readProjectBundle(bytes);
+    const embedded = new Map(media.map((m) => [m.mediaId, m.bytes]));
+
+    const id = crypto.randomUUID();
+    const dir = await projectDir(id, true);
+    const audioDir = await dir.getDirectoryHandle(AUDIO_DIR, { create: true });
+    const gaps: MissingMedia[] = [];
+
+    for (const entry of meta.media) {
+      const fileName = entry.relativePath.split('/').pop() ?? entry.relativePath;
+      const bundled = embedded.get(entry.mediaId);
+      if (bundled) {
+        await writeFileBytes(audioDir, fileName, bundled);
+        continue;
+      }
+      const relinked = await this.#relinkByHash(entry.hash, id);
+      if (relinked) await writeFileBytes(audioDir, fileName, relinked);
+      else gaps.push({ mediaId: entry.mediaId, name: stem(fileName), hash: entry.hash });
+    }
+
+    // Persist a references-only container beside the restored media: re-saving
+    // through the rename path strips any embedded bytes, so the stored project
+    // stays lean and its autosave writes match.
+    const container = await this.#client.renameProjectContainer(bytes, meta.name);
+    await writeFileBytes(dir, PROJECT_FILE, container);
+
+    const { project } = await this.open(id);
+    return { project, gaps };
+  }
+
+  /**
+   * Finds a recording's bytes by content hash among media already in OPFS,
+   * skipping the project being imported into. Returns the first byte-identical
+   * file found, or null when none matches.
+   */
+  async #relinkByHash(hash: string, skipId: string): Promise<Uint8Array | null> {
+    let dir: FileSystemDirectoryHandle;
+    try {
+      dir = await projectsDir(false);
+    } catch {
+      return null;
+    }
+    for await (const [projectId, handle] of entries(dir)) {
+      if (handle.kind !== 'directory' || projectId === skipId) continue;
+      let audioDir: FileSystemDirectoryHandle;
+      try {
+        audioDir = await (handle as FileSystemDirectoryHandle).getDirectoryHandle(AUDIO_DIR);
+      } catch {
+        continue;
+      }
+      for await (const [name, fileHandle] of entries(audioDir)) {
+        if (fileHandle.kind !== 'file') continue;
+        const bytes = await readFileBytes(audioDir, name);
+        if (!bytes) continue;
+        if ((await this.#client.contentHash(bytes)) === hash) return bytes;
+      }
+    }
+    return null;
   }
 
   /** Reads a recording's WAV bytes as a File, for playback decoding. */

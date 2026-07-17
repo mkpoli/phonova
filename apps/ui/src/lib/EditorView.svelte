@@ -2,7 +2,9 @@
   import IconArrowLeft from '~icons/lucide/arrow-left';
   import IconMic from '~icons/lucide/mic';
   import IconImage from '~icons/lucide/image';
+  import IconAudioLines from '~icons/lucide/audio-lines';
   import IconPanelRight from '~icons/lucide/panel-right';
+  import AudioExportDialog from './AudioExportDialog.svelte';
   import ExportDialog from './ExportDialog.svelte';
   import RecordingSwitcher from './RecordingSwitcher.svelte';
   import InspectorPanel from './InspectorPanel.svelte';
@@ -25,6 +27,8 @@
     type OverlayParams,
     type LibraryNode,
     type OverlayStats,
+    type AudioExportOptions,
+    type AudioExportRequest,
     type Selection,
     type SelectionReadout,
     type ViewportState,
@@ -67,6 +71,9 @@
     /** Plays a box selection through the engine's band filter; resolves when the
      *  rendered preview finishes sounding. */
     onPlayFilteredSelection?: (t0: number, t1: number, f0: number, f1: number) => Promise<void> | void;
+    /** Encodes and downloads the whole recording or the selection as WAV;
+     *  absent hides the audio-export affordances. */
+    onExportAudio?: (request: AudioExportRequest) => void;
     /** Starts a microphone recording; absent when the browser cannot capture. */
     onStartRecording?: () => void;
     /** Whether a take is currently being captured. */
@@ -96,9 +103,40 @@
     onRenameRecording,
     onPlaySelection,
     onPlayFilteredSelection,
+    onExportAudio,
     onStartRecording,
     recording = false
   }: Props = $props();
+
+  let audioExportOpen = $state(false);
+
+  // Resolve the dialog's choice into concrete signal coordinates: the whole file
+  // from zero, or the live selection's span (band-limited to its box only when
+  // the user asked and the selection carries frequency bounds).
+  function resolveAudioExport(options: AudioExportOptions): AudioExportRequest | null {
+    if (!audio) return null;
+    if (options.scope === 'selection' && selection) {
+      const box = selection.mode === 'box';
+      return {
+        scope: 'selection',
+        t0: selection.t0,
+        t1: selection.t1,
+        f0: box ? selection.f0 : 0,
+        f1: box ? selection.f1 : 0,
+        bits: options.bits,
+        filtered: options.filtered && box
+      };
+    }
+    return {
+      scope: 'whole',
+      t0: 0,
+      t1: audio.duration,
+      f0: 0,
+      f1: 0,
+      bits: options.bits,
+      filtered: false
+    };
+  }
 
   let switcher = $state<{ show: () => void } | null>(null);
 
@@ -574,6 +612,17 @@
       }
     },
     {
+      id: 'exportAudio',
+      title: 'Export audio (WAV)',
+      group: 'Figures',
+      api: ['exportSpanWav', 'exportBandFilteredSpanWav'],
+      keywords: ['wav', 'save audio', 'selection', 'clip', 'download audio', 'sound'],
+      enabled: () => hasAudio() && onExportAudio !== undefined,
+      run: () => {
+        audioExportOpen = true;
+      }
+    },
+    {
       id: 'colormapViridis',
       title: 'Spectrogram palette: Viridis',
       group: 'Appearance',
@@ -775,6 +824,19 @@
     <span>t {formatTime(cursorTime)}</span>
     <span class="status-right">
       <span>{audio ? `${audio.sampleRate.toFixed(0)} Hz / ${audio.channels} ch` : 'No audio'}</span>
+      {#if onExportAudio}
+        <button
+          type="button"
+          class="inspector-toggle"
+          data-testid="open-audio-export"
+          disabled={!audio}
+          aria-pressed={audioExportOpen}
+          onclick={() => (audioExportOpen = !audioExportOpen)}
+        >
+          <IconAudioLines aria-hidden="true" />
+          <span>Export audio</span>
+        </button>
+      {/if}
       <button
         type="button"
         class="inspector-toggle"
@@ -810,6 +872,19 @@
       appTheme={theme}
       {colormap}
       onClose={() => (exportOpen = false)}
+    />
+  {/if}
+
+  {#if audioExportOpen && audio && onExportAudio}
+    <AudioExportDialog
+      hasSelection={selection !== null}
+      isBoxSelection={selection?.mode === 'box'}
+      onExport={(options) => {
+        const request = resolveAudioExport(options);
+        if (request) onExportAudio?.(request);
+        audioExportOpen = false;
+      }}
+      onClose={() => (audioExportOpen = false)}
     />
   {/if}
 

@@ -22,6 +22,7 @@ import type {
   PitchTrackData,
   PointData,
   PointId,
+  ProjectExportMode,
   ProjectSummary,
   RecordingEntry,
   SaveProjectMediaSpec,
@@ -31,7 +32,8 @@ import type {
   SpectrogramTileRequest,
   TierId,
   TierInfo,
-  VoiceReportData
+  VoiceReportData,
+  WavBitDepth
 } from '@phonia/ui';
 
 export type {
@@ -57,6 +59,7 @@ export type {
   PitchTrackData,
   PointData,
   PointId,
+  ProjectExportMode,
   ProjectSummary,
   RecordingEntry,
   SaveProjectMediaSpec,
@@ -66,7 +69,8 @@ export type {
   SpectrogramTileRequest,
   TierId,
   TierInfo,
-  VoiceReportData
+  VoiceReportData,
+  WavBitDepth
 };
 
 export type CoreClient = CoreClientLike;

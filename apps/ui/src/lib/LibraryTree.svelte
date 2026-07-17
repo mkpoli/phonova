@@ -5,6 +5,7 @@
   import IconTrash from '~icons/lucide/trash-2';
   import IconTags from '~icons/lucide/tags';
   import IconInfo from '~icons/lucide/info';
+  import IconDownload from '~icons/lucide/download';
   import IconUngroup from '~icons/lucide/ungroup';
   import WaveThumb from './WaveThumb.svelte';
   import InlineRename from './InlineRename.svelte';
@@ -28,6 +29,9 @@
     onRenameRecording: (mediaId: number, name: string) => void;
     onDeleteRecording: (mediaId: number) => void;
     onShowDetails: (mediaId: number) => void;
+    /** Exports the recording's whole audio as a WAV file. Omitted where export
+     * is unavailable, hiding the row's export action. */
+    onExportRecording?: (mediaId: number) => void;
     onToggleCollapse: (groupId: number) => void;
     onRenameGroup: (groupId: number, name: string) => void;
     onDissolveGroup: (groupId: number) => void;
@@ -47,6 +51,7 @@
     onRenameRecording,
     onDeleteRecording,
     onShowDetails,
+    onExportRecording,
     onToggleCollapse,
     onRenameGroup,
     onDissolveGroup,
@@ -352,6 +357,18 @@
           {/if}
         </span>
         <div class="c-actions">
+          {#if onExportRecording && rec.audioId !== null}
+            <button
+              type="button"
+              class="act"
+              aria-label="Export audio as WAV"
+              title="Export audio as WAV"
+              data-testid="row-export-audio"
+              onclick={() => onExportRecording?.(rec.mediaId)}
+            >
+              <IconDownload aria-hidden="true" />
+            </button>
+          {/if}
           <button
             type="button"
             class="act"

@@ -13,8 +13,10 @@
     renameGroup as treeRenameGroup,
     dissolveGroup as treeDissolveGroup,
     moveNode as treeMoveNode,
+    type AudioExportRequest,
     type AudioInfo,
     type LibraryNode,
+    type ProjectExportMode,
     type ProjectSummary,
     type RecordingEntry,
     type WasmColormapName
@@ -522,6 +524,102 @@
     }
   }
 
+  // --- Project and audio I/O ---
+
+  let notice = $state('');
+
+  function sanitizeFileName(name: string): string {
+    const cleaned = name.replace(/[\\/:*?"<>|]/g, '_').trim();
+    return cleaned || 'untitled';
+  }
+
+  function downloadBytes(bytes: Uint8Array, fileName: string, mime: string) {
+    const owned = new Uint8Array(bytes.byteLength);
+    owned.set(bytes);
+    const blob = new Blob([owned], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportProject(mode: ProjectExportMode) {
+    if (!store || !project) return;
+    error = '';
+    busy = true;
+    busyLabel = mode === 'bundle' ? 'Building bundle…' : 'Exporting project…';
+    try {
+      const bytes = await store.exportProject(project, mode);
+      downloadBytes(bytes, `${sanitizeFileName(project.name)}.phxproj`, 'application/zip');
+    } catch (caught) {
+      report(caught);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function openProjectFile(file: File) {
+    if (!store) return;
+    error = '';
+    notice = '';
+    busy = true;
+    busyLabel = 'Opening project file…';
+    try {
+      const result = await store.importProjectFile(file);
+      project = result.project;
+      route = 'project';
+      dirty = false;
+      clearPendingRemovals();
+      resetAutosaveBaseline();
+      await refreshProjects();
+      if (result.gaps.length > 0) {
+        const names = result.gaps.map((gap) => gap.name).join(', ');
+        notice = `Imported. ${result.gaps.length} recording(s) could not be located: ${names}. Re-link them by adding the source audio.`;
+      }
+    } catch (caught) {
+      report(caught);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function exportRecordingAudio(mediaId: number) {
+    if (!client || !project) return;
+    const entry = project.recordings.find((r) => r.mediaId === mediaId);
+    if (!entry || entry.audioId === null) return;
+    error = '';
+    try {
+      const bytes = await client.exportSpanWav(entry.audioId, 0, entry.duration, 'Pcm16');
+      downloadBytes(bytes, `${sanitizeFileName(entry.name)}.wav`, 'audio/wav');
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  async function exportEditorAudio(request: AudioExportRequest) {
+    if (!client || !audio) return;
+    error = '';
+    try {
+      const bytes = request.filtered
+        ? await client.exportBandFilteredSpanWav(
+            audio.id,
+            request.t0,
+            request.t1,
+            request.f0,
+            request.f1,
+            request.bits
+          )
+        : await client.exportSpanWav(audio.id, request.t0, request.t1, request.bits);
+      const base = sanitizeFileName(recording?.name ?? audio.name ?? 'audio');
+      const suffix = request.scope === 'selection' ? '-selection' : '';
+      downloadBytes(bytes, `${base}${suffix}.wav`, 'audio/wav');
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
   // --- Library tree ---
 
   async function applyLibrary(next: LibraryNode[]) {
@@ -903,6 +1001,7 @@
     onImportFiles={importToNewProject}
     onNewProject={createEmptyProject}
     onOpenSample={openSampleProject}
+    onOpenProjectFile={openProjectFile}
     onOpenProject={requestOpen}
     onRenameProject={renameProject}
     onDeleteProject={deleteProject}
@@ -937,6 +1036,8 @@
     onMoveNode={moveNode}
     onRenameRecording={renameRecording}
     onDeleteRecording={deleteRecording}
+    onExportProject={exportProject}
+    onExportRecording={exportRecordingAudio}
     onUpdateRecordingMetadata={updateRecordingMetadata}
     onUpdateProjectMetadata={updateProjectMetadata}
     projectDescription={project.description}
@@ -987,6 +1088,7 @@
         report(caught);
       }
     }}
+    onExportAudio={exportEditorAudio}
     onStartRecording={recordingSupported ? startRecording : undefined}
     recording={capturing}
   />
@@ -1035,6 +1137,13 @@
   <div class="error" role="alert" data-testid="error">{error}</div>
 {/if}
 
+{#if notice}
+  <div class="notice" role="status" data-testid="notice">
+    <span>{notice}</span>
+    <button type="button" class="notice-close" aria-label="Dismiss" onclick={() => (notice = '')}>×</button>
+  </div>
+{/if}
+
 <CommandPalette registry={commands} />
 
 <style>
@@ -1049,6 +1158,42 @@
     background: var(--panel);
     color: var(--warn);
     box-shadow: var(--shadow-lg);
+  }
+
+  .notice {
+    position: fixed;
+    left: 50%;
+    bottom: 1rem;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    max-width: min(38rem, calc(100vw - 2rem));
+    padding: 0.6rem 0.7rem 0.6rem 0.95rem;
+    border: 1px solid var(--chrome-strong);
+    border-radius: var(--radius-md);
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: var(--shadow-lg);
+    font-size: 0.85rem;
+    z-index: 20;
+  }
+
+  .notice-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 1.05rem;
+    line-height: 1;
+    padding: 0 0.2rem;
+    cursor: pointer;
+  }
+
+  .notice-close:hover {
+    color: var(--text);
   }
 
   .modal-backdrop {

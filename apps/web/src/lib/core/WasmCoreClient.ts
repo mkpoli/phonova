@@ -23,7 +23,8 @@ import type {
   SpectrogramTileRequest,
   TierId,
   TierInfo,
-  VoiceReportData
+  VoiceReportData,
+  WavBitDepth
 } from './types';
 
 /** A finished recording: its live audio id, metadata, and WAV bytes to persist. */
@@ -34,6 +35,18 @@ export interface FinishedRecordingResult {
   channels: number;
   hash: string;
   wav: Uint8Array;
+}
+
+/** One recording's bytes to embed in, or extracted from, a self-contained bundle. */
+export interface BundleMedia {
+  mediaId: number;
+  bytes: Uint8Array;
+}
+
+/** A project container read back for import: its metadata and any embedded media. */
+export interface ReadProjectBundle {
+  meta: LoadedProjectContainer;
+  media: BundleMedia[];
 }
 
 type Pending = {
@@ -378,6 +391,66 @@ export class WasmCoreClient implements CoreClient {
   renameProjectContainer(bytes: Uint8Array, name: string): Promise<Uint8Array> {
     const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     return this.#call({ method: 'renameProjectContainer', bytes: buffer, name }, [buffer]);
+  }
+
+  /**
+   * Serializes a project as a self-contained bundle, embedding each recording's
+   * WAV bytes so the file restores without the original media on disk.
+   */
+  saveProjectBundle(spec: SaveProjectSpec, media: BundleMedia[]): Promise<Uint8Array> {
+    const ids = media.map((m) => m.mediaId);
+    const buffers = media.map((m) =>
+      m.bytes.buffer.slice(m.bytes.byteOffset, m.bytes.byteOffset + m.bytes.byteLength)
+    );
+    return this.#call(
+      { method: 'saveProjectBundle', specJson: JSON.stringify(spec), ids, media: buffers },
+      buffers
+    );
+  }
+
+  /** Reads a project container for import: its metadata and any embedded media. */
+  async readProjectBundle(bytes: Uint8Array): Promise<ReadProjectBundle> {
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const result = await this.#call<{
+      meta: string;
+      ids: number[];
+      media: ArrayBuffer[];
+    }>({ method: 'readProjectBundle', bytes: buffer }, [buffer]);
+    return {
+      meta: JSON.parse(result.meta) as LoadedProjectContainer,
+      media: result.ids.map((mediaId, i) => ({ mediaId, bytes: new Uint8Array(result.media[i]) }))
+    };
+  }
+
+  /** BLAKE3 content hash of `bytes`, 64 lowercase hex characters. */
+  contentHash(bytes: Uint8Array): Promise<string> {
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    return this.#call({ method: 'contentHash', bytes: buffer }, [buffer]);
+  }
+
+  /** Encodes `[t0, t1]` of `id` as WAV bytes at `bits`, unfiltered. */
+  exportSpanWav(id: AudioId, t0: number, t1: number, bits: WavBitDepth): Promise<Uint8Array> {
+    return this.#call({ method: 'exportSpanWav', audioId: id, t0, t1, bits });
+  }
+
+  /** Encodes the band-filtered `[t0, t1]` of `id` as mono WAV bytes at `bits`. */
+  exportBandFilteredSpanWav(
+    id: AudioId,
+    t0: number,
+    t1: number,
+    fLow: number,
+    fHigh: number,
+    bits: WavBitDepth
+  ): Promise<Uint8Array> {
+    return this.#call({
+      method: 'exportBandFilteredSpanWav',
+      audioId: id,
+      t0,
+      t1,
+      fLow,
+      fHigh,
+      bits
+    });
   }
 
   buildFigure(spec: FigureSpec): Promise<string> {

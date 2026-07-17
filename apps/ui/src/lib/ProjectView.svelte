@@ -9,12 +9,19 @@
   import IconInfo from '~icons/lucide/info';
   import IconSearch from '~icons/lucide/search';
   import IconRotateCcw from '~icons/lucide/rotate-ccw';
+  import IconPackage from '~icons/lucide/package';
   import LibraryTree from './LibraryTree.svelte';
   import MetadataPanel from './MetadataPanel.svelte';
+  import ProjectExportDialog from './ProjectExportDialog.svelte';
   import { filesFromDataTransfer } from './dnd';
   import { registerCommands } from './commands.svelte';
   import { flatLibrary, filterTree } from './library';
-  import { type CoreClientLike, type LibraryNode, type RecordingEntry } from './types';
+  import {
+    type CoreClientLike,
+    type LibraryNode,
+    type ProjectExportMode,
+    type RecordingEntry
+  } from './types';
 
   interface Metadata {
     description: string;
@@ -56,6 +63,10 @@
     onMoveNode?: (key: string, targetGroupId: number | null, index: number) => void;
     onRenameRecording?: (mediaId: number, name: string) => void;
     onDeleteRecording?: (mediaId: number) => void;
+    /** Exports the whole project as a `.phxproj`; absent hides the export action. */
+    onExportProject?: (mode: ProjectExportMode) => void;
+    /** Exports one recording's whole audio as a WAV; absent hides the row action. */
+    onExportRecording?: (mediaId: number) => void;
     onUpdateRecordingMetadata?: (mediaId: number, metadata: Metadata) => void;
     onUpdateProjectMetadata?: (metadata: Metadata) => void;
     projectDescription?: string;
@@ -93,6 +104,8 @@
     onMoveNode,
     onRenameRecording,
     onDeleteRecording,
+    onExportProject,
+    onExportRecording,
     onUpdateRecordingMetadata,
     onUpdateProjectMetadata,
     projectDescription = '',
@@ -105,6 +118,7 @@
 
   let dragging = $state(false);
   let fileInput = $state<HTMLInputElement | null>(null);
+  let exportOpen = $state(false);
 
   // The details inspector: the project, one recording, or closed.
   let details = $state<{ scope: 'project' } | { scope: 'recording'; mediaId: number } | null>(null);
@@ -240,6 +254,17 @@
       keywords: ['folder', 'collection', 'organize', 'library'],
       enabled: () => onCreateGroup !== undefined,
       run: () => onCreateGroup?.()
+    },
+    {
+      id: 'exportProject',
+      title: 'Export project',
+      group: 'Project',
+      api: ['saveProjectBundle', 'saveProjectContainer'],
+      keywords: ['download', 'bundle', 'phxproj', 'archive', 'share', 'save as'],
+      enabled: () => onExportProject !== undefined,
+      run: () => {
+        exportOpen = true;
+      }
     },
     {
       id: 'projectDetails',
@@ -382,6 +407,12 @@
                 <span>New group</span>
               </button>
             {/if}
+            {#if onExportProject}
+              <button type="button" class="tool" data-testid="export-project" onclick={() => (exportOpen = true)}>
+                <IconPackage aria-hidden="true" />
+                <span>Export</span>
+              </button>
+            {/if}
             {#if onUpdateProjectMetadata}
               <button
                 type="button"
@@ -411,6 +442,7 @@
           }}
           onRenameRecording={(mediaId, name) => onRenameRecording?.(mediaId, name)}
           onDeleteRecording={(mediaId) => onDeleteRecording?.(mediaId)}
+          onExportRecording={onExportRecording ? (mediaId) => onExportRecording?.(mediaId) : undefined}
           onShowDetails={showRecordingDetails}
           onToggleCollapse={(groupId) => onToggleCollapse?.(groupId)}
           onRenameGroup={(groupId, name) => onRenameGroup?.(groupId, name)}
@@ -439,6 +471,17 @@
     {/if}
   </div>
 </div>
+
+{#if exportOpen && onExportProject}
+  <ProjectExportDialog
+    recordingCount={recordings.length}
+    onExport={(mode) => {
+      onExportProject?.(mode);
+      exportOpen = false;
+    }}
+    onClose={() => (exportOpen = false)}
+  />
+{/if}
 
 {#if removalUndo}
   <div class="undo-banner" role="status" data-testid="removal-undo">

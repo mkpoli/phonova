@@ -1,6 +1,7 @@
 <script lang="ts">
   import IconPlus from '~icons/lucide/plus';
   import IconFolderOpen from '~icons/lucide/folder-open';
+  import IconPackageOpen from '~icons/lucide/package-open';
   import IconMic from '~icons/lucide/mic';
   import IconSun from '~icons/lucide/sun';
   import IconMoon from '~icons/lucide/moon';
@@ -18,6 +19,8 @@
     onImportFiles: (files: File[]) => void;
     onNewProject: (name: string) => void;
     onOpenSample?: () => void;
+    /** Opens an uploaded `.phxproj` file; absent hides the open-file action. */
+    onOpenProjectFile?: (file: File) => void;
     onOpenProject: (id: string) => void;
     onRenameProject: (id: string, name: string) => void;
     onDeleteProject: (id: string) => void;
@@ -37,6 +40,7 @@
     onImportFiles,
     onNewProject,
     onOpenSample,
+    onOpenProjectFile,
     onOpenProject,
     onRenameProject,
     onDeleteProject,
@@ -49,6 +53,7 @@
   let dragging = $state(false);
   let newName = $state('');
   let fileInput = $state<HTMLInputElement | null>(null);
+  let projectInput = $state<HTMLInputElement | null>(null);
 
   const PALETTE_HINT_KEY = 'phonix-hint-palette';
   const isMac =
@@ -88,6 +93,13 @@
     newName = '';
   }
 
+  function handleProjectInput(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (file) onOpenProjectFile?.(file);
+  }
+
   registerCommands([
     {
       id: 'importAudioFiles',
@@ -95,6 +107,15 @@
       group: 'Project',
       keywords: ['open', 'add recordings', 'wav', 'choose files'],
       run: () => fileInput?.click()
+    },
+    {
+      id: 'openProjectFile',
+      title: 'Open project file',
+      group: 'Project',
+      api: ['readProjectBundle'],
+      keywords: ['import', 'phxproj', 'bundle', 'load project', 'upload'],
+      enabled: () => onOpenProjectFile !== undefined,
+      run: () => projectInput?.click()
     },
     {
       id: 'openSampleProject',
@@ -151,6 +172,12 @@
         <IconFolderOpen aria-hidden="true" />
         <span>Choose files</span>
       </button>
+      {#if onOpenProjectFile}
+        <button type="button" class="ghost" onclick={() => projectInput?.click()} data-testid="open-project-file">
+          <IconPackageOpen aria-hidden="true" />
+          <span>Open project file</span>
+        </button>
+      {/if}
       {#if onStartRecording}
         <button
           type="button"
@@ -187,6 +214,15 @@
     class="hidden-input"
     data-testid="folder-input"
     onchange={handleInput}
+  />
+
+  <input
+    bind:this={projectInput}
+    type="file"
+    accept=".phxproj,application/zip"
+    class="hidden-input"
+    data-testid="project-file-input"
+    onchange={handleProjectInput}
   />
 
   <main class="body">

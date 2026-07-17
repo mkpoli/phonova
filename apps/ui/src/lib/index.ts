@@ -1,7 +1,9 @@
+export { default as AudioExportDialog } from './AudioExportDialog.svelte';
 export { default as BoundaryHandle } from './BoundaryHandle.svelte';
 export { default as CommandPalette } from './CommandPalette.svelte';
 export { default as EditorView } from './EditorView.svelte';
 export { default as ExportDialog } from './ExportDialog.svelte';
+export { default as ProjectExportDialog } from './ProjectExportDialog.svelte';
 export { default as HomeView } from './HomeView.svelte';
 export { default as InlineRename } from './InlineRename.svelte';
 export { default as InspectorPanel } from './InspectorPanel.svelte';

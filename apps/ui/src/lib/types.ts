@@ -20,6 +20,31 @@ export interface MinMaxPyramidSlice {
 export type WasmColormapName = 'Viridis' | 'Magma' | 'Inferno' | 'Plasma' | 'Cividis' | 'Grayscale';
 export type WasmThemeName = 'Light' | 'Dark';
 
+/** WAV output sample format: 16/24/32-bit PCM or lossless 32-bit float. */
+export type WavBitDepth = 'Pcm16' | 'Pcm24' | 'Pcm32' | 'Float32';
+
+/** How a project file carries its recordings when exported. */
+export type ProjectExportMode = 'bundle' | 'references';
+
+/** What the editor's audio-export dialog resolves to when the user downloads. */
+export interface AudioExportOptions {
+  scope: 'whole' | 'selection';
+  bits: WavBitDepth;
+  /** Band-limit the selection to its box frequencies (box selection only). */
+  filtered: boolean;
+}
+
+/** A resolved audio-export request the editor hands the shell to encode. */
+export interface AudioExportRequest {
+  scope: 'whole' | 'selection';
+  t0: number;
+  t1: number;
+  f0: number;
+  f1: number;
+  bits: WavBitDepth;
+  filtered: boolean;
+}
+
 export interface SpectrogramTileRequest {
   t0: number;
   t1: number;
