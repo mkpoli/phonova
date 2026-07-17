@@ -2112,6 +2112,47 @@ impl WasmEngine {
     /// characters, or when an annotation id names no live document.
     #[wasm_bindgen(js_name = saveProjectContainer)]
     pub fn save_project_container(&self, spec_json: &str) -> Result<Uint8Array, JsError> {
+        let project = self.project_from_spec_json(spec_json)?;
+        Ok(Uint8Array::from(phx_project::save(&project).as_slice()))
+    }
+
+    /// Serializes the same project as [`WasmEngine::save_project_container`],
+    /// embedding each recording's bytes as a self-contained bundle.
+    ///
+    /// `mediaIds` and `mediaBytes` are parallel: entry `i` embeds the recording
+    /// whose stable media id is `mediaIds[i]` with the bytes `mediaBytes[i]`
+    /// holds. Ids the spec does not name are ignored; recordings the arrays do
+    /// not cover stay references-only in the same bundle. The bundle is a
+    /// version-2 container a references-only reader still loads.
+    ///
+    /// # Errors
+    /// Rejects when `specJson` does not parse, when a hash is not 64 hex
+    /// characters, when an annotation id names no live document, or when
+    /// `mediaBytes` holds a non-`Uint8Array` element.
+    #[wasm_bindgen(js_name = saveProjectBundle)]
+    pub fn save_project_bundle(
+        &self,
+        spec_json: &str,
+        media_ids: Vec<u64>,
+        media_bytes: js_sys::Array,
+    ) -> Result<Uint8Array, JsError> {
+        let project = self.project_from_spec_json(spec_json)?;
+        let mut media = Vec::with_capacity(media_ids.len());
+        for (i, id) in media_ids.iter().enumerate() {
+            let value = media_bytes.get(i as u32);
+            let bytes: Uint8Array = value
+                .dyn_into()
+                .map_err(|_| JsError::new("mediaBytes must hold Uint8Array values"))?;
+            media.push((MediaId::new(*id), bytes.to_vec()));
+        }
+        Ok(Uint8Array::from(
+            phx_project::save_bundle(&project, &media).as_slice(),
+        ))
+    }
+
+    /// Builds a [`Project`] from a [`SaveProjectSpec`] JSON string, pulling each
+    /// annotated recording's document out of the engine and repairing the tree.
+    fn project_from_spec_json(&self, spec_json: &str) -> Result<Project, JsError> {
         let spec: SaveProjectSpec = serde_json::from_str(spec_json)
             .map_err(|err| JsError::new(&format!("invalid project spec: {err}")))?;
         let mut project = Project::new(spec.name);
@@ -2148,7 +2189,7 @@ impl WasmEngine {
         // media list that was just built rather than trusting the host to keep
         // the two in lockstep.
         project.normalize_library();
-        Ok(Uint8Array::from(phx_project::save(&project).as_slice()))
+        Ok(project)
     }
 }
 
@@ -2236,6 +2277,11 @@ struct LoadProjectResult {
 /// understands.
 #[wasm_bindgen(js_name = loadProjectContainer)]
 pub fn load_project_container(bytes: &[u8]) -> Result<String, JsError> {
+    project_result_json(bytes)
+}
+
+/// Parses a project container into the metadata JSON the host restores from.
+fn project_result_json(bytes: &[u8]) -> Result<String, JsError> {
     let project = phx_project::load(bytes).map_err(|err| JsError::new(&err.to_string()))?;
     let mut media = Vec::with_capacity(project.media.len());
     for reference in &project.media {
@@ -2269,6 +2315,72 @@ pub fn load_project_container(bytes: &[u8]) -> Result<String, JsError> {
         media,
     };
     serde_json::to_string(&result).map_err(|err| JsError::new(&err.to_string()))
+}
+
+/// A project bundle read back for import: the same metadata JSON
+/// [`load_project_container`] returns, plus the media a self-contained bundle
+/// embedded.
+#[wasm_bindgen]
+pub struct WasmProjectBundle {
+    meta: String,
+    media_ids: Vec<u64>,
+    media_bytes: Vec<Vec<u8>>,
+}
+
+#[wasm_bindgen]
+impl WasmProjectBundle {
+    /// The project metadata as a JSON string, identical to
+    /// [`load_project_container`]'s result.
+    #[wasm_bindgen(getter)]
+    pub fn meta(&self) -> String {
+        self.meta.clone()
+    }
+
+    /// Stable media ids of the embedded recordings, ascending, index-aligned
+    /// with [`WasmProjectBundle::embedded_wav`]. Empty for a references-only
+    /// container.
+    #[wasm_bindgen(getter, js_name = embeddedIds)]
+    pub fn embedded_ids(&self) -> Vec<u64> {
+        self.media_ids.clone()
+    }
+
+    /// Bytes of the embedded recording at `index`, or an empty array when out of
+    /// range.
+    #[wasm_bindgen(js_name = embeddedWav)]
+    pub fn embedded_wav(&self, index: usize) -> Uint8Array {
+        match self.media_bytes.get(index) {
+            Some(bytes) => Uint8Array::from(bytes.as_slice()),
+            None => Uint8Array::new_with_length(0),
+        }
+    }
+}
+
+/// Reads a project container for import: its metadata and any embedded media.
+///
+/// A self-contained bundle returns the recordings it carries through
+/// [`WasmProjectBundle::embedded_ids`] / [`WasmProjectBundle::embedded_wav`]; a
+/// references-only container returns an empty embedded set, and the host
+/// re-links each recording by content hash against media already present.
+///
+/// # Errors
+/// Rejects when the bytes are not a readable project container this build
+/// understands.
+#[wasm_bindgen(js_name = readProjectBundle)]
+pub fn read_project_bundle(bytes: &[u8]) -> Result<WasmProjectBundle, JsError> {
+    let meta = project_result_json(bytes)?;
+    let embedded =
+        phx_project::load_embedded_media(bytes).map_err(|err| JsError::new(&err.to_string()))?;
+    let mut media_ids = Vec::with_capacity(embedded.len());
+    let mut media_bytes = Vec::with_capacity(embedded.len());
+    for (id, bytes) in embedded {
+        media_ids.push(id.get());
+        media_bytes.push(bytes);
+    }
+    Ok(WasmProjectBundle {
+        meta,
+        media_ids,
+        media_bytes,
+    })
 }
 
 /// Rewrites a project container's name, preserving everything else.
@@ -2479,6 +2591,56 @@ mod tests {
 
     const FIXTURE_WAV: &[u8] = include_bytes!("../../../tests/fixtures/audio/arctic_bdl_a0001.wav");
     const VOWEL_WAV: &[u8] = include_bytes!("../../../tests/fixtures/audio/synth_vowel_a.wav");
+
+    #[wasm_bindgen_test]
+    fn project_bundle_embeds_and_reads_media() {
+        let mut engine = WasmEngine::new();
+        let audio = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let info = engine.audio_info(audio).unwrap();
+        let doc = engine.create_annotation(audio, 0.0, info.duration()).unwrap();
+
+        let spec = serde_json::json!({
+            "name": "Bundle",
+            "savedAt": 1_000,
+            "view": null,
+            "description": "",
+            "authors": [],
+            "tags": [],
+            "groups": [],
+            "media": [{
+                "mediaId": 1,
+                "relativePath": "audio/vowel.wav",
+                "hash": content_hash(VOWEL_WAV),
+                "duration": info.duration(),
+                "sampleRate": info.sample_rate(),
+                "channels": info.channels() as usize,
+                "annotation": doc,
+                "description": "",
+                "authors": [],
+                "tags": []
+            }]
+        })
+        .to_string();
+
+        let media_bytes = js_sys::Array::new();
+        media_bytes.push(&Uint8Array::from(VOWEL_WAV).into());
+        let bundle_bytes = engine
+            .save_project_bundle(&spec, vec![1], media_bytes)
+            .unwrap()
+            .to_vec();
+
+        // The bundle reads back its metadata and the embedded recording's exact
+        // bytes; a references-only container over the same spec embeds nothing.
+        let bundle = read_project_bundle(&bundle_bytes).unwrap();
+        assert_eq!(bundle.embedded_ids(), vec![1]);
+        assert_eq!(bundle.embedded_wav(0).to_vec(), VOWEL_WAV);
+        let meta: serde_json::Value = serde_json::from_str(&bundle.meta()).unwrap();
+        assert_eq!(meta["name"], "Bundle");
+        assert!(meta["media"][0]["annotationJson"].is_string());
+
+        let refs = engine.save_project_container(&spec).unwrap().to_vec();
+        assert!(read_project_bundle(&refs).unwrap().embedded_ids().is_empty());
+    }
 
     #[wasm_bindgen_test]
     fn selection_and_voice_report_cross_the_boundary() {
