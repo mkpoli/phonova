@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { ProjectSummary, RecordingEntry, SaveProjectSpec } from '@phonia/ui';
+import { flatLibrary } from '@phonia/ui';
+import type { LibraryNode, ProjectSummary, RecordingEntry, SaveProjectSpec } from '@phonia/ui';
 import type { TauriCoreClient } from '$lib/core/TauriCoreClient';
 
 /** Container file name inside a project directory. */
@@ -28,6 +29,15 @@ export interface ProjectState {
   recordings: RecordingEntry[];
   nextMediaId: number;
   view: unknown;
+  /**
+   * Project-level description, authors, tags, and library tree. The desktop
+   * shell does not yet expose editing for these (that UI is web-first for
+   * now), but a project opened here round-trips them unchanged on save.
+   */
+  description: string;
+  authors: string[];
+  tags: string[];
+  groups: LibraryNode[];
 }
 
 /** The recovery decision made when opening a project. */
@@ -136,7 +146,11 @@ export class ProjectStore {
       savedAt: Date.now(),
       recordings: [],
       nextMediaId: 1,
-      view: null
+      view: null,
+      description: '',
+      authors: [],
+      tags: [],
+      groups: []
     };
     await this.writeProjectFile(project);
     return project;
@@ -175,9 +189,13 @@ export class ProjectStore {
         channels: info.channels,
         audioId: info.id,
         annotationId: null,
-        hasAnnotation: false
+        hasAnnotation: false,
+        description: '',
+        authors: [],
+        tags: []
       };
       project.recordings.push(recording);
+      project.groups.push({ Media: recording.mediaId });
       byStem.set(stem(fileName), recording);
       onRecording?.(recording);
     }
@@ -242,7 +260,10 @@ export class ProjectStore {
         channels: media.channels,
         audioId,
         annotationId,
-        hasAnnotation: Boolean(media.annotationJson)
+        hasAnnotation: Boolean(media.annotationJson),
+        description: media.description,
+        authors: media.authors,
+        tags: media.tags
       });
       nextMediaId = Math.max(nextMediaId, media.mediaId + 1);
     }
@@ -253,7 +274,11 @@ export class ProjectStore {
       savedAt: container.savedAt,
       recordings,
       nextMediaId,
-      view: container.view
+      view: container.view,
+      description: container.description,
+      authors: container.authors,
+      tags: container.tags,
+      groups: container.groups.length > 0 ? container.groups : flatLibrary(recordings.map((r) => r.mediaId))
     };
     // Recovering promotes the sidecar to the project file and clears it, so the
     // recovered state becomes the saved baseline.
@@ -267,6 +292,10 @@ export class ProjectStore {
       name: project.name,
       savedAt,
       view: project.view ?? null,
+      description: project.description,
+      authors: project.authors,
+      tags: project.tags,
+      groups: project.groups,
       media: project.recordings
         .filter((recording) => recording.audioId !== null)
         .map((recording) => ({
@@ -276,7 +305,10 @@ export class ProjectStore {
           duration: recording.duration,
           sampleRate: recording.sampleRate,
           channels: recording.channels,
-          annotation: recording.annotationId === null ? null : Number(recording.annotationId)
+          annotation: recording.annotationId === null ? null : Number(recording.annotationId),
+          description: recording.description,
+          authors: recording.authors,
+          tags: recording.tags
         }))
     };
   }

@@ -253,6 +253,12 @@ pub struct SaveProjectMedia {
     pub channels: usize,
     #[serde(default)]
     pub annotation: Option<u64>,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub authors: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// The `saveProjectContainer` argument: project metadata and its media entries.
@@ -263,7 +269,15 @@ pub struct SaveProjectSpec {
     pub saved_at: u64,
     #[serde(default)]
     pub view: serde_json::Value,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub authors: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub media: Vec<SaveProjectMedia>,
+    #[serde(default)]
+    pub groups: Vec<phx_project::LibraryNode>,
 }
 
 /// One media entry returned by `load_project_container`, document inlined.
@@ -277,6 +291,9 @@ pub struct LoadProjectMedia {
     pub sample_rate: f64,
     pub channels: usize,
     pub annotation_json: Option<String>,
+    pub description: String,
+    pub authors: Vec<String>,
+    pub tags: Vec<String>,
 }
 
 /// The `load_project_container` result: project metadata and its media entries.
@@ -286,7 +303,11 @@ pub struct LoadProjectResult {
     pub name: String,
     pub saved_at: u64,
     pub view: serde_json::Value,
+    pub description: String,
+    pub authors: Vec<String>,
+    pub tags: Vec<String>,
     pub media: Vec<LoadProjectMedia>,
+    pub groups: Vec<phx_project::LibraryNode>,
 }
 
 /// A figure export bundle: the main document plus any sidecar files.

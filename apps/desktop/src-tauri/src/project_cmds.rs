@@ -193,6 +193,10 @@ pub fn save_project_container(
     let mut project = Project::new(spec.name);
     project.saved_at = spec.saved_at;
     project.view = spec.view;
+    project.description = spec.description;
+    project.authors = spec.authors;
+    project.tags = spec.tags;
+    project.groups = spec.groups;
     for media in spec.media {
         let hash = ContentHash::from_hex(&media.hash).map_err(|e| e.to_string())?;
         let media_id = MediaId::new(media.media_id);
@@ -203,9 +207,9 @@ pub fn save_project_container(
             duration: media.duration,
             sample_rate: media.sample_rate,
             channels: media.channels,
-            description: String::new(),
-            authors: Vec::new(),
-            tags: Vec::new(),
+            description: media.description,
+            authors: media.authors,
+            tags: media.tags,
         });
         if let Some(annotation_id) = media.annotation {
             let annotation = engine
@@ -215,6 +219,10 @@ pub fn save_project_container(
             project.annotations.insert(media_id, annotation);
         }
     }
+    // The host sends the tree it holds; normalize repairs it against the media
+    // list that was just built rather than trusting the host to keep the two in
+    // lockstep.
+    project.normalize_library();
     Ok(phx_project::save(&project))
 }
 
@@ -237,12 +245,19 @@ pub fn load_project_container(bytes: Vec<u8>) -> Result<LoadProjectResult, Strin
             sample_rate: reference.sample_rate,
             channels: reference.channels,
             annotation_json,
+            description: reference.description.clone(),
+            authors: reference.authors.clone(),
+            tags: reference.tags.clone(),
         });
     }
     Ok(LoadProjectResult {
         name: project.name,
         saved_at: project.saved_at,
         view: project.view,
+        description: project.description,
+        authors: project.authors,
+        tags: project.tags,
+        groups: project.groups,
         media,
     })
 }

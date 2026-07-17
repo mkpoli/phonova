@@ -60,6 +60,8 @@ pub fn run() {
             engine_cmds::create_annotation,
             engine_cmds::add_interval_tier,
             engine_cmds::add_point_tier,
+            engine_cmds::rename_audio,
+            engine_cmds::detach_audio,
             engine_cmds::remove_tier,
             engine_cmds::insert_boundary,
             engine_cmds::move_boundary,

@@ -301,6 +301,18 @@ export class TauriCoreClient implements CoreClientLike {
     ) as AppliedChange;
   }
 
+  async renameAudio(audioId: AudioId, name: string): Promise<AppliedChange> {
+    return appliedFrom(
+      await invoke<AppliedRaw>('rename_audio', { audioId: num(audioId), name })
+    ) as AppliedChange;
+  }
+
+  async detachAudio(audioId: AudioId): Promise<AppliedChange> {
+    return appliedFrom(
+      await invoke<AppliedRaw>('detach_audio', { audioId: num(audioId) })
+    ) as AppliedChange;
+  }
+
   async undo(): Promise<AppliedChange | null> {
     return appliedFrom(await invoke<AppliedRaw | null>('undo'));
   }

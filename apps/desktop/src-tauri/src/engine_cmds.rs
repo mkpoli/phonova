@@ -442,6 +442,35 @@ pub fn add_point_tier(
     }
 }
 
+/// Renames a stored audio buffer. Journaled; undo restores the prior name.
+#[tauri::command]
+pub fn rename_audio(state: State<AppState>, audio_id: u64, name: String) -> Result<AppliedDto, String> {
+    let mut engine = lock(&state)?;
+    Ok(apply(
+        &mut engine,
+        Command::RenameAudio {
+            id: AudioId::from_u64(audio_id),
+            name,
+        },
+    )?
+    .into())
+}
+
+/// Detaches a stored audio buffer, cascading to every annotation document that
+/// references it. Journaled; undo restores the audio and those documents
+/// together.
+#[tauri::command]
+pub fn detach_audio(state: State<AppState>, audio_id: u64) -> Result<AppliedDto, String> {
+    let mut engine = lock(&state)?;
+    Ok(apply(
+        &mut engine,
+        Command::DetachAudio {
+            id: AudioId::from_u64(audio_id),
+        },
+    )?
+    .into())
+}
+
 #[tauri::command]
 pub fn remove_tier(
     state: State<AppState>,
