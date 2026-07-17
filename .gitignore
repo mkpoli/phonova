@@ -17,6 +17,7 @@ vite.config.ts.timestamp-*
 
 # Session viewer generated index (local-only internal tool)
 tools/session-viewer/data/
+tools/session-viewer/.playwright-shots/
 
 # OS
 .DS_Store
