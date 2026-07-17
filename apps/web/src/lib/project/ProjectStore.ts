@@ -156,9 +156,21 @@ async function fileExists(dir: FileSystemDirectoryHandle, name: string): Promise
  */
 export class ProjectStore {
   #client: WasmCoreClient;
+  // Container writes serialize through this chain: two mutations fired back to
+  // back (create a group, then drag a recording into it) would otherwise race
+  // on the one project file, and whichever finished last would win — losing the
+  // earlier edit. The chain keeps each write ordered after the previous.
+  #writeChain: Promise<void> = Promise.resolve();
 
   constructor(client: WasmCoreClient) {
     this.#client = client;
+  }
+
+  /** Runs `task` after any in-flight container write, serializing file writes. */
+  #enqueueWrite(task: () => Promise<void>): Promise<void> {
+    const next = this.#writeChain.then(task, task);
+    this.#writeChain = next;
+    return next;
   }
 
   /** Lists every stored project, newest first, flagging pending recovery. */
@@ -414,20 +426,27 @@ export class ProjectStore {
   }
 
   /** Writes the project file, stamps `savedAt`, and clears any sidecar. */
-  async writeProjectFile(project: ProjectState): Promise<void> {
-    const now = Date.now();
-    const dir = await projectDir(project.id, true);
-    const bytes = await this.#client.saveProjectContainer(this.#spec(project, now));
-    await writeFileBytes(dir, PROJECT_FILE, bytes);
-    project.savedAt = now;
-    await removeIfPresent(dir, PROJECT_FILE + AUTOSAVE_SUFFIX);
+  writeProjectFile(project: ProjectState): Promise<void> {
+    return this.#enqueueWrite(async () => {
+      // Serializing the spec inside the queued task captures the project state at
+      // the moment this write runs, so the last write reflects the latest edits.
+      // savedAt is kept strictly increasing so successive writes stay distinguishable.
+      const now = Math.max(Date.now(), project.savedAt + 1);
+      const dir = await projectDir(project.id, true);
+      const bytes = await this.#client.saveProjectContainer(this.#spec(project, now));
+      await writeFileBytes(dir, PROJECT_FILE, bytes);
+      project.savedAt = now;
+      await removeIfPresent(dir, PROJECT_FILE + AUTOSAVE_SUFFIX);
+    });
   }
 
   /** Writes an autosave sidecar without touching the project file. */
-  async writeAutosave(project: ProjectState): Promise<void> {
-    const dir = await projectDir(project.id, true);
-    const bytes = await this.#client.saveProjectContainer(this.#spec(project, Date.now()));
-    await writeFileBytes(dir, PROJECT_FILE + AUTOSAVE_SUFFIX, bytes);
+  writeAutosave(project: ProjectState): Promise<void> {
+    return this.#enqueueWrite(async () => {
+      const dir = await projectDir(project.id, true);
+      const bytes = await this.#client.saveProjectContainer(this.#spec(project, Date.now()));
+      await writeFileBytes(dir, PROJECT_FILE + AUTOSAVE_SUFFIX, bytes);
+    });
   }
 
   /**
@@ -509,6 +528,12 @@ export class ProjectStore {
   /** Replaces the library tree (group create/rename/dissolve/reorder), then persists. */
   async updateLibrary(project: ProjectState, groups: LibraryNode[]): Promise<void> {
     project.groups = groups;
+    await this.writeProjectFile(project);
+  }
+
+  /** Persists view state (group collapse, and anything else the shell stores there). */
+  async updateView(project: ProjectState, view: unknown): Promise<void> {
+    project.view = view;
     await this.writeProjectFile(project);
   }
 

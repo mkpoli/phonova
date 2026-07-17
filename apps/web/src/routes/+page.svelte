@@ -9,7 +9,12 @@
     RecordingStrip,
     provideCommandRegistry,
     registerCommands,
+    createGroup as treeCreateGroup,
+    renameGroup as treeRenameGroup,
+    dissolveGroup as treeDissolveGroup,
+    moveNode as treeMoveNode,
     type AudioInfo,
+    type LibraryNode,
     type ProjectSummary,
     type RecordingEntry,
     type WasmColormapName
@@ -46,6 +51,24 @@
   let busyLabel = $state('');
   let dirty = $state(false);
   let recovery = $state<{ id: string; name: string } | null>(null);
+
+  // Deletion runs through the journaled detach; the row hides during the undo
+  // window and the OPFS files are purged only when the project is saved.
+  let pendingRemovals = $state<number[]>([]);
+  let removalUndo = $state<{ mediaId: number; name: string } | null>(null);
+  let removalTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function collapsedOf(target: ProjectState): number[] {
+    const view = target.view as { collapsedGroups?: number[] } | null;
+    return Array.isArray(view?.collapsedGroups) ? view.collapsedGroups : [];
+  }
+
+  function clearPendingRemovals() {
+    pendingRemovals = [];
+    removalUndo = null;
+    if (removalTimer) clearTimeout(removalTimer);
+    removalTimer = null;
+  }
 
   // Microphone recording. The recorder lives on the main thread and forwards
   // planar chunks to the engine worker; the strip reads the meter and elapsed
@@ -247,6 +270,7 @@
       project = result.project;
       route = 'project';
       dirty = false;
+      clearPendingRemovals();
       resetAutosaveBaseline();
       await refreshProjects();
     } catch (caught) {
@@ -370,6 +394,7 @@
   }
 
   function backToHome() {
+    clearPendingRemovals();
     void refreshProjects();
     route = 'home';
   }
@@ -377,6 +402,10 @@
   async function saveProject() {
     if (!store || !project) return;
     try {
+      if (pendingRemovals.length > 0) {
+        await store.finalizeRemovals(project, pendingRemovals);
+        clearPendingRemovals();
+      }
       await store.writeProjectFile(project);
       dirty = false;
       pendingSince = null;
@@ -427,6 +456,125 @@
     try {
       await store.duplicate(id);
       await refreshProjects();
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  // --- Library tree ---
+
+  async function applyLibrary(next: LibraryNode[]) {
+    if (!store || !project) return;
+    try {
+      await store.updateLibrary(project, next);
+      project = { ...project };
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  function createGroup() {
+    if (!project) return;
+    void applyLibrary(treeCreateGroup(project.groups, 'New group', null));
+  }
+
+  function renameGroup(groupId: number, name: string) {
+    if (!project) return;
+    void applyLibrary(treeRenameGroup(project.groups, groupId, name));
+  }
+
+  function dissolveGroup(groupId: number) {
+    if (!project) return;
+    void applyLibrary(treeDissolveGroup(project.groups, groupId));
+  }
+
+  function moveNode(key: string, targetGroupId: number | null, index: number) {
+    if (!project) return;
+    void applyLibrary(treeMoveNode(project.groups, key, targetGroupId, index));
+  }
+
+  async function toggleCollapse(groupId: number) {
+    if (!store || !project) return;
+    const current = collapsedOf(project);
+    const next = current.includes(groupId)
+      ? current.filter((id) => id !== groupId)
+      : [...current, groupId];
+    const view = { ...((project.view as object | null) ?? {}), collapsedGroups: next };
+    try {
+      await store.updateView(project, view);
+      project = { ...project };
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  // --- Metadata ---
+
+  async function updateRecordingMetadata(
+    mediaId: number,
+    metadata: { description: string; authors: string[]; tags: string[] }
+  ) {
+    if (!store || !project) return;
+    try {
+      await store.updateRecordingMetadata(project, mediaId, metadata);
+      project = { ...project };
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  async function updateProjectMetadata(metadata: {
+    description: string;
+    authors: string[];
+    tags: string[];
+  }) {
+    if (!store || !project) return;
+    try {
+      await store.updateProjectMetadata(project, metadata);
+      project = { ...project };
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  // --- Delete with undo ---
+
+  async function deleteRecording(mediaId: number) {
+    if (!client || !project) return;
+    const entry = project.recordings.find((r) => r.mediaId === mediaId);
+    if (!entry) return;
+    try {
+      if (entry.audioId !== null) await client.detachAudio(entry.audioId);
+      // The detach cascaded the annotation off the session; drop the reference so
+      // an autosave inside the undo window does not serialize a removed document.
+      entry.annotationId = null;
+      entry.hasAnnotation = false;
+      pendingRemovals = [...pendingRemovals, mediaId];
+      removalUndo = { mediaId, name: entry.name };
+      project = { ...project };
+      if (removalTimer) clearTimeout(removalTimer);
+      removalTimer = setTimeout(() => (removalUndo = null), 8000);
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  async function undoRemoval() {
+    if (!client || !project || !removalUndo) return;
+    const target = removalUndo;
+    if (removalTimer) clearTimeout(removalTimer);
+    removalTimer = null;
+    removalUndo = null;
+    try {
+      await client.undo();
+      const entry = project.recordings.find((r) => r.mediaId === target.mediaId);
+      if (entry && entry.audioId !== null) {
+        const anns = await client.listAnnotations(entry.audioId);
+        entry.annotationId = anns.length ? anns[anns.length - 1] : null;
+        entry.hasAnnotation = anns.length > 0;
+      }
+      pendingRemovals = pendingRemovals.filter((id) => id !== target.mediaId);
+      project = { ...project };
     } catch (caught) {
       report(caught);
     }
@@ -672,6 +820,7 @@
     {busy}
     {busyLabel}
     {dirty}
+    savedAt={project.savedAt}
     onOpenRecording={openRecording}
     onImportFiles={addFilesToProject}
     onBack={backToHome}
@@ -679,6 +828,23 @@
     onThemeChange={handleThemeChange}
     onStartRecording={recordingSupported ? startRecording : undefined}
     recording={capturing}
+    groups={project.groups}
+    collapsed={collapsedOf(project)}
+    onToggleCollapse={toggleCollapse}
+    onCreateGroup={createGroup}
+    onRenameGroup={renameGroup}
+    onDissolveGroup={dissolveGroup}
+    onMoveNode={moveNode}
+    onRenameRecording={renameRecording}
+    onDeleteRecording={deleteRecording}
+    onUpdateRecordingMetadata={updateRecordingMetadata}
+    onUpdateProjectMetadata={updateProjectMetadata}
+    projectDescription={project.description}
+    projectAuthors={project.authors}
+    projectTags={project.tags}
+    {pendingRemovals}
+    {removalUndo}
+    onUndoRemoval={undoRemoval}
   />
 {:else if route === 'editor'}
   <EditorView
