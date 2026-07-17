@@ -190,6 +190,8 @@
     align-items: flex-start;
     padding-top: 12vh;
     background: rgba(15, 23, 42, 0.42);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
     z-index: 40;
   }
 

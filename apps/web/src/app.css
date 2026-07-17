@@ -168,3 +168,30 @@ label {
     transition: transform 0.1s ease-in-out;
   }
 }
+
+/* Thin, quiet scrollbars everywhere a pane scrolls — no OS chrome default. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--chrome-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--chrome-strong);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted);
+  background-clip: padding-box;
+}

@@ -128,6 +128,8 @@
     display: grid;
     place-items: center;
     background: rgba(15, 23, 42, 0.42);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
     z-index: 30;
   }
 
@@ -147,7 +149,10 @@
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    margin-bottom: 0.75rem;
+    margin: -1rem -1.2rem 0.75rem;
+    padding: 0.6rem 1.2rem;
+    border-bottom: 1px solid var(--chrome-strong);
+    background: var(--panel-soft);
   }
 
   header h2 {

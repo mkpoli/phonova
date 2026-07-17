@@ -169,7 +169,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.5rem;
+    margin: -0.75rem -0.85rem 0.75rem;
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid var(--chrome-strong);
+    background: var(--panel-soft);
   }
 
   .head h2 {
