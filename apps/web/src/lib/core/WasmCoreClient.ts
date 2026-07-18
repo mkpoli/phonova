@@ -321,6 +321,10 @@ export class WasmCoreClient implements CoreClient {
     return this.#call({ method: 'redoDepth' });
   }
 
+  journalHeadId(): Promise<bigint | null> {
+    return this.#call({ method: 'journalHeadId' });
+  }
+
   stateHash(): Promise<bigint> {
     return this.#call({ method: 'stateHash' });
   }

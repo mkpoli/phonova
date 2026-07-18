@@ -351,6 +351,11 @@ export class TauriCoreClient implements CoreClientLike {
     return invoke('redo_depth');
   }
 
+  async journalHeadId(): Promise<bigint | null> {
+    const id = await invoke<string | null>('journal_head_id');
+    return id === null ? null : big(id);
+  }
+
   async stateHash(): Promise<bigint> {
     return big(await invoke<string>('state_hash'));
   }

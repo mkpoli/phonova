@@ -121,6 +121,36 @@ test('delete a recording, then undo restores the row', async ({ page }) => {
   await expect(page.locator('[data-recording-name="synth_tone_sweep"]')).toHaveCount(1);
 });
 
+test('another edit inside the undo window keeps the toast from reverting it', async ({ page }) => {
+  await importTakes(page);
+
+  await treeRowFor(page, 'synth_tone_sweep').getByTestId('row-delete').click();
+  await expect(page.getByTestId('corpus-row')).toHaveCount(1);
+  await expect(page.getByTestId('removal-undo')).toBeVisible();
+
+  // A second journaled edit lands inside the toast's 8-second window, before
+  // its Undo button is clicked.
+  const name = page.locator('[data-recording-name="synth_vowel_a"]').getByTestId('rename-corpus-name');
+  await name.focus();
+  await page.keyboard.press('F2');
+  const input = page.getByTestId('rename-corpus-input');
+  await expect(input).toBeVisible();
+  await input.fill('vowel_renamed');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-recording-name="vowel_renamed"]')).toHaveCount(1);
+
+  // The toast's target has moved on: clicking Undo must neither revert the
+  // rename (a blind global undo() would target it, not the delete) nor
+  // resurrect the deleted recording (there is no safe way to reach it now).
+  await page.getByTestId('removal-undo-action').click();
+
+  await expect(page.locator('[data-recording-name="vowel_renamed"]')).toHaveCount(1);
+  await expect(page.getByTestId('corpus-row')).toHaveCount(1);
+  await expect(page.locator('[data-recording-name="synth_tone_sweep"]')).toHaveCount(0);
+  await expect(page.getByTestId('removal-undo-action')).toBeDisabled();
+  await expect(page.getByTestId('removal-undo')).toContainText('Ctrl+Z');
+});
+
 test('search narrows the corpus by tag', async ({ page }) => {
   await importTakes(page);
 

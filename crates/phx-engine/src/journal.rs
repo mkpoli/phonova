@@ -18,6 +18,13 @@
 //! Depth is unlimited: entries are only ever appended and moved between the two
 //! stacks, and applying a fresh command clears the redo stack so an entry never
 //! contradicts a command applied after it.
+//!
+//! Each entry also carries a journal-assigned id, separate from the
+//! object-model ids above, so a caller that captured an id right after
+//! applying a command — a delete's undo toast, say — can later ask
+//! [`crate::Engine::journal_head_id`] whether that same entry is still what
+//! [`crate::Engine::undo`] would target, or whether something else has been
+//! journaled since.
 
 use phx_annot::{Annotation, InverseMutation, TierId, TierSlot};
 
@@ -263,8 +270,22 @@ fn applied_for_content(doc: AnnotationId, mutation: &InverseMutation) -> Applied
     }
 }
 
-/// One reversible step: paired undo and redo transitions.
+/// A paired undo and redo transition, not yet stamped with a journal id.
+///
+/// `Engine::execute` and the direct-journaling import paths (raw WAV import,
+/// streamed open, finished recording) build this; [`Journal::record`] stamps
+/// it into a [`JournalEntry`] and pushes it.
+pub(crate) struct Transition {
+    pub(crate) undo: Reverse,
+    pub(crate) redo: Reverse,
+}
+
+/// One reversible step, identified by a journal-assigned id so a caller that
+/// captured the id at apply time can later tell whether this entry is still
+/// the one [`Journal::take_undo`] would return — the check
+/// [`crate::Engine::journal_head_id`] exists for.
 pub(crate) struct JournalEntry {
+    pub(crate) id: u64,
     pub(crate) undo: Reverse,
     pub(crate) redo: Reverse,
 }
@@ -272,15 +293,24 @@ pub(crate) struct JournalEntry {
 /// The unified undo/redo journal: two stacks of resolved transitions.
 #[derive(Default)]
 pub(crate) struct Journal {
+    next_id: u64,
     undo_stack: Vec<JournalEntry>,
     redo_stack: Vec<JournalEntry>,
 }
 
 impl Journal {
-    /// Records a freshly applied command and drops any pending redo history.
-    pub(crate) fn record(&mut self, entry: JournalEntry) {
-        self.undo_stack.push(entry);
+    /// Records a freshly applied transition, drops any pending redo history,
+    /// and returns the id stamped on the new entry.
+    pub(crate) fn record(&mut self, transition: Transition) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.undo_stack.push(JournalEntry {
+            id,
+            undo: transition.undo,
+            redo: transition.redo,
+        });
         self.redo_stack.clear();
+        id
     }
 
     /// Pops the most recent entry for undo, moving it onto the redo stack.
@@ -314,5 +344,12 @@ impl Journal {
     #[must_use]
     pub(crate) fn redo_depth(&self) -> usize {
         self.redo_stack.len()
+    }
+
+    /// Id of the entry a call to [`Journal::take_undo`] would return right
+    /// now, or `None` when there is nothing to undo.
+    #[must_use]
+    pub(crate) fn head_id(&self) -> Option<u64> {
+        self.undo_stack.last().map(|entry| entry.id)
     }
 }

@@ -620,6 +620,15 @@ pub fn redo_depth(state: State<AppState>) -> Result<u32, String> {
     Ok(lock(&state)?.redo_depth() as u32)
 }
 
+/// Id of the journal entry `undo` would target right now, as a decimal
+/// string (a `u64` exceeds the range JSON numbers hold exactly), or `None`
+/// when there is nothing to undo. A caller compares this against a value it
+/// captured earlier to tell whether `undo` still targets the same entry.
+#[tauri::command]
+pub fn journal_head_id(state: State<AppState>) -> Result<Option<String>, String> {
+    Ok(lock(&state)?.journal_head_id().map(|id| id.to_string()))
+}
+
 /// The full document-model hash as a decimal string: a `u64` exceeds the range
 /// JSON numbers hold exactly, so the client widens the string back to `bigint`.
 #[tauri::command]

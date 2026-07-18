@@ -72,6 +72,7 @@ pub fn run() {
             engine_cmds::redo,
             engine_cmds::undo_depth,
             engine_cmds::redo_depth,
+            engine_cmds::journal_head_id,
             engine_cmds::state_hash,
             engine_cmds::list_annotations,
             engine_cmds::annotation_tiers,

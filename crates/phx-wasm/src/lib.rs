@@ -1900,6 +1900,20 @@ impl WasmEngine {
         self.inner.redo_depth() as u32
     }
 
+    /// Id of the entry [`WasmEngine::undo`] would target right now, or
+    /// `undefined` when there is nothing to undo.
+    ///
+    /// A caller that wants a later action to affect one specific command —
+    /// an undo toast for a delete, say — captures this right after applying
+    /// it, then compares it again before acting: a match means `undo()`
+    /// still targets that same entry; a mismatch means something else has
+    /// been journaled (or undone, or redone) since.
+    #[wasm_bindgen(js_name = journalHeadId)]
+    #[must_use]
+    pub fn journal_head_id(&self) -> Option<u64> {
+        self.inner.journal_head_id()
+    }
+
     /// Hash of the whole document model, for asserting UI/engine consistency.
     ///
     /// Equal document models hash equal, and undo restores the value it had

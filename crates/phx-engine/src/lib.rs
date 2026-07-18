@@ -45,7 +45,7 @@ use std::sync::Arc;
 use stream_pyramid::StreamPyramid;
 
 use document::DocumentStore;
-use journal::{Journal, JournalEntry, Reverse};
+use journal::{Journal, Reverse, Transition};
 
 pub use commands::{Applied, Command, EngineHit};
 pub use document::{AnnotationId, Document};
@@ -1054,9 +1054,23 @@ impl Engine {
     /// rejected annotation mutation (an out-of-range boundary, a control
     /// character in a label, a dangling relation left by a tier removal).
     pub fn apply(&mut self, cmd: Command) -> Result<Applied, EngineError> {
-        let (applied, entry) = self.execute(cmd)?;
-        self.journal.record(entry);
+        let (applied, transition) = self.execute(cmd)?;
+        self.journal.record(transition);
         Ok(applied)
+    }
+
+    /// Id of the entry [`Engine::undo`] would target right now, or `None` when
+    /// there is nothing to undo.
+    ///
+    /// A caller that wants a later action to affect one specific command — an
+    /// undo toast for a delete, say — captures this right after applying it,
+    /// then compares it again before acting: a match means [`Engine::undo`]
+    /// still targets that same entry; a mismatch means something else has
+    /// been journaled (or undone, or redone) since, and a blind `undo()`
+    /// would hit that instead.
+    #[must_use]
+    pub fn journal_head_id(&self) -> Option<u64> {
+        self.journal.head_id()
     }
 
     /// Undoes the most recent command, restoring a state-hash-identical
@@ -1210,7 +1224,7 @@ impl Engine {
     fn journal_eager_import(&mut self, audio: Audio) -> AudioId {
         let replay = audio.clone();
         let id = self.store.insert(audio);
-        self.journal.record(JournalEntry {
+        self.journal.record(Transition {
             undo: Reverse::RemoveAudio { id },
             redo: Reverse::ImportAudio {
                 id,
@@ -1226,7 +1240,7 @@ impl Engine {
     /// import has no documents to cascade, so both sides of the pair carry an
     /// empty document list.
     fn journal_streamed_import(&mut self, id: AudioId) {
-        self.journal.record(JournalEntry {
+        self.journal.record(Transition {
             undo: Reverse::DetachAudio { id },
             redo: Reverse::RestoreAudio {
                 id,
@@ -1237,7 +1251,7 @@ impl Engine {
 
     /// Runs a command forward against live state, returning the report and the
     /// journal entry that reverses and reproduces it.
-    fn execute(&mut self, cmd: Command) -> Result<(Applied, JournalEntry), EngineError> {
+    fn execute(&mut self, cmd: Command) -> Result<(Applied, Transition), EngineError> {
         use phx_annot::InverseMutation;
 
         match cmd {
@@ -1247,7 +1261,7 @@ impl Engine {
                 let id = self.store.insert(audio);
                 Ok((
                     Applied::AudioImported { audio: id },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::RemoveAudio { id },
                         redo: Reverse::ImportAudio {
                             id,
@@ -1263,7 +1277,7 @@ impl Engine {
                         audio: id,
                         name: name.clone(),
                     },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::RenameAudio { id, name: previous },
                         redo: Reverse::RenameAudio {
                             id,
@@ -1289,7 +1303,7 @@ impl Engine {
                         audio: id,
                         annotations,
                     },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::RestoreAudio { id, docs: captured },
                         redo: Reverse::DetachAudio { id },
                     },
@@ -1313,7 +1327,7 @@ impl Engine {
                         annotation: id,
                         audio,
                     },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::Detach { id },
                         redo: Reverse::Attach {
                             id,
@@ -1332,7 +1346,7 @@ impl Engine {
                 let (index, slot) = captured_tier(&document.annotation, tier)?;
                 Ok((
                     Applied::TierAdded { annotation, tier },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::RemoveTier {
                             doc: annotation,
                             tier,
@@ -1358,7 +1372,7 @@ impl Engine {
                 let (index, slot) = captured_tier(&document.annotation, tier)?;
                 Ok((
                     Applied::TierAdded { annotation, tier },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::RemoveTier {
                             doc: annotation,
                             tier,
@@ -1378,7 +1392,7 @@ impl Engine {
                 document.annotation = reduced;
                 Ok((
                     Applied::TierRemoved { annotation, tier },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::InsertTier {
                             doc: annotation,
                             index,
@@ -1409,7 +1423,7 @@ impl Engine {
                         boundary,
                         at,
                     },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::Content {
                             doc: annotation,
                             mutation: InverseMutation::RemoveBoundary { boundary },
@@ -1444,7 +1458,7 @@ impl Engine {
                         annotation,
                         moves: moved.moves.clone(),
                     },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::Content {
                             doc: annotation,
                             mutation: InverseMutation::MoveBoundaries { moves: moved.moves },
@@ -1467,7 +1481,7 @@ impl Engine {
                         annotation,
                         boundary,
                     },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::Content {
                             doc: annotation,
                             mutation: InverseMutation::RestoreMergedBoundary { merged },
@@ -1492,7 +1506,7 @@ impl Engine {
                         target,
                         text: change.new_text.clone(),
                     },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::Content {
                             doc: annotation,
                             mutation: InverseMutation::SetLabel {
@@ -1526,7 +1540,7 @@ impl Engine {
                         point: point.id,
                         at: point.time,
                     },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::Content {
                             doc: annotation,
                             mutation: InverseMutation::RemovePoint { point: point.id },
@@ -1553,7 +1567,7 @@ impl Engine {
                         point,
                         to: moved.to,
                     },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::Content {
                             doc: annotation,
                             mutation: InverseMutation::MovePoint {
@@ -1576,7 +1590,7 @@ impl Engine {
                 let removal = document.annotation.remove_point(point)?;
                 Ok((
                     Applied::PointRemoved { annotation, point },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::Content {
                             doc: annotation,
                             mutation: InverseMutation::RestorePoint {
@@ -1604,7 +1618,7 @@ impl Engine {
                         tier,
                         to_index: reorder.to_index,
                     },
-                    JournalEntry {
+                    Transition {
                         undo: Reverse::Content {
                             doc: annotation,
                             mutation: InverseMutation::ReorderTier {
@@ -2922,6 +2936,47 @@ mod tests {
             .unwrap();
         assert_eq!(engine.redo_depth(), 0);
         assert!(engine.redo().unwrap().is_none());
+    }
+
+    /// Reproduces the delete/undo-toast race a captured head id has to guard
+    /// against: a toast captures the id of its own delete, another journaled
+    /// operation lands inside the toast's window, and the id no longer
+    /// matches the journal head — telling the caller a blind `undo()` would
+    /// hit the wrong entry.
+    #[test]
+    fn journal_head_id_detects_an_intervening_command() {
+        let (mut engine, audio, doc) = base_engine();
+        let after_setup = engine.journal_head_id();
+        assert!(after_setup.is_some(), "base_engine leaves an import+attach on the journal");
+
+        // The "delete": detach the audio, and capture the id of that entry.
+        engine.apply(Command::DetachAudio { id: audio }).unwrap();
+        let delete_id = engine.journal_head_id();
+        assert!(delete_id.is_some());
+        assert_ne!(delete_id, after_setup);
+
+        // Nothing else has happened yet: the toast's captured id still names
+        // the journal head, so `undo()` would target the delete.
+        assert_eq!(engine.journal_head_id(), delete_id);
+
+        // Another journaled operation lands inside the toast's window.
+        let intervening = engine
+            .import_wav_bytes(&sine_wav_bytes(8_000, 0.1, 500.0))
+            .unwrap();
+
+        // The captured id no longer names the head: a blind `undo()` would
+        // now undo the *import*, not the delete the toast promised to undo.
+        assert_ne!(engine.journal_head_id(), delete_id);
+        let undone = engine.undo().unwrap().unwrap();
+        assert!(matches!(undone, Applied::AudioRemoved { audio: a } if a == intervening));
+        assert_ne!(
+            undone,
+            Applied::AudioDetached {
+                audio,
+                annotations: vec![doc],
+            },
+            "a mismatched head id must never be trusted to undo the delete"
+        );
     }
 
     #[test]

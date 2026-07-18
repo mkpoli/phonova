@@ -74,8 +74,13 @@
     projectTags?: string[];
     /** Media ids removed within the still-open undo window. */
     pendingRemovals?: number[];
-    /** The most recent removal offered for undo, or null. */
-    removalUndo?: { name: string } | null;
+    /**
+     * The most recent removal offered for undo, or null. `stale` means the
+     * journal has moved on since the delete — undoing is no longer safe, so
+     * the banner switches to a manual-history message and disables the
+     * button rather than risk undoing an unrelated later edit.
+     */
+    removalUndo?: { name: string; stale?: boolean } | null;
     onUndoRemoval?: () => void;
   }
 
@@ -485,11 +490,22 @@
 
 {#if removalUndo}
   <div class="undo-banner" role="status" data-testid="removal-undo">
-    <span>Recording “{removalUndo.name}” removed.</span>
-    <button type="button" class="undo" data-testid="removal-undo-action" onclick={() => onUndoRemoval?.()}>
-      <IconRotateCcw aria-hidden="true" />
-      <span>Undo</span>
-    </button>
+    {#if removalUndo.stale}
+      <span
+        >Recording “{removalUndo.name}” removed. Another change happened since — restore it from the undo history
+        (Ctrl+Z) instead.</span
+      >
+      <button type="button" class="undo" data-testid="removal-undo-action" disabled>
+        <IconRotateCcw aria-hidden="true" />
+        <span>Undo</span>
+      </button>
+    {:else}
+      <span>Recording “{removalUndo.name}” removed.</span>
+      <button type="button" class="undo" data-testid="removal-undo-action" onclick={() => onUndoRemoval?.()}>
+        <IconRotateCcw aria-hidden="true" />
+        <span>Undo</span>
+      </button>
+    {/if}
   </div>
 {/if}
 
@@ -761,6 +777,16 @@
   .undo-banner .undo:hover {
     background: var(--accent-tint);
     border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+  }
+
+  .undo-banner .undo:disabled {
+    color: var(--muted);
+    cursor: default;
+  }
+
+  .undo-banner .undo:disabled:hover {
+    background: transparent;
+    border-color: transparent;
   }
 
   .drop-hint {

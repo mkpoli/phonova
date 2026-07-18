@@ -72,8 +72,20 @@
 
   // Deletion runs through the journaled detach; the row hides during the undo
   // window and the OPFS files are purged only when the project is saved.
+  //
+  // The toast's Undo action must target the delete's own journal entry, not
+  // whatever the journal head happens to be when it's clicked: any other
+  // journaled edit inside the 8-second window would otherwise be the thing
+  // that actually gets undone. `journalEntryId` is the id captured right
+  // after the delete; `stale` flips true once a later check finds the head
+  // has moved on, at which point the button stops calling undo() at all.
   let pendingRemovals = $state<number[]>([]);
-  let removalUndo = $state<{ mediaId: number; name: string } | null>(null);
+  let removalUndo = $state<{
+    mediaId: number;
+    name: string;
+    journalEntryId: bigint | null;
+    stale: boolean;
+  } | null>(null);
   let removalTimer: ReturnType<typeof setTimeout> | null = null;
 
   function collapsedOf(target: ProjectState): number[] {
@@ -884,13 +896,19 @@
     const entry = project.recordings.find((r) => r.mediaId === mediaId);
     if (!entry) return;
     try {
-      if (entry.audioId !== null) await client.detachAudio(entry.audioId);
+      let journalEntryId: bigint | null = null;
+      if (entry.audioId !== null) {
+        await client.detachAudio(entry.audioId);
+        // The detach just applied is the journal head; capture its id so the
+        // toast can later confirm it is still the entry undo() would target.
+        journalEntryId = await client.journalHeadId();
+      }
       // The detach cascaded the annotation off the session; drop the reference so
       // an autosave inside the undo window does not serialize a removed document.
       entry.annotationId = null;
       entry.hasAnnotation = false;
       pendingRemovals = [...pendingRemovals, mediaId];
-      removalUndo = { mediaId, name: entry.name };
+      removalUndo = { mediaId, name: entry.name, journalEntryId, stale: false };
       project = { ...project };
       if (removalTimer) clearTimeout(removalTimer);
       removalTimer = setTimeout(() => (removalUndo = null), 8000);
@@ -900,12 +918,21 @@
   }
 
   async function undoRemoval() {
-    if (!client || !project || !removalUndo) return;
+    if (!client || !project || !removalUndo || removalUndo.stale) return;
     const target = removalUndo;
-    if (removalTimer) clearTimeout(removalTimer);
-    removalTimer = null;
-    removalUndo = null;
     try {
+      const head = target.journalEntryId === null ? null : await client.journalHeadId();
+      if (target.journalEntryId === null || head !== target.journalEntryId) {
+        // Something else was journaled since the delete (or there was never
+        // anything to undo); a blind undo() would hit that entry instead of
+        // restoring this recording. Stop offering the action rather than
+        // undo the wrong thing.
+        removalUndo = { ...target, stale: true };
+        return;
+      }
+      if (removalTimer) clearTimeout(removalTimer);
+      removalTimer = null;
+      removalUndo = null;
       await client.undo();
       const entry = project.recordings.find((r) => r.mediaId === target.mediaId);
       if (entry && entry.audioId !== null) {

@@ -148,6 +148,7 @@ type RequestMessage =
   | { id: number; method: 'redo' }
   | { id: number; method: 'undoDepth' }
   | { id: number; method: 'redoDepth' }
+  | { id: number; method: 'journalHeadId' }
   | { id: number; method: 'stateHash' }
   | { id: number; method: 'listAnnotations'; audioId: AudioId }
   | { id: number; method: 'annotationTiers'; annotationId: AnnotationId }
@@ -775,6 +776,11 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
       }
       case 'redoDepth': {
         postMessage({ id: message.id, ok: true, result: wasm.redoDepth() } satisfies ResponseMessage);
+        return;
+      }
+      case 'journalHeadId': {
+        const head = wasm.journalHeadId();
+        postMessage({ id: message.id, ok: true, result: head ?? null } satisfies ResponseMessage);
         return;
       }
       case 'stateHash': {

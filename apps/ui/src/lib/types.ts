@@ -180,6 +180,13 @@ export interface AnnotationClientLike {
   redo(): Promise<AppliedChange | null>;
   undoDepth(): Promise<number>;
   redoDepth(): Promise<number>;
+  /**
+   * Id of the journal entry `undo()` would target right now, or `null` when
+   * there is nothing to undo. A caller that wants a later action to affect
+   * one specific command — an undo toast for a delete, say — captures this
+   * right after applying it, then compares it again before acting.
+   */
+  journalHeadId(): Promise<bigint | null>;
   stateHash(): Promise<bigint>;
   /** Every live document attached to `audioId`, ascending by id (most recently attached last). */
   listAnnotations(audioId: AudioId): Promise<AnnotationId[]>;
