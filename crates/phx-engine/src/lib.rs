@@ -2947,7 +2947,10 @@ mod tests {
     fn journal_head_id_detects_an_intervening_command() {
         let (mut engine, audio, doc) = base_engine();
         let after_setup = engine.journal_head_id();
-        assert!(after_setup.is_some(), "base_engine leaves an import+attach on the journal");
+        assert!(
+            after_setup.is_some(),
+            "base_engine leaves an import+attach on the journal"
+        );
 
         // The "delete": detach the audio, and capture the id of that entry.
         engine.apply(Command::DetachAudio { id: audio }).unwrap();
