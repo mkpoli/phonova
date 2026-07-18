@@ -12,6 +12,7 @@ use std::fmt;
 use std::io::Cursor;
 use std::ops::Range;
 
+mod decode;
 mod stream;
 
 pub use stream::{
@@ -101,6 +102,44 @@ impl Audio {
             sample_rate: f64::from(spec.sample_rate),
             name: None,
         })
+    }
+
+    /// Reads an AIFF/AIFF-C byte buffer into planar `f32` samples.
+    ///
+    /// Decoding goes through `symphonia`'s PCM decoder; only uncompressed
+    /// AIFF audio is supported. A decoded buffer equals the same recording's
+    /// WAV encoding bit for bit, since both paths scale integer PCM by the
+    /// same divisors.
+    pub fn from_aiff_bytes(bytes: &[u8]) -> Result<Self, AudioError> {
+        let (channels, sample_rate) = decode::decode(bytes, decode::ContainerKind::Aiff)?;
+        Self::new(channels, sample_rate)
+    }
+
+    /// Reads a FLAC byte buffer into planar `f32` samples.
+    ///
+    /// FLAC is lossless, so a decoded buffer equals the source PCM's WAV
+    /// encoding bit for bit regardless of the compression level or block
+    /// size the stream was encoded with.
+    pub fn from_flac_bytes(bytes: &[u8]) -> Result<Self, AudioError> {
+        let (channels, sample_rate) = decode::decode(bytes, decode::ContainerKind::Flac)?;
+        Self::new(channels, sample_rate)
+    }
+
+    /// Reads a WAV, AIFF, or FLAC byte buffer, detecting the container from
+    /// its leading signature.
+    ///
+    /// This is the entry point for a caller that accepts any of the three
+    /// formats without deciding ahead of time which one it has; a caller
+    /// that already knows the format should call
+    /// [`Audio::from_wav_bytes`]/[`Audio::from_aiff_bytes`]/[`Audio::from_flac_bytes`]
+    /// directly instead.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, AudioError> {
+        match sniff_container(bytes) {
+            Some(Container::Wav) => Self::from_wav_bytes(bytes),
+            Some(Container::Aiff) => Self::from_aiff_bytes(bytes),
+            Some(Container::Flac) => Self::from_flac_bytes(bytes),
+            None => Err(AudioError::UnrecognizedFormat),
+        }
     }
 
     /// Encodes the buffer as RIFF/WAVE bytes at the requested sample format.
@@ -420,6 +459,7 @@ impl ResampleQuality {
 
 /// Errors produced by audio decoding, encoding, buffer validation, and resampling.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum AudioError {
     /// WAV data is malformed.
     MalformedWav(String),
@@ -428,6 +468,23 @@ pub enum AudioError {
         /// Human-readable reason.
         reason: String,
     },
+    /// AIFF data is malformed, truncated, or fails to demux/decode.
+    MalformedAiff(String),
+    /// AIFF data is well-formed but uses a codec or layout this crate does
+    /// not decode (compressed AIFC variants; PCM is the supported case).
+    UnsupportedAiff {
+        /// Human-readable reason.
+        reason: String,
+    },
+    /// FLAC data is malformed, truncated, or fails to demux/decode.
+    MalformedFlac(String),
+    /// FLAC data is well-formed but uses a layout this crate does not decode.
+    UnsupportedFlac {
+        /// Human-readable reason.
+        reason: String,
+    },
+    /// The input bytes do not start with a WAV, AIFF, or FLAC signature.
+    UnrecognizedFormat,
     /// Channel count or channel length validation failed.
     ChannelCountMismatch {
         /// Expected count.
@@ -469,6 +526,13 @@ impl fmt::Display for AudioError {
         match self {
             Self::MalformedWav(reason) => write!(f, "malformed WAV data: {reason}"),
             Self::UnsupportedWav { reason } => write!(f, "unsupported WAV data: {reason}"),
+            Self::MalformedAiff(reason) => write!(f, "malformed AIFF data: {reason}"),
+            Self::UnsupportedAiff { reason } => write!(f, "unsupported AIFF data: {reason}"),
+            Self::MalformedFlac(reason) => write!(f, "malformed FLAC data: {reason}"),
+            Self::UnsupportedFlac { reason } => write!(f, "unsupported FLAC data: {reason}"),
+            Self::UnrecognizedFormat => {
+                write!(f, "input is not a recognized WAV, AIFF, or FLAC stream")
+            }
             Self::ChannelCountMismatch { expected, actual } => {
                 write!(
                     f,
@@ -496,6 +560,36 @@ impl fmt::Display for AudioError {
 }
 
 impl Error for AudioError {}
+
+/// Container format detected from a byte buffer's leading signature.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Container {
+    Wav,
+    Aiff,
+    Flac,
+}
+
+/// Detects a WAV, AIFF, or FLAC container from its leading bytes.
+///
+/// Reads only the fixed-offset signature bytes; every access is bounds
+/// checked, so an empty or truncated buffer reports no match rather than
+/// panicking.
+fn sniff_container(bytes: &[u8]) -> Option<Container> {
+    let head = bytes.get(0..4)?;
+    if head == b"fLaC" {
+        return Some(Container::Flac);
+    }
+    if head == b"RIFF" && bytes.get(8..12) == Some(&b"WAVE"[..]) {
+        return Some(Container::Wav);
+    }
+    if head == b"FORM" {
+        let form_type = bytes.get(8..12)?;
+        if form_type == b"AIFF" || form_type == b"AIFC" {
+            return Some(Container::Aiff);
+        }
+    }
+    None
+}
 
 fn validate_sample_rate(sample_rate: f64) -> Result<(), AudioError> {
     if sample_rate.is_finite() && sample_rate > 0.0 {

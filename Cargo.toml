@@ -29,7 +29,7 @@ homepage = "https://phonia.app"
 
 [workspace.dependencies]
 hound = "3.5"
-symphonia = "0.6"
+symphonia = { version = "0.6", default-features = false }
 cpal = "0.18"
 rubato = "4"
 rustfft = "6.4"
