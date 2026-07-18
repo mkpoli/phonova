@@ -23,9 +23,12 @@ fixture into `tests/fixtures/textgrids/`:
   content already known correct.
 - one TextGrid assembled directly through parselmouth's public "Create
   TextGrid...", "Insert boundary...", "Insert point..." commands and saved
-  as binary only. It covers structure the text fixtures do not: four tiers
-  (two interval, two point) and non-round fractional boundary times, so the
-  binary sample corpus is not just a re-encoding of already-seen numbers.
+  as both text and binary. It covers structure the re-saved fixtures do
+  not: four tiers (two interval, two point) and non-round fractional
+  boundary times, so the binary sample corpus is not just a re-encoding of
+  already-seen numbers; saving it as text too gives phx-textgrid's own
+  round-trip tests a text twin to compare the binary parse against, the
+  same way the re-saved fixtures already have one in their source file.
 
 Every output is round-tripped in-process: read back with `parselmouth.Data.read`
 and compared against the source object by diffing each object's long-text
@@ -48,9 +51,20 @@ from oracle.runner import OracleUnavailable, load_parselmouth  # noqa: E402
 TEXT_TO_BINARY = [
     ("ipa_diacritics_long_utf8.TextGrid", "ipa_diacritics_binary.TextGrid"),
     ("adjacent_empty_intervals_long_utf8.TextGrid", "adjacent_empty_intervals_binary.TextGrid"),
+    # zero_tiers_long_utf8.TextGrid is excluded: parselmouth segfaults reading
+    # a zero-tier ("tiers? <absent>") TextGrid in this environment, so no oracle
+    # sample exists for the absent-tiers case; the binary reader treats a
+    # tiers-exist byte of 0x00 the same way the text reader treats <absent>
+    # (zero tiers, no further fields), by symmetry with the text grammar
+    # rather than a derived binary sample.
+    ("narrow_tier_domain_long_utf8.TextGrid", "narrow_tier_domain_binary.TextGrid"),
+    ("points_only_long_utf8.TextGrid", "points_only_binary.TextGrid"),
+    ("mixed_multitier_short_utf8.TextGrid", "mixed_multitier_binary.TextGrid"),
+    ("latin1_legacy.TextGrid", "latin1_legacy_binary.TextGrid"),
 ]
 
 SYNTHETIC_BINARY_NAME = "synthetic_binary_complex.TextGrid"
+SYNTHETIC_TEXT_NAME = "synthetic_complex_long_utf8.TextGrid"
 
 
 def _dump_text(parselmouth_module, tg, tmp_path: Path) -> str:
@@ -109,10 +123,13 @@ def _build_synthetic(parselmouth_module, out_dir: Path, tmp_dir: Path) -> Path:
         call(tg, "Insert point", 3, t, mark)
     # tier 4 ("markers") left with zero points on purpose
 
+    text_path = out_dir / SYNTHETIC_TEXT_NAME
+    tg.save_as_text_file(str(text_path))
+
     out_path = out_dir / SYNTHETIC_BINARY_NAME
     tg.save_as_binary_file(str(out_path))
     _roundtrip_check(parselmouth_module, tg, out_path, tmp_dir)
-    return out_path
+    return text_path, out_path
 
 
 def main() -> int:
@@ -132,9 +149,11 @@ def main() -> int:
         written.append(path)
         print(f"wrote {path.relative_to(repo_root())} (round-trip OK)")
 
-    synth_path = _build_synthetic(parselmouth_module, out_dir, tmp_dir)
-    written.append(synth_path)
-    print(f"wrote {synth_path.relative_to(repo_root())} (round-trip OK)")
+    synth_text_path, synth_binary_path = _build_synthetic(parselmouth_module, out_dir, tmp_dir)
+    written.append(synth_text_path)
+    written.append(synth_binary_path)
+    print(f"wrote {synth_text_path.relative_to(repo_root())}")
+    print(f"wrote {synth_binary_path.relative_to(repo_root())} (round-trip OK)")
 
     for f in tmp_dir.iterdir():
         f.unlink()
