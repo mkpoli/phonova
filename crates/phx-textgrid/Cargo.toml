@@ -15,6 +15,3 @@ exclude = ["tests/fixtures.rs"]
 
 [dependencies]
 phx-annot = { workspace = true }
-
-[dev-dependencies]
-phx-annot = { workspace = true }

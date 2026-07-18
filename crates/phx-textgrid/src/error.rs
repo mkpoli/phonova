@@ -7,6 +7,7 @@ use std::fmt;
 /// Every reader failure path returns one of these variants; the reader never
 /// panics on malformed, truncated, or arbitrary input.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum TextGridError {
     /// The input held no bytes.
     Empty,
@@ -102,7 +103,14 @@ impl fmt::Display for TextGridError {
     }
 }
 
-impl std::error::Error for TextGridError {}
+impl std::error::Error for TextGridError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Annotation(err) => Some(err),
+            _ => None,
+        }
+    }
+}
 
 impl From<phx_annot::AnnotationError> for TextGridError {
     fn from(err: phx_annot::AnnotationError) -> Self {

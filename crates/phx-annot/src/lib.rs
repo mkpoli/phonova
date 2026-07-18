@@ -860,8 +860,8 @@ impl Annotation {
             if interval.xmin >= interval.xmax {
                 issues.push(IntegrityIssue::IntervalUnsorted {
                     tier: tier_id,
-                    previous: interval.xmin,
-                    next: interval.xmax,
+                    xmin: interval.xmin,
+                    xmax: interval.xmax,
                 });
             }
             if index > 0 {
@@ -1520,7 +1520,7 @@ impl Annotation {
 }
 
 /// Ordered tier entry carrying the tier identifier and relation.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TierSlot {
     /// Stable tier identifier.
     pub id: TierId,
@@ -1530,8 +1530,14 @@ pub struct TierSlot {
     pub tier: Tier,
 }
 
+impl PartialEq for TierSlot {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.relation == other.relation && self.tier == other.tier
+    }
+}
+
 /// Annotation tier variant.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Tier {
     /// Interval tier with contiguous spans.
     Interval(IntervalTier),
@@ -1539,12 +1545,22 @@ pub enum Tier {
     Point(PointTier),
 }
 
+impl PartialEq for Tier {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Interval(a), Self::Interval(b)) => a == b,
+            (Self::Point(a), Self::Point(b)) => a == b,
+            (Self::Interval(_), Self::Point(_)) | (Self::Point(_), Self::Interval(_)) => false,
+        }
+    }
+}
+
 /// Interval tier with sorted, contiguous intervals over its own time domain.
 ///
 /// A tier's `xmin`/`xmax` usually match the document's, but a source format
 /// may carry a tier whose domain differs from the document's; [`Annotation`]
 /// preserves whatever the tier itself declares.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IntervalTier {
     /// Display name for the tier.
     pub name: String,
@@ -1554,6 +1570,15 @@ pub struct IntervalTier {
     pub xmax: f64,
     /// Ordered intervals.
     pub intervals: Vec<Interval>,
+}
+
+impl PartialEq for IntervalTier {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && same_time(self.xmin, other.xmin)
+            && same_time(self.xmax, other.xmax)
+            && self.intervals == other.intervals
+    }
 }
 
 impl IntervalTier {
@@ -1577,7 +1602,7 @@ impl IntervalTier {
 }
 
 /// Labeled interval bounded by two stable boundary identifiers.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Interval {
     /// Stable interval identifier.
     pub id: IntervalId,
@@ -1593,13 +1618,24 @@ pub struct Interval {
     pub label: String,
 }
 
+impl PartialEq for Interval {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.start_boundary == other.start_boundary
+            && self.end_boundary == other.end_boundary
+            && same_time(self.xmin, other.xmin)
+            && same_time(self.xmax, other.xmax)
+            && self.label == other.label
+    }
+}
+
 /// Point tier with sorted, strictly increasing points over its own time
 /// domain.
 ///
 /// A tier's `xmin`/`xmax` usually match the document's, but a source format
 /// may carry a tier whose domain differs from the document's; [`Annotation`]
 /// preserves whatever the tier itself declares.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PointTier {
     /// Display name for the tier.
     pub name: String,
@@ -1611,8 +1647,17 @@ pub struct PointTier {
     pub points: Vec<Point>,
 }
 
+impl PartialEq for PointTier {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && same_time(self.xmin, other.xmin)
+            && same_time(self.xmax, other.xmax)
+            && self.points == other.points
+    }
+}
+
 /// Labeled point annotation.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Point {
     /// Stable point identifier.
     pub id: PointId,
@@ -1620,6 +1665,12 @@ pub struct Point {
     pub time: f64,
     /// Label text.
     pub label: String,
+}
+
+impl PartialEq for Point {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && same_time(self.time, other.time) && self.label == other.label
+    }
 }
 
 /// Relationship between a tier and another tier.
@@ -2048,6 +2099,15 @@ pub enum TierKind {
     Point,
 }
 
+impl fmt::Display for TierKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Interval => write!(f, "interval"),
+            Self::Point => write!(f, "point"),
+        }
+    }
+}
+
 /// Kind of stable identifier whose generator [`Annotation::from_raw`] reseeds.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum IdKind {
@@ -2081,6 +2141,15 @@ pub enum RelationKind {
     ChildOf,
 }
 
+impl fmt::Display for RelationKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AlignedBoundaries => write!(f, "aligned-boundaries"),
+            Self::ChildOf => write!(f, "child-of"),
+        }
+    }
+}
+
 /// Role of a time value in an annotation document.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TimeRole {
@@ -2102,8 +2171,24 @@ pub enum TimeRole {
     Point,
 }
 
+impl fmt::Display for TimeRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DomainStart => write!(f, "document domain start"),
+            Self::DomainEnd => write!(f, "document domain end"),
+            Self::TierDomainStart => write!(f, "tier domain start"),
+            Self::TierDomainEnd => write!(f, "tier domain end"),
+            Self::Boundary => write!(f, "boundary"),
+            Self::IntervalStart => write!(f, "interval start"),
+            Self::IntervalEnd => write!(f, "interval end"),
+            Self::Point => write!(f, "point"),
+        }
+    }
+}
+
 /// Integrity issue found during document validation.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum IntegrityIssue {
     /// Document time domain is empty or reversed.
     InvalidTimeDomain {
@@ -2184,14 +2269,14 @@ pub enum IntegrityIssue {
         /// Document domain end.
         doc_xmax: f64,
     },
-    /// Interval boundaries are reversed or equal.
+    /// An interval's own start is at or after its own end.
     IntervalUnsorted {
         /// Tier containing the interval.
         tier: TierId,
-        /// Earlier boundary value.
-        previous: f64,
-        /// Later boundary value.
-        next: f64,
+        /// The interval's start time.
+        xmin: f64,
+        /// The interval's end time, at or before `xmin`.
+        xmax: f64,
     },
     /// Adjacent intervals overlap.
     IntervalOverlap {
@@ -2306,7 +2391,7 @@ impl fmt::Display for IntegrityIssue {
                 write!(f, "invalid annotation time domain [{xmin}, {xmax}]")
             }
             Self::NonFiniteTime { value, context } => {
-                write!(f, "non-finite {context:?} time: {value}")
+                write!(f, "non-finite {context} time: {value}")
             }
             Self::DuplicateTierId { tier } => write!(f, "duplicate tier id {}", tier.get()),
             Self::DuplicateIntervalId { tier, interval } => write!(
@@ -2361,13 +2446,9 @@ impl fmt::Display for IntegrityIssue {
                 "tier {} spans [{tier_xmin}, {tier_xmax}], document spans [{doc_xmin}, {doc_xmax}]",
                 tier.get()
             ),
-            Self::IntervalUnsorted {
-                tier,
-                previous,
-                next,
-            } => write!(
+            Self::IntervalUnsorted { tier, xmin, xmax } => write!(
                 f,
-                "interval boundary order violation in tier {}: {previous} then {next}",
+                "interval in tier {} starts at {xmin}, at or after its own end {xmax}",
                 tier.get()
             ),
             Self::IntervalOverlap {
@@ -2436,7 +2517,7 @@ impl fmt::Display for IntegrityIssue {
                 relation,
             } => write!(
                 f,
-                "tier {} relation {:?} is incompatible with target {}",
+                "tier {} relation {} is incompatible with target {}",
                 tier.get(),
                 relation,
                 target.get()
@@ -2488,6 +2569,7 @@ impl IntegrityIssue {
 
 /// Errors produced by annotation mutation and validation guards.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum AnnotationError {
     /// Document time domain is empty or reversed.
     InvalidTimeDomain {
@@ -2601,7 +2683,7 @@ impl fmt::Display for AnnotationError {
                 write!(f, "invalid annotation time domain [{xmin}, {xmax}]")
             }
             Self::NonFiniteTime { value, context } => {
-                write!(f, "non-finite {context:?} time: {value}")
+                write!(f, "non-finite {context} time: {value}")
             }
             Self::UnknownTier { tier } => write!(f, "unknown tier id {}", tier.get()),
             Self::UnknownBoundary { boundary } => {
@@ -2615,7 +2697,7 @@ impl fmt::Display for AnnotationError {
             }
             Self::UnknownPoint { point } => write!(f, "unknown point id {}", point.get()),
             Self::InvalidTierKind { tier, expected } => {
-                write!(f, "tier {} is not a {expected:?} tier", tier.get())
+                write!(f, "tier {} is not a {expected} tier", tier.get())
             }
             Self::BoundaryAlreadyExists { tier, at } => {
                 write!(f, "tier {} already contains a boundary at {at}", tier.get())
@@ -2661,7 +2743,14 @@ impl fmt::Display for AnnotationError {
     }
 }
 
-impl std::error::Error for AnnotationError {}
+impl std::error::Error for AnnotationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::IntegrityViolation(issue) => Some(issue),
+            _ => None,
+        }
+    }
+}
 
 fn require_finite(value: f64, context: TimeRole) -> Result<(), AnnotationError> {
     if value.is_finite() {
