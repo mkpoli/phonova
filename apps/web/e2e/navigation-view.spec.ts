@@ -316,6 +316,36 @@ test('UI scale adjusts the root font size and persists across reload', async ({ 
   await expect.poll(rootFontPx).toBeCloseTo(16, 0);
 });
 
+test('editor view fits the viewport: the page never scrolls, even with the readout bar and inspector open', async ({
+  page
+}) => {
+  await openEditorWithFixture(page, vowelFixture);
+
+  const overflowY = () =>
+    page.evaluate(() => {
+      const viewportHeight = window.innerHeight;
+      return {
+        viewportHeight,
+        docScrollHeight: document.documentElement.scrollHeight,
+        bodyScrollHeight: document.body.scrollHeight
+      };
+    });
+
+  let dims = await overflowY();
+  expect(dims.docScrollHeight).toBeLessThanOrEqual(dims.viewportHeight);
+  expect(dims.bodyScrollHeight).toBeLessThanOrEqual(dims.viewportHeight);
+
+  // Drag a box selection so the ReadoutBar row appears (the extra chrome row
+  // that once desynced the editor's row-count grid from its child count).
+  await dragSpectrogramBox(page);
+  await expect(page.getByTestId('readout-bar')).toBeVisible();
+  await expect(page.getByTestId('inspector')).toBeVisible();
+
+  dims = await overflowY();
+  expect(dims.docScrollHeight).toBeLessThanOrEqual(dims.viewportHeight);
+  expect(dims.bodyScrollHeight).toBeLessThanOrEqual(dims.viewportHeight);
+});
+
 test('navigation view: light and dark screenshots of the new states', async ({ page }) => {
   await openEditorWithFixture(page, vowelFixture);
 

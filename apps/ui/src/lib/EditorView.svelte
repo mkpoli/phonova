@@ -965,13 +965,24 @@
 </div>
 
 <style>
+  /* Fits the viewport exactly, like a DAW: transport chrome keeps its natural
+     height, the workspace takes whatever is left and shrinks panes internally
+     (TierPane's row list, InspectorPanel) rather than growing the page. Flex
+     stacking — not a fixed-row grid — so an optional row (ReadoutBar) never
+     desyncs a row count from the number of children. */
   .editor {
     position: relative;
-    min-height: 100vh;
-    display: grid;
-    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     background: var(--chrome);
     color: var(--text);
+  }
+
+  .editor > :global(*) {
+    flex: none;
   }
 
   /* The gradient editor floats below the transport, over the workspace, so
@@ -980,6 +991,8 @@
     position: absolute;
     top: 5.6rem;
     right: 0.85rem;
+    max-height: calc(100% - 6.5rem);
+    overflow-y: auto;
     z-index: 40;
   }
 
@@ -1042,6 +1055,7 @@
   }
 
   .workspace {
+    flex: 1 1 auto;
     min-height: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
