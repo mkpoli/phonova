@@ -60,6 +60,15 @@ pub enum TextGridError {
     /// identifier that leaves no room to allocate the next one, or a
     /// non-finite time value.
     Annotation(phx_annot::AnnotationError),
+    /// The parsed document failed structural or cross-tier integrity
+    /// validation: a reversed or gapped interval, a duplicate id, a dangling
+    /// tier relation. [`crate::read`] rejects with this; [`crate::read_lenient`]
+    /// returns the same issues alongside the document instead.
+    ///
+    /// [`phx_annot::IntegrityIssue::TierDomainMismatch`] never appears here —
+    /// a tier whose own domain narrows the document's is advisory, not a
+    /// read failure; see [`phx_annot::IntegrityIssue::is_advisory`].
+    Invalid(Vec<phx_annot::IntegrityIssue>),
     /// The writer was asked to serialize a NaN or infinite time value.
     NonFiniteTime {
         /// The non-finite value found.
@@ -96,6 +105,16 @@ impl fmt::Display for TextGridError {
                 )
             }
             Self::Annotation(err) => write!(f, "invalid annotation: {err}"),
+            Self::Invalid(issues) => {
+                write!(f, "document failed integrity validation: ")?;
+                for (index, issue) in issues.iter().enumerate() {
+                    if index > 0 {
+                        write!(f, "; ")?;
+                    }
+                    write!(f, "{issue}")?;
+                }
+                Ok(())
+            }
             Self::NonFiniteTime { value } => {
                 write!(f, "cannot write non-finite time value {value}")
             }

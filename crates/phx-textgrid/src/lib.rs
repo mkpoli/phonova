@@ -62,19 +62,53 @@ pub enum SourceInfo {
     Binary,
 }
 
-/// Reads a TextGrid from bytes, returning the document and its source provenance.
+/// Reads a TextGrid from bytes, returning the document and its source
+/// provenance.
 ///
 /// A stream opening with the `ooBinaryFile` magic is read as Praat's binary
 /// format. Otherwise, encoding is detected by byte-order mark, then by UTF-8
 /// validity, then by a Latin-1 fallback, and the text-format variant is
-/// detected from structure, not from any filename. Malformed input yields a
-/// [`TextGridError`]; the reader never panics.
+/// detected from structure, not from any filename. The parsed document must
+/// also pass [`phx_annot::Annotation::validate`] apart from an advisory tier
+/// domain (see [`phx_annot::IntegrityIssue::is_advisory`]): a reversed
+/// document domain, a gap or overlap between intervals, or a duplicate id
+/// reports [`TextGridError::Invalid`] instead of silently handing back a
+/// structurally broken document. [`read_lenient`] returns the same cases
+/// alongside the document instead of rejecting them. Malformed or truncated
+/// input yields a [`TextGridError`] either way; the reader never panics.
 pub fn read(bytes: &[u8]) -> Result<(Annotation, SourceInfo), TextGridError> {
+    let (annotation, source, issues) = read_lenient(bytes)?;
+    let blocking: Vec<_> = issues
+        .into_iter()
+        .filter(|issue| !issue.is_advisory())
+        .collect();
+    if blocking.is_empty() {
+        Ok((annotation, source))
+    } else {
+        Err(TextGridError::Invalid(blocking))
+    }
+}
+
+/// Reads a TextGrid from bytes without rejecting a structurally invalid
+/// document, returning the document, its source provenance, and every
+/// integrity issue [`phx_annot::Annotation::validate`] found.
+///
+/// Recovery and import tooling that wants to show a user what is wrong with a
+/// TextGrid — rather than simply refusing to open it — reads with this
+/// function instead of [`read`]. A malformed or truncated byte stream that
+/// cannot be parsed into tiers at all still yields a [`TextGridError`]; only
+/// a structurally questionable *result* of a successful parse is returned
+/// rather than rejected.
+pub fn read_lenient(
+    bytes: &[u8],
+) -> Result<(Annotation, SourceInfo, Vec<phx_annot::IntegrityIssue>), TextGridError> {
     if bytes.starts_with(b"ooBinaryFile") {
         let annotation = binary::parse(bytes)?;
-        return Ok((annotation, SourceInfo::Binary));
+        let issues = annotation.validate();
+        return Ok((annotation, SourceInfo::Binary, issues));
     }
     let (text, encoding) = encoding::decode(bytes)?;
     let (annotation, variant) = reader::parse(&text)?;
-    Ok((annotation, SourceInfo::Text { variant, encoding }))
+    let issues = annotation.validate();
+    Ok((annotation, SourceInfo::Text { variant, encoding }, issues))
 }

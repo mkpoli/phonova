@@ -2,10 +2,10 @@
 //! empty-label handling, and reader robustness against arbitrary bytes.
 
 use phx_annot::{
-    Annotation, BoundaryId, Interval, IntervalId, IntervalTier, Point, PointId, PointTier, Tier,
-    TierId, TierRelation, TierSlot,
+    Annotation, BoundaryId, IntegrityIssue, Interval, IntervalId, IntervalTier, Point, PointId,
+    PointTier, Tier, TierId, TierRelation, TierSlot,
 };
-use phx_textgrid::{read, write};
+use phx_textgrid::{TextGridError, read, read_lenient, write};
 
 fn interval(id: u64, b0: u64, b1: u64, xmin: f64, xmax: f64, label: &str) -> Interval {
     Interval {
@@ -150,4 +150,147 @@ fn arbitrary_bytes_never_panic() {
         }
         let _ = read(&bytes);
     }
+}
+
+#[test]
+fn read_rejects_a_reversed_document_domain() {
+    let text = "\
+File type = \"ooTextFile\"
+Object class = \"TextGrid\"
+
+xmin = 1
+xmax = 0
+tiers? <absent>
+";
+    let err = read(text.as_bytes()).expect_err("reversed domain fails strict read");
+    let TextGridError::Invalid(issues) = err else {
+        panic!("expected TextGridError::Invalid, got {err:?}");
+    };
+    assert!(
+        issues
+            .iter()
+            .any(|issue| matches!(issue, IntegrityIssue::InvalidTimeDomain { .. }))
+    );
+
+    let (doc, _, issues) = read_lenient(text.as_bytes()).expect("lenient read still parses");
+    assert_eq!(doc.xmin(), 1.0);
+    assert_eq!(doc.xmax(), 0.0);
+    assert!(
+        issues
+            .iter()
+            .any(|issue| matches!(issue, IntegrityIssue::InvalidTimeDomain { .. }))
+    );
+}
+
+#[test]
+fn read_rejects_a_gapped_interval_tier() {
+    let text = "\
+File type = \"ooTextFile\"
+Object class = \"TextGrid\"
+
+xmin = 0
+xmax = 1
+tiers? <exists>
+size = 1
+item []:
+    item [1]:
+        class = \"IntervalTier\"
+        name = \"w\"
+        xmin = 0
+        xmax = 1
+        intervals: size = 2
+        intervals [1]:
+            xmin = 0
+            xmax = 0.3
+            text = \"a\"
+        intervals [2]:
+            xmin = 0.6
+            xmax = 1
+            text = \"b\"
+";
+    let err = read(text.as_bytes()).expect_err("gapped interval tier fails strict read");
+    let TextGridError::Invalid(issues) = err else {
+        panic!("expected TextGridError::Invalid, got {err:?}");
+    };
+    assert!(
+        issues
+            .iter()
+            .any(|issue| matches!(issue, IntegrityIssue::IntervalGap { .. }))
+    );
+
+    let (doc, _, issues) = read_lenient(text.as_bytes()).expect("lenient read still parses");
+    let Tier::Interval(tier) = &doc.tiers()[0].tier else {
+        panic!("expected an interval tier");
+    };
+    assert_eq!(tier.intervals.len(), 2);
+    assert!(
+        issues
+            .iter()
+            .any(|issue| matches!(issue, IntegrityIssue::IntervalGap { .. }))
+    );
+}
+
+#[test]
+fn read_accepts_a_tier_domain_narrower_than_the_document() {
+    // TierDomainMismatch is advisory, not a read failure: Praat itself
+    // writes documents like this one.
+    let text = "\
+File type = \"ooTextFile\"
+Object class = \"TextGrid\"
+
+xmin = 0
+xmax = 2
+tiers? <exists>
+size = 1
+item []:
+    item [1]:
+        class = \"IntervalTier\"
+        name = \"narrow\"
+        xmin = 0.5
+        xmax = 1.5
+        intervals: size = 1
+        intervals [1]:
+            xmin = 0.5
+            xmax = 1.5
+            text = \"\"
+";
+    let (doc, _) = read(text.as_bytes()).expect("advisory-only document reads strictly");
+    assert_eq!(doc.validate().len(), 1);
+}
+
+/// Assembles a minimal binary TextGrid with no tiers: the 12-byte magic, the
+/// `"TextGrid"` class-name string, `xmin`/`xmax` as big-endian `f64`, and a
+/// `0x00` tiers-exist flag. `crates/phx-textgrid/docs/binary-format.md`
+/// documents this layout.
+fn binary_zero_tier_document(xmin: f64, xmax: f64) -> Vec<u8> {
+    let mut bytes = b"ooBinaryFile".to_vec();
+    bytes.push(8); // class-name length
+    bytes.extend_from_slice(b"TextGrid");
+    bytes.extend_from_slice(&xmin.to_be_bytes());
+    bytes.extend_from_slice(&xmax.to_be_bytes());
+    bytes.push(0); // tiers-exist flag: no tiers follow
+    bytes
+}
+
+#[test]
+fn read_rejects_a_reversed_document_domain_in_the_binary_format() {
+    let bytes = binary_zero_tier_document(1.0, 0.0);
+    let err = read(&bytes).expect_err("reversed domain fails strict read");
+    let TextGridError::Invalid(issues) = err else {
+        panic!("expected TextGridError::Invalid, got {err:?}");
+    };
+    assert!(
+        issues
+            .iter()
+            .any(|issue| matches!(issue, IntegrityIssue::InvalidTimeDomain { .. }))
+    );
+
+    let (doc, _, issues) = read_lenient(&bytes).expect("lenient read still parses");
+    assert_eq!(doc.xmin(), 1.0);
+    assert_eq!(doc.xmax(), 0.0);
+    assert!(
+        issues
+            .iter()
+            .any(|issue| matches!(issue, IntegrityIssue::InvalidTimeDomain { .. }))
+    );
 }

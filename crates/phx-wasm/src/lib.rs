@@ -2084,15 +2084,30 @@ impl WasmEngine {
     ///
     /// The attachment is journaled like any other command, so undo detaches the
     /// imported document. Tier relations are not carried by the TextGrid format;
-    /// every imported tier is independent.
+    /// every imported tier is independent. Reads leniently: a tier whose own
+    /// domain narrows the document's parses and attaches rather than being
+    /// rejected outright, since Praat itself writes such documents.
     ///
     /// # Errors
     /// Rejects when the bytes are not a TextGrid this crate can read, when the
-    /// parsed document fails validation, or when `audioId` names no live buffer.
+    /// parsed document carries a structural integrity defect (a reversed or
+    /// gapped interval, a duplicate id), or when `audioId` names no live
+    /// buffer.
     #[wasm_bindgen(js_name = importTextGrid)]
     pub fn import_text_grid(&mut self, audio_id: u64, bytes: &[u8]) -> Result<u64, JsError> {
-        let (annotation, _source) =
-            phx_textgrid::read(bytes).map_err(|err| JsError::new(&err.to_string()))?;
+        let (annotation, _source, issues) =
+            phx_textgrid::read_lenient(bytes).map_err(|err| JsError::new(&err.to_string()))?;
+        let blocking: Vec<String> = issues
+            .iter()
+            .filter(|issue| !issue.is_advisory())
+            .map(ToString::to_string)
+            .collect();
+        if !blocking.is_empty() {
+            return Err(JsError::new(&format!(
+                "TextGrid failed integrity validation: {}",
+                blocking.join("; ")
+            )));
+        }
         let applied = self.inner.apply(Command::AttachAnnotation {
             audio: AudioId::from_u64(audio_id),
             annotation,
