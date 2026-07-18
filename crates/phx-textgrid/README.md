@@ -25,8 +25,15 @@ independent.
 ```rust
 use phx_textgrid::{SourceInfo, read, write};
 
-let bytes = std::fs::read("example.TextGrid")?;
-let (doc, source) = read(&bytes)?;
+let text = "\
+File type = \"ooTextFile\"
+Object class = \"TextGrid\"
+
+xmin = 0
+xmax = 1
+tiers? <absent>
+";
+let (doc, source) = read(text.as_bytes())?;
 match source {
     SourceInfo::Text { variant, encoding } => {
         println!("read {variant:?} text, {encoding:?} encoding");
@@ -35,9 +42,16 @@ match source {
 }
 
 // Re-emit as canonical long-format UTF-8.
-std::fs::write("canonical.TextGrid", write(&doc))?;
+let canonical = write(&doc)?;
+assert!(std::str::from_utf8(&canonical).is_ok());
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
+
+`read` rejects a structurally invalid document — a reversed domain, a
+gapped or overlapping interval, a duplicate id — with
+[`TextGridError::Invalid`]; [`read_lenient`] returns the same issues
+alongside the document instead, for recovery or import tooling that wants
+to show what is wrong with a file rather than refuse to open it.
 
 ## Compatibility
 

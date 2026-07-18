@@ -1,6 +1,7 @@
 //! Annotation documents with interval tiers, point tiers, typed tier relations,
 //! integrity validation, and invertible label, boundary, point, tier-order,
 //! and tier-lifecycle mutations.
+#![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
 use regex::Regex;
@@ -2313,7 +2314,7 @@ pub enum IntegrityIssue {
         /// Right interval.
         right: IntervalId,
     },
-    /// Point time is outside the document domain.
+    /// Point time is outside the tier's own domain.
     PointOutsideDomain {
         /// Tier containing the point.
         tier: TierId,
@@ -2478,7 +2479,7 @@ impl fmt::Display for IntegrityIssue {
             ),
             Self::PointOutsideDomain { tier, point, time } => write!(
                 f,
-                "point {} in tier {} is outside the document domain at {time}",
+                "point {} in tier {} is outside the tier's own domain at {time}",
                 point.get(),
                 tier.get()
             ),

@@ -18,9 +18,10 @@
 //! line endings, no byte-order mark. TextGrid carries no cross-tier relation
 //! data, so every imported tier is [`TierRelation::Independent`]; tier
 //! relations are a project-level concept that lives outside this format.
-//! Writing the binary format is out of scope; [`write`] always emits text.
+//! Writing the binary format is out of scope; [`write()`] always emits text.
 //!
 //! [`TierRelation::Independent`]: phx_annot::TierRelation::Independent
+#![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
 mod binary;
