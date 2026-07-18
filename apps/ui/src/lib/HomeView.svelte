@@ -11,7 +11,6 @@
   import IconChevronRight from '~icons/lucide/chevron-right';
   import IconFolder from '~icons/lucide/folder';
   import IconUngroup from '~icons/lucide/ungroup';
-  import IconPin from '~icons/lucide/pin';
   import IconDownload from '~icons/lucide/download';
   import IconTrash from '~icons/lucide/trash-2';
   import ProjectCard from './ProjectCard.svelte';
@@ -546,12 +545,7 @@
       {/if}
 
       {#if pinnedProjects.length > 0}
-        <section class="section" data-testid="home-pinned">
-          <header class="section-head">
-            <IconPin class="section-icon" aria-hidden="true" />
-            <span>Pinned</span>
-            <span class="count">{pinnedProjects.length}</span>
-          </header>
+        <section class="section" data-testid="home-pinned" aria-label="Pinned projects">
           <div class="grid">
             {#each pinnedProjects as project (project.id)}
               {@render card(project)}
@@ -615,16 +609,12 @@
 
       <section
         class="section"
+        class:divider={index.groups.length > 0}
         class:drop={dropTarget === '__ungrouped__'}
         data-testid="home-ungrouped"
         data-drop-zone="__ungrouped__"
+        aria-label={index.groups.length > 0 ? 'Other projects' : undefined}
       >
-        {#if index.groups.length > 0}
-          <header class="section-head">
-            <span>Projects</span>
-            <span class="count">{ungrouped.length}</span>
-          </header>
-        {/if}
         {#if ungrouped.length > 0}
           <div class="grid">
             {#each ungrouped as project (project.id)}
@@ -994,19 +984,18 @@
 
   .section {
     margin-bottom: 1.5rem;
-    border-radius: var(--radius-lg);
   }
 
-  .section.group {
-    padding: 0.5rem 0.6rem 0.75rem;
-    border: 1px solid var(--chrome-strong);
-    background: var(--panel-soft);
+  .section.group,
+  .section.divider {
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--chrome-strong);
   }
 
   .section.drop {
     outline: 2px dashed var(--accent);
-    outline-offset: 2px;
-    background: color-mix(in oklab, var(--accent) 10%, var(--panel-soft));
+    outline-offset: 4px;
+    background: color-mix(in oklab, var(--accent) 8%, transparent);
   }
 
   .section-head {
