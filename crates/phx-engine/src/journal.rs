@@ -267,6 +267,20 @@ fn applied_for_content(doc: AnnotationId, mutation: &InverseMutation) -> Applied
             tier: *tier,
             to_index: *to_index,
         },
+        // The engine journals tier add/remove through its own `Reverse::InsertTier`
+        // and `Reverse::RemoveTier` (object lifecycle, not a content edit; see
+        // this module's top comment), so a command applied through this crate
+        // never produces one of these two variants. They are handled here only
+        // to keep this match exhaustive against `phx_annot::InverseMutation`
+        // for a caller elsewhere in the workspace that does apply one.
+        InverseMutation::RemoveTier { tier } => Applied::TierRemoved {
+            annotation: doc,
+            tier: *tier,
+        },
+        InverseMutation::InsertTier { slot, .. } => Applied::TierAdded {
+            annotation: doc,
+            tier: slot.id,
+        },
     }
 }
 

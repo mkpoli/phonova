@@ -1,6 +1,6 @@
 //! Annotation documents with interval tiers, point tiers, typed tier relations,
-//! integrity validation, and invertible label, boundary, point, and tier-order
-//! mutations.
+//! integrity validation, and invertible label, boundary, point, tier-order,
+//! and tier-lifecycle mutations.
 #![warn(missing_docs)]
 
 use regex::Regex;
@@ -25,6 +25,14 @@ impl TierId {
     /// Returns the numeric value carried by this stable identifier.
     pub fn get(self) -> u64 {
         self.0
+    }
+
+    /// Builds the inverse operation for a successful `Annotation::add_interval_tier`
+    /// or `Annotation::add_point_tier` call.
+    ///
+    /// Applying the inverse removes the tier this identifier names.
+    pub fn inverse_add(self) -> InverseMutation {
+        InverseMutation::RemoveTier { tier: self }
     }
 }
 
@@ -355,7 +363,11 @@ impl Annotation {
         self.tiers.iter().find(|slot| slot.id == id)
     }
 
-    /// Adds an interval tier containing one unlabeled interval covering the document domain.
+    /// Adds an interval tier containing one unlabeled interval covering the
+    /// document domain.
+    ///
+    /// The returned [`TierId`]'s [`TierId::inverse_add`] undoes this call by
+    /// removing the tier.
     pub fn add_interval_tier(
         &mut self,
         name: &str,
@@ -389,6 +401,9 @@ impl Annotation {
     }
 
     /// Adds a point tier with sorted, strictly increasing point times.
+    ///
+    /// The returned [`TierId`]'s [`TierId::inverse_add`] undoes this call by
+    /// removing the tier.
     pub fn add_point_tier(
         &mut self,
         name: &str,
@@ -419,6 +434,23 @@ impl Annotation {
         candidate.commit_if_valid()?;
         *self = candidate;
         Ok(id)
+    }
+
+    /// Removes a tier by stable identifier, along with every interval or
+    /// point it holds.
+    ///
+    /// # Errors
+    /// Returns [`AnnotationError::UnknownTier`] when `tier` does not name a
+    /// live tier, and [`AnnotationError::IntegrityViolation`] when removing
+    /// it would leave another tier's relation dangling (an aligned peer, or
+    /// a child whose parent this call just removed).
+    pub fn remove_tier(&mut self, tier: TierId) -> Result<TierRemoval, AnnotationError> {
+        let index = self.tier_index(tier)?;
+        let mut candidate = self.clone();
+        let slot = candidate.tiers.remove(index);
+        candidate.commit_if_valid()?;
+        *self = candidate;
+        Ok(TierRemoval { index, slot })
     }
 
     /// Reports all integrity issues that can be found without panicking.
@@ -756,6 +788,17 @@ impl Annotation {
             }
             InverseMutation::ReorderTier { tier, to_index } => {
                 self.reorder_tier(*tier, *to_index)?;
+            }
+            InverseMutation::RemoveTier { tier } => {
+                self.remove_tier(*tier)?;
+            }
+            InverseMutation::InsertTier { index, slot } => {
+                let mut candidate = self.clone();
+                let index = (*index).min(candidate.tiers.len());
+                candidate.tiers.insert(index, slot.clone());
+                candidate.reseed_ids()?;
+                candidate.commit_if_valid()?;
+                *self = candidate;
             }
         }
         Ok(())
@@ -1906,6 +1949,29 @@ impl TierReorder {
     }
 }
 
+/// Successful tier removal payload.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TierRemoval {
+    /// Index the tier occupied in document order before removal.
+    pub index: usize,
+    /// Removed tier, carrying every interval, point, and boundary id it held.
+    pub slot: TierSlot,
+}
+
+impl TierRemoval {
+    /// Builds the inverse operation for a successful `Annotation::remove_tier` call.
+    ///
+    /// Applying the inverse reinserts the exact tier content — every
+    /// interval, point, and boundary identifier it held — at its original
+    /// document position.
+    pub fn inverse(&self) -> InverseMutation {
+        InverseMutation::InsertTier {
+            index: self.index,
+            slot: self.slot.clone(),
+        }
+    }
+}
+
 /// Stored inverse mutation that can undo a successful mutator call.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum InverseMutation {
@@ -1956,6 +2022,20 @@ pub enum InverseMutation {
         tier: TierId,
         /// Index to restore.
         to_index: usize,
+    },
+    /// Undo a tier add by removing the tier this identifier names.
+    RemoveTier {
+        /// Tier returned by `Annotation::add_interval_tier` or
+        /// `Annotation::add_point_tier`.
+        tier: TierId,
+    },
+    /// Undo a tier removal by reinserting the exact tier content at its
+    /// original document position.
+    InsertTier {
+        /// Index the tier occupied before removal.
+        index: usize,
+        /// Removed tier to restore, with every stable id it held.
+        slot: TierSlot,
     },
 }
 
@@ -3158,6 +3238,73 @@ mod tests {
         };
         assert_eq!(point_tier.xmin, 0.0);
         assert_eq!(point_tier.xmax, 2.0);
+    }
+
+    #[test]
+    fn add_interval_tier_inverse_removes_it() {
+        let mut doc = Annotation::new(0.0, 2.0).unwrap();
+        let before = doc.clone();
+        let tier = doc
+            .add_interval_tier("words", TierRelation::Independent)
+            .unwrap();
+        assert!(doc.tier(tier).is_some());
+        doc.apply_inverse(&tier.inverse_add()).unwrap();
+        assert!(doc.tier(tier).is_none());
+        assert_eq!(doc, before);
+    }
+
+    #[test]
+    fn add_point_tier_inverse_removes_it() {
+        let mut doc = Annotation::new(0.0, 2.0).unwrap();
+        let before = doc.clone();
+        let tier = doc
+            .add_point_tier("marks", Vec::new(), TierRelation::Independent)
+            .unwrap();
+        doc.apply_inverse(&tier.inverse_add()).unwrap();
+        assert!(doc.tier(tier).is_none());
+        assert_eq!(doc, before);
+    }
+
+    #[test]
+    fn remove_tier_inverse_restores_exact_content_and_ids() {
+        let mut doc = Annotation::new(0.0, 2.0).unwrap();
+        let tier = doc
+            .add_interval_tier("words", TierRelation::Independent)
+            .unwrap();
+        doc.insert_boundary(tier, 1.0).unwrap();
+        let target = first_interval_target(&doc, tier);
+        doc.set_label(target, "hello").unwrap();
+        let before = doc.clone();
+
+        let removal = doc.remove_tier(tier).unwrap();
+        assert!(doc.tier(tier).is_none());
+        assert!(doc.tiers().is_empty());
+
+        doc.apply_inverse(&removal.inverse()).unwrap();
+        assert_eq!(doc, before);
+        let Tier::Interval(restored) = &doc.tier(tier).unwrap().tier else {
+            panic!("expected an interval tier");
+        };
+        assert_eq!(restored.intervals.len(), 2);
+    }
+
+    #[test]
+    fn remove_tier_rejects_an_unknown_tier() {
+        let mut doc = Annotation::new(0.0, 2.0).unwrap();
+        let err = doc.remove_tier(TierId(999)).unwrap_err();
+        assert_eq!(err, AnnotationError::UnknownTier { tier: TierId(999) });
+    }
+
+    #[test]
+    fn remove_tier_rejects_removing_an_aligned_relation_target() {
+        let mut doc = Annotation::new(0.0, 2.0).unwrap();
+        let base = doc
+            .add_interval_tier("base", TierRelation::Independent)
+            .unwrap();
+        doc.add_interval_tier("aligned", TierRelation::AlignedBoundaries { with: base })
+            .unwrap();
+        let err = doc.remove_tier(base).unwrap_err();
+        assert!(matches!(err, AnnotationError::IntegrityViolation(_)));
     }
 
     #[test]
