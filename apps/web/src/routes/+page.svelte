@@ -1311,6 +1311,7 @@
     onExportAudio={exportEditorAudio}
     onStartRecording={recordingSupported ? startRecording : undefined}
     recording={capturing}
+    recordingElapsedSeconds={recordElapsed}
   />
 {/if}
 

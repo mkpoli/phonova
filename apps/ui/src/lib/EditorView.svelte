@@ -1,6 +1,5 @@
 <script lang="ts">
   import IconArrowLeft from '~icons/lucide/arrow-left';
-  import IconMic from '~icons/lucide/mic';
   import IconImage from '~icons/lucide/image';
   import IconAudioLines from '~icons/lucide/audio-lines';
   import IconPanelRight from '~icons/lucide/panel-right';
@@ -84,6 +83,8 @@
     onStartRecording?: () => void;
     /** Whether a take is currently being captured. */
     recording?: boolean;
+    /** Seconds captured so far; shown inside the REC pill while `recording`. */
+    recordingElapsedSeconds?: number;
   }
 
   let {
@@ -114,7 +115,8 @@
     onPlayFilteredSelection,
     onExportAudio,
     onStartRecording,
-    recording = false
+    recording = false,
+    recordingElapsedSeconds = 0
   }: Props = $props();
 
   let audioExportOpen = $state(false);
@@ -771,12 +773,14 @@
         <button
           type="button"
           class="crumb-record"
+          class:recording
           data-testid="record"
+          aria-label={recording ? `Recording, ${formatTime(recordingElapsedSeconds)}` : 'Start recording'}
           disabled={recording}
           onclick={() => onStartRecording?.()}
         >
-          <IconMic aria-hidden="true" />
-          <span>Record</span>
+          <span class="rec-dot" aria-hidden="true"></span>
+          <span>{recording ? formatTime(recordingElapsedSeconds) : 'REC'}</span>
         </button>
       {/if}
     </nav>
@@ -1014,8 +1018,7 @@
     font-size: 0.82rem;
   }
 
-  .crumb-back,
-  .crumb-record {
+  .crumb-back {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
@@ -1030,13 +1033,11 @@
       border-color var(--t-fast);
   }
 
-  .crumb-back :global(svg),
-  .crumb-record :global(svg) {
+  .crumb-back :global(svg) {
     font-size: 0.95rem;
   }
 
-  .crumb-back:hover,
-  .crumb-record:hover:not(:disabled) {
+  .crumb-back:hover {
     background: var(--panel);
     border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
   }
@@ -1045,13 +1046,75 @@
     color: var(--muted);
   }
 
-  .crumb-record :global(svg) {
+  /* Compact REC pill: quiet by default (a dim red hint on the border, a muted
+     label), and only reads as loud on hover or while a take is actually
+     rolling — the dot itself stays red at rest as the affordance's identity. */
+  .crumb-record {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid color-mix(in oklab, var(--danger) 28%, var(--chrome-strong));
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    min-height: 1.6rem;
+    padding: 0.2rem 0.65rem;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    transition:
+      background var(--t-fast),
+      border-color var(--t-fast),
+      color var(--t-fast);
+  }
+
+  .crumb-record:hover:not(:disabled) {
+    border-color: var(--danger);
     color: var(--danger);
+    background: color-mix(in oklab, var(--danger) 10%, transparent);
+  }
+
+  .crumb-record.recording {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: color-mix(in oklab, var(--danger) 14%, transparent);
   }
 
   .crumb-record:disabled {
-    opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .crumb-record:disabled:not(.recording) {
+    opacity: 0.5;
+  }
+
+  .rec-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    flex: none;
+    border-radius: 50%;
+    background: var(--danger);
+  }
+
+  .crumb-record.recording .rec-dot {
+    animation: rec-blink 1.1s ease-in-out infinite;
+  }
+
+  @keyframes rec-blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .crumb-record.recording .rec-dot {
+      animation: none;
+    }
   }
 
   .workspace {
