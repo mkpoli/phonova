@@ -99,7 +99,7 @@ impl PointId {
 }
 
 /// Annotation document with ordered tiers and a finite time domain in seconds.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Annotation {
     xmin: f64,
     xmax: f64,
@@ -108,6 +108,136 @@ pub struct Annotation {
     next_boundary_id: u64,
     next_interval_id: u64,
     next_point_id: u64,
+}
+
+/// Deserialization helpers for [`Annotation`].
+///
+/// A tier's `xmin`/`xmax` read as optional: a document written before tiers
+/// carried their own time domain omits them, and those tiers validated
+/// against the document's domain at the time, so the read fills the missing
+/// pair from the document's `xmin`/`xmax` — the same bounds the file was
+/// written under. Documents written since carry every tier's domain
+/// explicitly and parse verbatim.
+///
+/// This module only assembles raw parts; every check lives in
+/// [`Annotation::from_raw`] and the [`Annotation::validate`] gate the outer
+/// [`Deserialize`] impl runs afterward, so a document built from crafted or
+/// foreign JSON gets exactly the same scrutiny as one built by hand from raw
+/// parts. A serialized `next_*_id` counter is not read back: `from_raw`
+/// recomputes every counter from the highest id actually present in `tiers`,
+/// which is the only value a tampered counter could otherwise desynchronize
+/// from.
+mod de {
+    use super::{Interval, Point, TierId, TierRelation, TierSlot};
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    pub(super) struct AnnotationDe {
+        xmin: f64,
+        xmax: f64,
+        tiers: Vec<TierSlotDe>,
+    }
+
+    #[derive(Deserialize)]
+    struct TierSlotDe {
+        id: TierId,
+        relation: TierRelation,
+        tier: TierDe,
+    }
+
+    #[derive(Deserialize)]
+    enum TierDe {
+        Interval(IntervalTierDe),
+        Point(PointTierDe),
+    }
+
+    #[derive(Deserialize)]
+    struct IntervalTierDe {
+        name: String,
+        xmin: Option<f64>,
+        xmax: Option<f64>,
+        intervals: Vec<Interval>,
+    }
+
+    #[derive(Deserialize)]
+    struct PointTierDe {
+        name: String,
+        xmin: Option<f64>,
+        xmax: Option<f64>,
+        points: Vec<Point>,
+    }
+
+    impl AnnotationDe {
+        /// Assembles the raw `(xmin, xmax, tiers)` triple [`Annotation::from_raw`]
+        /// takes, filling every tier's missing domain from the document's own.
+        pub(super) fn into_raw_parts(self) -> (f64, f64, Vec<TierSlot>) {
+            let (doc_xmin, doc_xmax) = (self.xmin, self.xmax);
+            let tiers = self
+                .tiers
+                .into_iter()
+                .map(|slot| TierSlot {
+                    id: slot.id,
+                    relation: slot.relation,
+                    tier: match slot.tier {
+                        TierDe::Interval(tier) => super::Tier::Interval(super::IntervalTier {
+                            name: tier.name,
+                            xmin: tier.xmin.unwrap_or(doc_xmin),
+                            xmax: tier.xmax.unwrap_or(doc_xmax),
+                            intervals: tier.intervals,
+                        }),
+                        TierDe::Point(tier) => super::Tier::Point(super::PointTier {
+                            name: tier.name,
+                            xmin: tier.xmin.unwrap_or(doc_xmin),
+                            xmax: tier.xmax.unwrap_or(doc_xmax),
+                            points: tier.points,
+                        }),
+                    },
+                })
+                .collect();
+            (self.xmin, self.xmax, tiers)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Annotation {
+    /// Builds a document from `deserializer` through the same [`Annotation::from_raw`]
+    /// and [`Annotation::validate`] checks any other importer goes through, so
+    /// crafted or corrupted JSON can never produce a document with a
+    /// non-finite time, an overflowed id generator, a control character in a
+    /// label, or a structural integrity defect (a duplicate id, a reversed or
+    /// gapped interval, a dangling tier relation). A tier whose own domain
+    /// narrows the document's, which Praat itself writes, still parses; see
+    /// [`IntegrityIssue::is_advisory`].
+    ///
+    /// # Errors
+    /// Returns a deserializer error when the JSON shape itself is malformed,
+    /// when `from_raw` rejects the assembled document, or when the assembled
+    /// document fails a non-advisory integrity check.
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let (xmin, xmax, tiers) = de::AnnotationDe::deserialize(deserializer)?.into_raw_parts();
+        let annotation =
+            Annotation::from_raw(xmin, xmax, tiers).map_err(serde::de::Error::custom)?;
+        let issues: Vec<IntegrityIssue> = annotation
+            .validate()
+            .into_iter()
+            .filter(|issue| !issue.is_advisory())
+            .collect();
+        if issues.is_empty() {
+            Ok(annotation)
+        } else {
+            let summary = issues
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; ");
+            Err(serde::de::Error::custom(format!(
+                "annotation failed integrity validation: {summary}"
+            )))
+        }
+    }
 }
 
 impl PartialEq for Annotation {
@@ -149,18 +279,24 @@ impl Annotation {
 
     /// Builds a document from raw tiers and recomputes identifier generators.
     ///
-    /// This constructor accepts invalid tier contents so importers can preserve
-    /// source data and call `validate` to report every issue. It still rejects
-    /// a non-finite `xmin`, `xmax`, interval bound, or point time, and a raw
-    /// identifier of [`u64::MAX`], since reseeding the generator that mints the
-    /// next one would overflow.
+    /// This constructor accepts invalid tier *structure* so importers can
+    /// preserve source data and call `validate` to report every issue (a
+    /// reversed interval, a gap between intervals, a duplicate id). It still
+    /// rejects a non-finite `xmin`, `xmax`, interval bound, or point time; a
+    /// raw identifier of [`u64::MAX`], since reseeding the generator that
+    /// mints the next one would overflow; and a label carrying a C0 control
+    /// character or `DEL`, the same policy every other label-writing mutator
+    /// enforces — this is the one enforcement point for that policy, so
+    /// crafted or foreign-format input can never carry a control character
+    /// into a live document.
     ///
     /// # Errors
     /// Returns [`AnnotationError::NonFiniteTime`] when `xmin`, `xmax`, or a
-    /// time carried by a tier in `tiers` is NaN or infinite, and
+    /// time carried by a tier in `tiers` is NaN or infinite;
     /// [`AnnotationError::IdAllocationOverflow`] when a tier, boundary,
     /// interval, or point in `tiers` already carries the identifier
-    /// [`u64::MAX`].
+    /// [`u64::MAX`]; and [`AnnotationError::InvalidLabelControl`] when an
+    /// interval or point label carries a rejected control character.
     pub fn from_raw(xmin: f64, xmax: f64, tiers: Vec<TierSlot>) -> Result<Self, AnnotationError> {
         require_finite(xmin, TimeRole::DomainStart)?;
         require_finite(xmax, TimeRole::DomainEnd)?;
@@ -172,6 +308,7 @@ impl Annotation {
                     for interval in &tier.intervals {
                         require_finite(interval.xmin, TimeRole::IntervalStart)?;
                         require_finite(interval.xmax, TimeRole::IntervalEnd)?;
+                        reject_control_label(&interval.label)?;
                     }
                 }
                 Tier::Point(tier) => {
@@ -179,6 +316,7 @@ impl Annotation {
                     require_finite(tier.xmax, TimeRole::TierDomainEnd)?;
                     for point in &tier.points {
                         require_finite(point.time, TimeRole::Point)?;
+                        reject_control_label(&point.label)?;
                     }
                 }
             }
@@ -224,10 +362,10 @@ impl Annotation {
         relation: TierRelation,
     ) -> Result<TierId, AnnotationError> {
         let mut candidate = self.clone();
-        let id = candidate.alloc_tier_id();
-        let start = candidate.alloc_boundary_id();
-        let end = candidate.alloc_boundary_id();
-        let interval = candidate.alloc_interval_id();
+        let id = candidate.alloc_tier_id()?;
+        let start = candidate.alloc_boundary_id()?;
+        let end = candidate.alloc_boundary_id()?;
+        let interval = candidate.alloc_interval_id()?;
         candidate.tiers.push(TierSlot {
             id,
             relation,
@@ -258,12 +396,12 @@ impl Annotation {
         relation: TierRelation,
     ) -> Result<TierId, AnnotationError> {
         let mut candidate = self.clone();
-        let id = candidate.alloc_tier_id();
+        let id = candidate.alloc_tier_id()?;
         let mut stored = Vec::with_capacity(points.len());
         for (time, label) in points {
             reject_control_label(&label)?;
             stored.push(Point {
-                id: candidate.alloc_point_id(),
+                id: candidate.alloc_point_id()?,
                 time,
                 label,
             });
@@ -453,7 +591,7 @@ impl Annotation {
         }
         reject_control_label(label)?;
         let mut candidate = self.clone();
-        let id = candidate.alloc_point_id();
+        let id = candidate.alloc_point_id()?;
         let point = candidate.insert_point_into_tier(
             tier,
             Point {
@@ -893,28 +1031,70 @@ impl Annotation {
         }
     }
 
-    fn alloc_tier_id(&mut self) -> TierId {
+    /// Mints the next tier identifier.
+    ///
+    /// # Errors
+    /// Returns [`AnnotationError::IdAllocationOverflow`] when the counter is
+    /// already [`u64::MAX`], since minting one more would leave no room to
+    /// allocate the next.
+    fn alloc_tier_id(&mut self) -> Result<TierId, AnnotationError> {
         let id = TierId(self.next_tier_id);
-        self.next_tier_id += 1;
-        id
+        self.next_tier_id = self
+            .next_tier_id
+            .checked_add(1)
+            .ok_or(AnnotationError::IdAllocationOverflow { kind: IdKind::Tier })?;
+        Ok(id)
     }
 
-    fn alloc_boundary_id(&mut self) -> BoundaryId {
+    /// Mints the next boundary identifier.
+    ///
+    /// # Errors
+    /// Returns [`AnnotationError::IdAllocationOverflow`] when the counter is
+    /// already [`u64::MAX`], since minting one more would leave no room to
+    /// allocate the next.
+    fn alloc_boundary_id(&mut self) -> Result<BoundaryId, AnnotationError> {
         let id = BoundaryId(self.next_boundary_id);
-        self.next_boundary_id += 1;
-        id
+        self.next_boundary_id =
+            self.next_boundary_id
+                .checked_add(1)
+                .ok_or(AnnotationError::IdAllocationOverflow {
+                    kind: IdKind::Boundary,
+                })?;
+        Ok(id)
     }
 
-    fn alloc_interval_id(&mut self) -> IntervalId {
+    /// Mints the next interval identifier.
+    ///
+    /// # Errors
+    /// Returns [`AnnotationError::IdAllocationOverflow`] when the counter is
+    /// already [`u64::MAX`], since minting one more would leave no room to
+    /// allocate the next.
+    fn alloc_interval_id(&mut self) -> Result<IntervalId, AnnotationError> {
         let id = IntervalId(self.next_interval_id);
-        self.next_interval_id += 1;
-        id
+        self.next_interval_id =
+            self.next_interval_id
+                .checked_add(1)
+                .ok_or(AnnotationError::IdAllocationOverflow {
+                    kind: IdKind::Interval,
+                })?;
+        Ok(id)
     }
 
-    fn alloc_point_id(&mut self) -> PointId {
+    /// Mints the next point identifier.
+    ///
+    /// # Errors
+    /// Returns [`AnnotationError::IdAllocationOverflow`] when the counter is
+    /// already [`u64::MAX`], since minting one more would leave no room to
+    /// allocate the next.
+    fn alloc_point_id(&mut self) -> Result<PointId, AnnotationError> {
         let id = PointId(self.next_point_id);
-        self.next_point_id += 1;
-        id
+        self.next_point_id =
+            self.next_point_id
+                .checked_add(1)
+                .ok_or(AnnotationError::IdAllocationOverflow {
+                    kind: IdKind::Point,
+                })?;
+        Ok(id)
     }
 
     /// Recomputes the next tier, boundary, interval, and point identifier from
@@ -986,7 +1166,11 @@ impl Annotation {
     }
 
     fn commit_if_valid(&self) -> Result<(), AnnotationError> {
-        match self.validate().into_iter().next() {
+        match self
+            .validate()
+            .into_iter()
+            .find(|issue| !issue.is_advisory())
+        {
             Some(issue) => Err(AnnotationError::IntegrityViolation(issue)),
             None => Ok(()),
         }
@@ -1059,8 +1243,8 @@ impl Annotation {
         tier_index: usize,
         at: f64,
     ) -> Result<BoundaryId, AnnotationError> {
-        let new_boundary = self.alloc_boundary_id();
-        let new_interval = self.alloc_interval_id();
+        let new_boundary = self.alloc_boundary_id()?;
+        let new_interval = self.alloc_interval_id()?;
         let tier_id = self.tiers[tier_index].id;
         let Tier::Interval(tier) = &mut self.tiers[tier_index].tier else {
             return Err(AnnotationError::InvalidTierKind {
@@ -2207,6 +2391,21 @@ impl fmt::Display for IntegrityIssue {
 
 impl std::error::Error for IntegrityIssue {}
 
+impl IntegrityIssue {
+    /// Reports whether this issue describes intentional Praat behavior rather
+    /// than corrupt or malformed data.
+    ///
+    /// Only [`IntegrityIssue::TierDomainMismatch`] is advisory: Praat itself
+    /// writes documents where a tier's own domain narrows the document's, and
+    /// every field of such a tier still round-trips exactly, so a caller that
+    /// gates strict acceptance on [`Annotation::validate`] — this crate's own
+    /// mutators, or a format reader built on top of it — should not treat it
+    /// as a defect on its own.
+    pub fn is_advisory(&self) -> bool {
+        matches!(self, Self::TierDomainMismatch { .. })
+    }
+}
+
 /// Errors produced by annotation mutation and validation guards.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum AnnotationError {
@@ -2522,6 +2721,131 @@ mod tests {
         };
         let doc = Annotation::from_raw(0.0, 1.0, vec![slot]).expect("near-max id is not rejected");
         assert!(doc.validate().is_empty());
+    }
+
+    // The next four cases seed a raw document whose id generator for one kind
+    // sits at `u64::MAX - 1` (accepted, per the case above), then exercise
+    // the one public mutator that allocates that kind of id, proving the
+    // checked allocator rejects the *next* allocation instead of wrapping or
+    // panicking.
+
+    #[test]
+    fn alloc_tier_id_overflow_via_add_interval_tier() {
+        let slot = TierSlot {
+            id: TierId(u64::MAX - 1),
+            relation: TierRelation::Independent,
+            tier: Tier::Point(PointTier {
+                xmin: 0.0,
+                xmax: 1.0,
+                name: "points".to_owned(),
+                points: Vec::new(),
+            }),
+        };
+        let mut doc = Annotation::from_raw(0.0, 1.0, vec![slot]).expect("valid raw document");
+        let err = doc
+            .add_interval_tier("new", TierRelation::Independent)
+            .unwrap_err();
+        assert_eq!(
+            err,
+            AnnotationError::IdAllocationOverflow { kind: IdKind::Tier }
+        );
+        assert!(
+            doc.tiers().len() == 1,
+            "the rejected mutation left no trace"
+        );
+    }
+
+    #[test]
+    fn alloc_boundary_id_overflow_via_insert_boundary() {
+        let mut doc = raw_interval_doc(vec![(1, u64::MAX - 1, 2, 0.0, 1.0)]);
+        let err = doc.insert_boundary(TierId(1), 0.5).unwrap_err();
+        assert_eq!(
+            err,
+            AnnotationError::IdAllocationOverflow {
+                kind: IdKind::Boundary
+            }
+        );
+    }
+
+    #[test]
+    fn alloc_interval_id_overflow_via_insert_boundary() {
+        let mut doc = raw_interval_doc(vec![(u64::MAX - 1, 1, 2, 0.0, 1.0)]);
+        let err = doc.insert_boundary(TierId(1), 0.5).unwrap_err();
+        assert_eq!(
+            err,
+            AnnotationError::IdAllocationOverflow {
+                kind: IdKind::Interval
+            }
+        );
+    }
+
+    #[test]
+    fn alloc_point_id_overflow_via_insert_point() {
+        let slot = TierSlot {
+            id: TierId(1),
+            relation: TierRelation::Independent,
+            tier: Tier::Point(PointTier {
+                xmin: 0.0,
+                xmax: 1.0,
+                name: "points".to_owned(),
+                points: vec![Point {
+                    id: PointId(u64::MAX - 1),
+                    time: 0.5,
+                    label: String::new(),
+                }],
+            }),
+        };
+        let mut doc = Annotation::from_raw(0.0, 1.0, vec![slot]).expect("valid raw document");
+        let err = doc.insert_point(TierId(1), 0.2, "x").unwrap_err();
+        assert_eq!(
+            err,
+            AnnotationError::IdAllocationOverflow {
+                kind: IdKind::Point
+            }
+        );
+    }
+
+    #[test]
+    fn from_raw_rejects_a_control_character_in_an_interval_label() {
+        let slot = TierSlot {
+            id: TierId(1),
+            relation: TierRelation::Independent,
+            tier: Tier::Interval(IntervalTier {
+                xmin: 0.0,
+                xmax: 1.0,
+                name: "raw".to_owned(),
+                intervals: vec![Interval {
+                    id: IntervalId(1),
+                    start_boundary: BoundaryId(1),
+                    end_boundary: BoundaryId(2),
+                    xmin: 0.0,
+                    xmax: 1.0,
+                    label: "bad\u{7}label".to_owned(),
+                }],
+            }),
+        };
+        let err = Annotation::from_raw(0.0, 1.0, vec![slot]).unwrap_err();
+        assert!(matches!(err, AnnotationError::InvalidLabelControl { .. }));
+    }
+
+    #[test]
+    fn from_raw_rejects_a_control_character_in_a_point_label() {
+        let slot = TierSlot {
+            id: TierId(1),
+            relation: TierRelation::Independent,
+            tier: Tier::Point(PointTier {
+                xmin: 0.0,
+                xmax: 1.0,
+                name: "points".to_owned(),
+                points: vec![Point {
+                    id: PointId(1),
+                    time: 0.5,
+                    label: "bad\u{7}label".to_owned(),
+                }],
+            }),
+        };
+        let err = Annotation::from_raw(0.0, 1.0, vec![slot]).unwrap_err();
+        assert!(matches!(err, AnnotationError::InvalidLabelControl { .. }));
     }
 
     #[test]
@@ -3234,6 +3558,187 @@ mod tests {
             .expect("valid raw document");
         assert_eq!(doc.validate(), Vec::new());
         doc
+    }
+
+    #[test]
+    fn document_without_tier_domains_inherits_the_document_domain() {
+        // The shape written before tiers carried their own time domain: each
+        // tier object holds a name and its entries only.
+        let json = r#"{
+            "xmin": 0.0,
+            "xmax": 3.2,
+            "tiers": [
+                {
+                    "id": 1,
+                    "relation": "Independent",
+                    "tier": {
+                        "Interval": {
+                            "name": "words",
+                            "intervals": [
+                                { "id": 1, "start_boundary": 1, "end_boundary": 2, "xmin": 0.0, "xmax": 1.6, "label": "hello" },
+                                { "id": 2, "start_boundary": 2, "end_boundary": 3, "xmin": 1.6, "xmax": 3.2, "label": "" }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "id": 2,
+                    "relation": "Independent",
+                    "tier": {
+                        "Point": {
+                            "name": "events",
+                            "points": [
+                                { "id": 1, "time": 0.5, "label": "burst" }
+                            ]
+                        }
+                    }
+                }
+            ],
+            "next_tier_id": 3,
+            "next_boundary_id": 4,
+            "next_interval_id": 3,
+            "next_point_id": 2
+        }"#;
+        let doc: Annotation = serde_json::from_str(json).expect("legacy document parses");
+        assert_eq!(doc.xmin(), 0.0);
+        assert_eq!(doc.xmax(), 3.2);
+        assert_eq!(doc.tiers().len(), 2);
+        match &doc.tiers()[0].tier {
+            Tier::Interval(tier) => {
+                assert_eq!(tier.name, "words");
+                assert_eq!((tier.xmin, tier.xmax), (0.0, 3.2));
+                assert_eq!(tier.intervals.len(), 2);
+                assert_eq!(tier.intervals[0].label, "hello");
+            }
+            Tier::Point(_) => panic!("expected the interval tier first"),
+        }
+        match &doc.tiers()[1].tier {
+            Tier::Point(tier) => {
+                assert_eq!(tier.name, "events");
+                assert_eq!((tier.xmin, tier.xmax), (0.0, 3.2));
+                assert_eq!(tier.points.len(), 1);
+            }
+            Tier::Interval(_) => panic!("expected the point tier second"),
+        }
+        // The document passes integrity validation under its own domain, the
+        // semantics the legacy file was written under.
+        assert_eq!(doc.validate(), Vec::new());
+    }
+
+    #[test]
+    fn explicit_tier_domains_parse_verbatim() {
+        let json = r#"{
+            "xmin": 0.0,
+            "xmax": 3.2,
+            "tiers": [
+                {
+                    "id": 1,
+                    "relation": "Independent",
+                    "tier": {
+                        "Interval": {
+                            "name": "narrow",
+                            "xmin": 0.5,
+                            "xmax": 2.5,
+                            "intervals": [
+                                { "id": 1, "start_boundary": 1, "end_boundary": 2, "xmin": 0.5, "xmax": 2.5, "label": "" }
+                            ]
+                        }
+                    }
+                }
+            ],
+            "next_tier_id": 2,
+            "next_boundary_id": 3,
+            "next_interval_id": 2,
+            "next_point_id": 1
+        }"#;
+        let doc: Annotation = serde_json::from_str(json).expect("document parses");
+        match &doc.tiers()[0].tier {
+            Tier::Interval(tier) => assert_eq!((tier.xmin, tier.xmax), (0.5, 2.5)),
+            Tier::Point(_) => panic!("expected an interval tier"),
+        }
+    }
+
+    #[test]
+    fn serialized_document_round_trips_to_identical_json() {
+        let doc = basic_document();
+        let text = serde_json::to_string(&doc).expect("document serializes");
+        let parsed: Annotation = serde_json::from_str(&text).expect("document parses back");
+        let text_again = serde_json::to_string(&parsed).expect("document re-serializes");
+        assert_eq!(text, text_again);
+    }
+
+    #[test]
+    fn deserialize_rejects_a_reversed_time_domain() {
+        let json = r#"{"xmin": 1.0, "xmax": 0.0, "tiers": []}"#;
+        let err = serde_json::from_str::<Annotation>(json).unwrap_err();
+        assert!(err.to_string().contains("invalid annotation time domain"));
+    }
+
+    #[test]
+    fn deserialize_rejects_a_duplicate_tier_id() {
+        let json = r#"{
+            "xmin": 0.0,
+            "xmax": 1.0,
+            "tiers": [
+                { "id": 1, "relation": "Independent", "tier": { "Point": { "name": "a", "points": [] } } },
+                { "id": 1, "relation": "Independent", "tier": { "Point": { "name": "b", "points": [] } } }
+            ]
+        }"#;
+        let err = serde_json::from_str::<Annotation>(json).unwrap_err();
+        assert!(err.to_string().contains("duplicate tier id"));
+    }
+
+    #[test]
+    fn deserialize_rejects_a_gapped_interval_tier() {
+        let json = r#"{
+            "xmin": 0.0,
+            "xmax": 1.0,
+            "tiers": [
+                { "id": 1, "relation": "Independent", "tier": { "Interval": { "name": "a", "intervals": [
+                    { "id": 1, "start_boundary": 1, "end_boundary": 2, "xmin": 0.0, "xmax": 0.3, "label": "" },
+                    { "id": 2, "start_boundary": 3, "end_boundary": 4, "xmin": 0.6, "xmax": 1.0, "label": "" }
+                ] } } }
+            ]
+        }"#;
+        let err = serde_json::from_str::<Annotation>(json).unwrap_err();
+        assert!(err.to_string().contains("gap"));
+    }
+
+    #[test]
+    fn deserialize_accepts_a_tier_domain_narrower_than_the_document() {
+        // Only `TierDomainMismatch` is advisory; crafting one should not be
+        // rejected the way a genuine structural defect is.
+        let json = r#"{
+            "xmin": 0.0,
+            "xmax": 1.0,
+            "tiers": [
+                { "id": 1, "relation": "Independent", "tier": { "Interval": {
+                    "name": "narrow",
+                    "xmin": 0.2,
+                    "xmax": 0.8,
+                    "intervals": [
+                        { "id": 1, "start_boundary": 1, "end_boundary": 2, "xmin": 0.2, "xmax": 0.8, "label": "" }
+                    ]
+                } } }
+            ]
+        }"#;
+        let doc: Annotation = serde_json::from_str(json).expect("advisory-only document parses");
+        assert_eq!(doc.validate().len(), 1);
+    }
+
+    #[test]
+    fn deserialize_rejects_a_control_character_in_a_label() {
+        let json = r#"{
+            "xmin": 0.0,
+            "xmax": 1.0,
+            "tiers": [
+                { "id": 1, "relation": "Independent", "tier": { "Interval": { "name": "a", "intervals": [
+                    { "id": 1, "start_boundary": 1, "end_boundary": 2, "xmin": 0.0, "xmax": 1.0, "label": "bad\u0007label" }
+                ] } } }
+            ]
+        }"#;
+        let err = serde_json::from_str::<Annotation>(json).unwrap_err();
+        assert!(err.to_string().contains("control character"));
     }
 
     fn random_insert<F>(doc: &mut Annotation, next: &mut F) -> Option<InverseMutation>
