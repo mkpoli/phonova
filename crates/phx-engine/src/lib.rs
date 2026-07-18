@@ -2,16 +2,21 @@
 //! explicit arguments, journaled unified undo, content-addressed analysis
 //! cache.
 //!
-//! The mutation surface is a single journaled command path: every change to
-//! session state — audio import, annotation attachment, tier lifecycle, and
-//! the boundary and label edits of the annotation loop — goes through
-//! [`Engine::apply`], which records an id-stable inverse so [`Engine::undo`]
-//! and [`Engine::redo`] restore state-hash-identical documents (design rule 5,
-//! `docs/plan/architecture.md`; invariant 5, `docs/plan/validation.md`). The
-//! journal is in memory; persisting a session's history to the project file
-//! arrives with `phx-project` in phase 4. Analyses (pitch, formants,
-//! intensity, spectrogram tiles) stay outside the journal — they are pure
-//! functions of `(audio, params)` and never mutate a document.
+//! The mutation surface is journaled end to end: every change to session
+//! state — audio import, annotation attachment, tier lifecycle, and the
+//! boundary and label edits of the annotation loop — records an id-stable
+//! inverse so [`Engine::undo`] and [`Engine::redo`] restore
+//! state-hash-identical documents (design rule 5, `docs/plan/architecture.md`;
+//! invariant 5, `docs/plan/validation.md`). Most of it goes through
+//! [`Engine::apply`] against a [`Command`]; the three entry points that add
+//! audio outside the command surface — [`Engine::import_wav_bytes`],
+//! [`Engine::open_streaming_wav`], and [`Engine::finish_recording`] — record
+//! the same kind of journal entry directly, since a streamed source's byte
+//! reader and a recording's accumulated samples cannot ride inside a `Command`
+//! (not `Clone`/`Serialize`). The journal is in memory; persisting a session's
+//! history to the project file arrives with `phx-project` in phase 4. Analyses
+//! (pitch, formants, intensity, spectrogram tiles) stay outside the journal —
+//! they are pure functions of `(audio, params)` and never mutate a document.
 #![warn(missing_docs)]
 
 mod commands;
@@ -140,12 +145,15 @@ impl Engine {
 
     /// Decodes RIFF/WAVE bytes and returns the id of the new store entry.
     ///
+    /// Journaled exactly like [`Command::ImportAudio`]: [`Engine::undo`] drops
+    /// the buffer and [`Engine::redo`] reinserts the clone captured here.
+    ///
     /// # Errors
     /// Returns [`EngineError::Audio`] when the bytes are not a WAV file this
     /// crate can decode (see [`phx_audio::Audio::from_wav_bytes`]).
     pub fn import_wav_bytes(&mut self, bytes: &[u8]) -> Result<AudioId, EngineError> {
         let audio = Audio::from_wav_bytes(bytes)?;
-        Ok(self.store.insert(audio))
+        Ok(self.journal_eager_import(audio))
     }
 
     /// Opens a WAV from a byte reader as a streamed source and returns its id.
@@ -162,6 +170,15 @@ impl Engine {
     ///
     /// `name` is the display name the metadata surface reports.
     ///
+    /// Journaled like any other import: [`Engine::undo`] detaches the source
+    /// (parking it, not dropping it) and [`Engine::redo`] reattaches the same
+    /// parked source, so neither direction reopens the reader or rereads a
+    /// byte. A reader is not `Clone`/`Serialize`, so it cannot ride in a
+    /// [`Command`] the way [`Command::ImportAudio`] carries its byte buffer;
+    /// detach/reattach is the id-stable inverse pair [`Command::DetachAudio`]
+    /// already uses, reused here since a fresh import has no documents to
+    /// cascade.
+    ///
     /// # Errors
     /// Returns [`EngineError::Audio`] when the header is malformed, the sample
     /// format is unsupported, or the backing store fails during the pyramid
@@ -173,7 +190,9 @@ impl Engine {
     ) -> Result<AudioId, EngineError> {
         let source = Arc::new(StreamingWav::open(reader)?);
         let pyramid = StreamPyramid::build(&source)?;
-        Ok(self.store.insert_streamed(source, pyramid, name))
+        let id = self.store.insert_streamed(source, pyramid, name);
+        self.journal_streamed_import(id);
+        Ok(id)
     }
 
     /// Frame count at or below which an import stays eager (whole-signal
@@ -229,6 +248,9 @@ impl Engine {
     /// the host persist the take beside imported media through its own storage
     /// path. Finishing consumes the take; the id is invalid afterwards.
     ///
+    /// Journaled exactly like [`Engine::import_wav_bytes`]: [`Engine::undo`]
+    /// drops the materialized take and [`Engine::redo`] reinserts it.
+    ///
     /// # Errors
     /// Returns [`EngineError::UnknownRecordingId`] when `id` names no open
     /// take, and [`EngineError::Audio`] when the accumulated samples cannot
@@ -241,7 +263,7 @@ impl Engine {
         let take = self.recordings.finish(id)?;
         let audio = Audio::new(take.channels, take.sample_rate)?.with_name(name);
         let wav = audio.to_wav_bytes(BitDepth::Pcm24)?;
-        let audio = self.store.insert(audio);
+        let audio = self.journal_eager_import(audio);
         Ok(FinishedRecording { audio, wav })
     }
 
@@ -1179,6 +1201,38 @@ impl Engine {
     #[must_use]
     pub fn annotation_ids(&self) -> Vec<AnnotationId> {
         self.documents.ids_sorted()
+    }
+
+    /// Inserts a fully decoded buffer and records the same undo/redo pair
+    /// [`Command::ImportAudio`] would, so [`Engine::import_wav_bytes`] and
+    /// [`Engine::finish_recording`] — the two paths that add a whole-decoded
+    /// buffer outside the command surface — still leave a real journal entry.
+    fn journal_eager_import(&mut self, audio: Audio) -> AudioId {
+        let replay = audio.clone();
+        let id = self.store.insert(audio);
+        self.journal.record(JournalEntry {
+            undo: Reverse::RemoveAudio { id },
+            redo: Reverse::ImportAudio {
+                id,
+                audio: Box::new(replay),
+            },
+        });
+        id
+    }
+
+    /// Records the undo/redo pair for a freshly opened streamed source: undo
+    /// detaches it (parking the source and pyramid, never dropping or
+    /// rereading them) and redo reattaches the same parked entry. A fresh
+    /// import has no documents to cascade, so both sides of the pair carry an
+    /// empty document list.
+    fn journal_streamed_import(&mut self, id: AudioId) {
+        self.journal.record(JournalEntry {
+            undo: Reverse::DetachAudio { id },
+            redo: Reverse::RestoreAudio {
+                id,
+                docs: Vec::new(),
+            },
+        });
     }
 
     /// Runs a command forward against live state, returning the report and the
@@ -2511,6 +2565,185 @@ mod tests {
         assert!(engine.audio_info(audio).is_err());
         assert!(engine.annotation(doc).is_err());
         assert_eq!(engine.state_hash(), detached_hash);
+    }
+
+    #[test]
+    fn import_wav_bytes_is_journaled_and_undo_redo_is_hash_stable() {
+        let (mut engine, _audio, _doc) = base_engine();
+        let before = engine.state_hash();
+        let before_depth = engine.undo_depth();
+
+        let imported = engine
+            .import_wav_bytes(&sine_wav_bytes(8_000, 0.3, 330.0))
+            .unwrap();
+        assert!(engine.audio_info(imported).is_ok());
+        assert_eq!(engine.undo_depth(), before_depth + 1);
+        let after_import = engine.state_hash();
+        assert_ne!(after_import, before, "import must shift the state hash");
+
+        let undone = engine.undo().unwrap().unwrap();
+        assert!(matches!(undone, Applied::AudioRemoved { audio } if audio == imported));
+        assert!(engine.audio_info(imported).is_err());
+        assert_eq!(engine.state_hash(), before);
+
+        let redone = engine.redo().unwrap().unwrap();
+        assert!(matches!(redone, Applied::AudioImported { audio } if audio == imported));
+        assert!(engine.audio_info(imported).is_ok());
+        assert_eq!(engine.state_hash(), after_import);
+    }
+
+    #[test]
+    fn open_streaming_wav_is_journaled_and_undo_redo_is_hash_stable() {
+        let (mut engine, _audio, _doc) = base_engine();
+        let before = engine.state_hash();
+        let before_depth = engine.undo_depth();
+
+        let bytes = sine_wav_bytes(8_000, 0.3, 330.0);
+        let streamed = engine
+            .open_streaming_wav(BytesReader::new(bytes), Some("streamed-take".to_string()))
+            .unwrap();
+        assert!(engine.audio_info(streamed).is_ok());
+        assert_eq!(engine.undo_depth(), before_depth + 1);
+        let after_open = engine.state_hash();
+        assert_ne!(
+            after_open, before,
+            "streamed open must shift the state hash"
+        );
+
+        // Undo detaches (parks) the streamed source rather than dropping it, so
+        // the reader is never reopened and no byte is reread on redo.
+        let undone = engine.undo().unwrap().unwrap();
+        assert!(
+            matches!(undone, Applied::AudioDetached { audio, ref annotations } if audio == streamed && annotations.is_empty())
+        );
+        assert!(engine.audio_info(streamed).is_err());
+        assert_eq!(engine.state_hash(), before);
+
+        let redone = engine.redo().unwrap().unwrap();
+        assert!(
+            matches!(redone, Applied::AudioRestored { audio, ref annotations } if audio == streamed && annotations.is_empty())
+        );
+        assert!(engine.audio_info(streamed).is_ok());
+        assert_eq!(engine.state_hash(), after_open);
+    }
+
+    #[test]
+    fn finish_recording_is_journaled_and_undo_redo_is_hash_stable() {
+        let (mut engine, _audio, _doc) = base_engine();
+        let before = engine.state_hash();
+        let before_depth = engine.undo_depth();
+
+        let rec = engine.begin_recording(8_000.0, 1).unwrap();
+        engine.append_samples(rec, &[0.1, 0.2, -0.1, -0.2]).unwrap();
+        let finished = engine.finish_recording(rec, "take".to_string()).unwrap();
+        assert!(engine.audio_info(finished.audio).is_ok());
+        assert_eq!(engine.undo_depth(), before_depth + 1);
+        let after_finish = engine.state_hash();
+        assert_ne!(
+            after_finish, before,
+            "a finished recording must shift the state hash"
+        );
+
+        let undone = engine.undo().unwrap().unwrap();
+        assert!(matches!(undone, Applied::AudioRemoved { audio } if audio == finished.audio));
+        assert!(engine.audio_info(finished.audio).is_err());
+        assert_eq!(engine.state_hash(), before);
+
+        let redone = engine.redo().unwrap().unwrap();
+        assert!(matches!(redone, Applied::AudioImported { audio } if audio == finished.audio));
+        assert!(engine.audio_info(finished.audio).is_ok());
+        assert_eq!(engine.state_hash(), after_finish);
+    }
+
+    /// Extends the phase-3 hash-stability gate ([`random_fifty_command_undo_stack_is_hash_stable`])
+    /// to the three entry points that journal outside a [`Command`]: a raw WAV
+    /// import, a streamed open, and a finished recording, interleaved with
+    /// ordinary content commands and undone/redone in full.
+    #[test]
+    fn mixed_raw_audio_imports_interleave_with_commands_and_undo_redo_is_hash_stable() {
+        let (mut engine, audio, doc) = base_engine();
+        let initial = engine.state_hash();
+        let mut applied_hashes = Vec::new();
+
+        // A content edit, so the sequence is not audio-only.
+        let tier = engine.annotation(doc).unwrap().tiers()[0].id;
+        let interval = interval_tiers(engine.annotation(doc).unwrap())
+            .into_iter()
+            .find(|(t, _)| *t == tier)
+            .unwrap()
+            .1[0]
+            .id;
+        engine
+            .apply(Command::SetLabel {
+                annotation: doc,
+                target: LabelTarget::Interval { tier, interval },
+                text: "vowel".to_string(),
+            })
+            .unwrap();
+        applied_hashes.push(engine.state_hash());
+
+        // A raw eager import, outside the command surface.
+        let imported = engine
+            .import_wav_bytes(&sine_wav_bytes(8_000, 0.2, 440.0))
+            .unwrap();
+        applied_hashes.push(engine.state_hash());
+
+        // Rename it through the ordinary command path — the two paths must
+        // compose in one journal.
+        engine
+            .apply(Command::RenameAudio {
+                id: imported,
+                name: "clip".to_string(),
+            })
+            .unwrap();
+        applied_hashes.push(engine.state_hash());
+
+        // A raw streamed open.
+        let streamed = engine
+            .open_streaming_wav(
+                BytesReader::new(sine_wav_bytes(8_000, 0.2, 550.0)),
+                Some("streamed".to_string()),
+            )
+            .unwrap();
+        applied_hashes.push(engine.state_hash());
+
+        // A raw finished recording.
+        let rec = engine.begin_recording(8_000.0, 1).unwrap();
+        engine.append_samples(rec, &[0.3, -0.3, 0.2, -0.2]).unwrap();
+        let finished = engine
+            .finish_recording(rec, "recorded".to_string())
+            .unwrap();
+        applied_hashes.push(engine.state_hash());
+
+        // Detach the original audio, cascading its document off the session.
+        engine.apply(Command::DetachAudio { id: audio }).unwrap();
+        applied_hashes.push(engine.state_hash());
+
+        assert_eq!(engine.undo_depth(), applied_hashes.len() + 2); // + import + attach from base_engine
+        assert!(engine.audio_info(imported).is_ok());
+        assert!(engine.audio_info(streamed).is_ok());
+        assert!(engine.audio_info(finished.audio).is_ok());
+
+        let final_hash = engine.state_hash();
+
+        for expected in applied_hashes.iter().rev().skip(1) {
+            engine.undo().unwrap();
+            assert_eq!(engine.state_hash(), *expected);
+        }
+        engine.undo().unwrap();
+        assert_eq!(engine.state_hash(), initial);
+        assert!(engine.audio_info(imported).is_err());
+        assert!(engine.audio_info(streamed).is_err());
+        assert!(engine.audio_info(finished.audio).is_err());
+
+        for expected in &applied_hashes {
+            engine.redo().unwrap();
+            assert_eq!(engine.state_hash(), *expected);
+        }
+        assert_eq!(engine.state_hash(), final_hash);
+        assert!(engine.audio_info(imported).is_ok());
+        assert!(engine.audio_info(streamed).is_ok());
+        assert!(engine.audio_info(finished.audio).is_ok());
     }
 
     #[test]

@@ -363,8 +363,11 @@ impl AudioStore {
     ///
     /// The id is never recycled: `next_id` keeps climbing so a later
     /// [`AudioStore::insert`] can never collide with an id that undo may still
-    /// restore through [`AudioStore::restore`]. Streamed entries are opened
-    /// outside the journal and are not removed through this path.
+    /// restore through [`AudioStore::restore`]. A streamed entry's undo goes
+    /// through [`AudioStore::detach`]/[`AudioStore::reattach_detached`]
+    /// instead — its `ByteReader` cannot be cloned to replay an import the way
+    /// an eager buffer's decoded samples can — so it is never removed through
+    /// this path.
     pub fn remove(&mut self, id: AudioId) -> Option<Audio> {
         match self.entries.remove(&id) {
             Some(Entry::Eager { audio, .. }) => Some(audio),
