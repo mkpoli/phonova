@@ -18,8 +18,6 @@ pub enum TextGridError {
     InvalidUtf8,
     /// A quoted label ran to the end of the stream without a closing quote.
     UnterminatedString,
-    /// The stream is a binary-format TextGrid, which this crate does not read.
-    BinaryUnsupported,
     /// The `File type` header was absent or was not `"ooTextFile"`.
     NotATextGrid,
     /// The object class header named a class other than `TextGrid`.
@@ -41,6 +39,22 @@ pub enum TextGridError {
     ExpectedNumber,
     /// The stream ended while a field was still being read.
     UnexpectedEnd,
+    /// A binary tier or interval/point count was negative.
+    NegativeCount {
+        /// The negative count found.
+        value: i32,
+    },
+    /// A binary text field's length prefix was negative but not the `-1`
+    /// sentinel that flags a UTF-16 string.
+    InvalidTextLength {
+        /// The invalid length found.
+        length: i16,
+    },
+    /// A binary document's tiers-exist flag byte was neither `0` nor `1`.
+    InvalidTiersFlag {
+        /// The byte found where the flag was expected.
+        found: u8,
+    },
     /// The parsed tiers failed to build a valid annotation, such as a raw
     /// identifier that leaves no room to allocate the next one, or a
     /// non-finite time value.
@@ -60,7 +74,6 @@ impl fmt::Display for TextGridError {
             Self::InvalidUtf16 => write!(f, "UTF-16 stream contains an unpaired surrogate"),
             Self::InvalidUtf8 => write!(f, "byte-order-marked stream is not valid UTF-8"),
             Self::UnterminatedString => write!(f, "quoted label has no closing quote"),
-            Self::BinaryUnsupported => write!(f, "binary-format TextGrid is not supported"),
             Self::NotATextGrid => write!(f, "missing or invalid ooTextFile header"),
             Self::UnsupportedObjectClass { found } => {
                 write!(f, "object class {found:?} is not a TextGrid")
@@ -69,6 +82,18 @@ impl fmt::Display for TextGridError {
             Self::InvalidNumber { token } => write!(f, "expected a number, found {token:?}"),
             Self::ExpectedNumber => write!(f, "expected a number, found a quoted string"),
             Self::UnexpectedEnd => write!(f, "input ended while reading a field"),
+            Self::NegativeCount { value } => {
+                write!(f, "expected a non-negative count, found {value}")
+            }
+            Self::InvalidTextLength { length } => {
+                write!(f, "expected a text length of -1 or greater, found {length}")
+            }
+            Self::InvalidTiersFlag { found } => {
+                write!(
+                    f,
+                    "expected a tiers-exist flag byte of 0 or 1, found {found}"
+                )
+            }
             Self::Annotation(err) => write!(f, "invalid annotation: {err}"),
             Self::NonFiniteTime { value } => {
                 write!(f, "cannot write non-finite time value {value}")

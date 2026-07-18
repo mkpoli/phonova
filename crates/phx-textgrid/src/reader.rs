@@ -7,12 +7,10 @@
 //! fields skip decorative words until a quoted value, so the tags and headers
 //! present only in the long format are consumed the same way in either variant.
 
+use crate::Variant;
 use crate::error::TextGridError;
-use crate::{Encoding, SourceInfo, Variant};
-use phx_annot::{
-    Annotation, BoundaryId, Interval, IntervalId, IntervalTier, Point, PointId, PointTier, Tier,
-    TierId, TierRelation, TierSlot,
-};
+use crate::tier_build::{IdMinter, build_interval_tier, build_point_tier};
+use phx_annot::{Annotation, IntervalTier, PointTier, Tier, TierId, TierRelation, TierSlot};
 
 /// One lexical token: a quoted string (already unescaped) or a bare word.
 enum Token {
@@ -145,8 +143,8 @@ impl<'a> Cursor<'a> {
     }
 }
 
-/// Reads a decoded TextGrid string into an annotation and its source variant.
-pub fn parse(text: &str, encoding: Encoding) -> Result<(Annotation, SourceInfo), TextGridError> {
+/// Reads a decoded TextGrid string into an annotation and its detected text-format variant.
+pub fn parse(text: &str) -> Result<(Annotation, Variant), TextGridError> {
     let tokens = tokenize(text)?;
     let variant = detect_variant(&tokens);
     let mut cursor = Cursor::new(&tokens);
@@ -203,7 +201,7 @@ pub fn parse(text: &str, encoding: Encoding) -> Result<(Annotation, SourceInfo),
     // flag; `slots` stays empty and no further tokens are consulted.
 
     let annotation = Annotation::from_raw(xmin, xmax, slots)?;
-    Ok((annotation, SourceInfo { variant, encoding }))
+    Ok((annotation, variant))
 }
 
 fn read_interval_tier(
@@ -214,30 +212,14 @@ fn read_interval_tier(
     count: usize,
     ids: &mut IdMinter,
 ) -> Result<IntervalTier, TextGridError> {
-    let mut intervals = Vec::new();
-    let mut shared_boundary: Option<u64> = None;
+    let mut raw = Vec::new();
     for _ in 0..count {
         let xmin = cursor.read_number()?;
         let xmax = cursor.read_number()?;
         let label = cursor.read_string()?;
-        let start = shared_boundary.unwrap_or_else(|| ids.next_boundary());
-        let end = ids.next_boundary();
-        shared_boundary = Some(end);
-        intervals.push(Interval {
-            id: IntervalId::new(ids.next_interval()),
-            start_boundary: BoundaryId::new(start),
-            end_boundary: BoundaryId::new(end),
-            xmin,
-            xmax,
-            label,
-        });
+        raw.push((xmin, xmax, label));
     }
-    Ok(IntervalTier {
-        name,
-        xmin: tier_xmin,
-        xmax: tier_xmax,
-        intervals,
-    })
+    Ok(build_interval_tier(name, tier_xmin, tier_xmax, raw, ids))
 }
 
 fn read_point_tier(
@@ -248,22 +230,13 @@ fn read_point_tier(
     count: usize,
     ids: &mut IdMinter,
 ) -> Result<PointTier, TextGridError> {
-    let mut points = Vec::new();
+    let mut raw = Vec::new();
     for _ in 0..count {
         let time = cursor.read_number()?;
         let label = cursor.read_string()?;
-        points.push(Point {
-            id: PointId::new(ids.next_point()),
-            time,
-            label,
-        });
+        raw.push((time, label));
     }
-    Ok(PointTier {
-        name,
-        xmin: tier_xmin,
-        xmax: tier_xmax,
-        points,
-    })
+    Ok(build_point_tier(name, tier_xmin, tier_xmax, raw, ids))
 }
 
 /// The long format is the only variant that carries a bare `xmin` field tag;
@@ -277,38 +250,6 @@ fn detect_variant(tokens: &[Token]) -> Variant {
         Variant::Long
     } else {
         Variant::Short
-    }
-}
-
-/// Mints document-wide unique identifiers so that boundary, interval, and point
-/// identifiers never collide across tiers, which `Annotation::validate` checks.
-#[derive(Default)]
-struct IdMinter {
-    tier: u64,
-    boundary: u64,
-    interval: u64,
-    point: u64,
-}
-
-impl IdMinter {
-    fn next_tier(&mut self) -> u64 {
-        self.tier += 1;
-        self.tier
-    }
-
-    fn next_boundary(&mut self) -> u64 {
-        self.boundary += 1;
-        self.boundary
-    }
-
-    fn next_interval(&mut self) -> u64 {
-        self.interval += 1;
-        self.interval
-    }
-
-    fn next_point(&mut self) -> u64 {
-        self.point += 1;
-        self.point
     }
 }
 
@@ -347,7 +288,7 @@ tiers? <exists>
 size = 0
 item []:
 ";
-        let (doc, _) = parse(text, crate::Encoding::Utf8).expect("parses");
+        let (doc, _) = parse(text).expect("parses");
         assert_eq!(doc.xmax(), 1.0);
     }
 
@@ -433,10 +374,10 @@ Object class = \"TextGrid\"
 1
 \"hi\"
 ";
-        let (long_doc, long_info) = parse(long, Encoding::Utf8).expect("long parses");
-        let (short_doc, short_info) = parse(short, Encoding::Utf8).expect("short parses");
-        assert_eq!(long_info.variant, Variant::Long);
-        assert_eq!(short_info.variant, Variant::Short);
+        let (long_doc, long_variant) = parse(long).expect("long parses");
+        let (short_doc, short_variant) = parse(short).expect("short parses");
+        assert_eq!(long_variant, Variant::Long);
+        assert_eq!(short_variant, Variant::Short);
         assert_eq!(long_doc, short_doc);
     }
 
@@ -450,7 +391,7 @@ xmin = 0
 xmax = 1
 tiers? <absent>
 ";
-        let (doc, _) = parse(text, Encoding::Utf8).expect("parses");
+        let (doc, _) = parse(text).expect("parses");
         assert_eq!(doc.xmin(), 0.0);
         assert_eq!(doc.xmax(), 1.0);
         assert!(doc.tiers().is_empty());
@@ -465,8 +406,8 @@ Object class = \"TextGrid\"
 1
 <absent>
 ";
-        let (doc, info) = parse(text, Encoding::Utf8).expect("parses");
-        assert_eq!(info.variant, Variant::Short);
+        let (doc, variant) = parse(text).expect("parses");
+        assert_eq!(variant, Variant::Short);
         assert!(doc.tiers().is_empty());
     }
 

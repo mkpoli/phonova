@@ -3,28 +3,36 @@
 A reader and writer for Praat TextGrid files, built on the [`phx-annot`]
 annotation model.
 
-The reader accepts both text formats Praat writes — long (tagged) and short
-(bare values) — and decodes UTF-8, UTF-16 (via byte-order mark), and Latin-1.
+The reader accepts every format Praat writes: the long (tagged) and short
+(bare values) text formats, decoded from UTF-8, UTF-16 (via byte-order mark),
+or Latin-1, and Praat's binary format (detected by its `ooBinaryFile` magic).
 Files predating Praat's Unicode support decode as Latin-1; a file from that era
 saved under Mac OS Classic may instead carry MacRoman-encoded bytes, which are
 also valid Latin-1 byte-for-byte and are not distinguished from it, matching
-the ambiguity Praat's own manual describes for encoding-less files. The reader
-reports the detected format variant and encoding alongside the document and
-never panics on malformed input. The writer emits one canonical shape: long
-format, UTF-8, `LF` line endings, no byte-order mark.
+the ambiguity Praat's own manual describes for encoding-less files. The
+binary format is undocumented by Praat; this crate derives it clean-room from
+oracle-generated sample pairs rather than from Praat's source — see
+`docs/binary-format.md`. The reader reports the detected source provenance
+alongside the document and never panics on malformed input. The writer emits
+one canonical shape: long text format, UTF-8, `LF` line endings, no
+byte-order mark; writing the binary format is out of scope.
 
-The binary TextGrid variant is not supported and is reported as a typed error.
 TextGrid carries no cross-tier relation data, so every imported tier is
 independent.
 
 ## Example
 
 ```rust
-use phx_textgrid::{read, write};
+use phx_textgrid::{SourceInfo, read, write};
 
 let bytes = std::fs::read("example.TextGrid")?;
 let (doc, source) = read(&bytes)?;
-println!("read {:?} format, {:?} encoding", source.variant, source.encoding);
+match source {
+    SourceInfo::Text { variant, encoding } => {
+        println!("read {variant:?} text, {encoding:?} encoding");
+    }
+    SourceInfo::Binary => println!("read binary format"),
+}
 
 // Re-emit as canonical long-format UTF-8.
 std::fs::write("canonical.TextGrid", write(&doc))?;

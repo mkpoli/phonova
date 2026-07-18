@@ -112,6 +112,13 @@ fn arbitrary_bytes_never_panic() {
         &[0xff; 64],
         b"File type = \"ooTextFile\"\nObject class = \"TextGrid\"\nxmin = notanumber\n",
         b"File type = \"ooTextFile\"\nObject class = \"TextGrid\"\n0\n1\n<exists>\n99999\n",
+        b"ooBinaryFile",
+        b"ooBinaryFile\x00",
+        b"ooBinaryFile\x08TextGri", // class-name string truncated mid-payload
+        b"ooBinaryFile\x08TextGrid",
+        b"ooBinaryFile\x08NotAGrid",
+        b"ooBinaryFile\x08TextGrid\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02",
+        b"ooBinaryFile\xffNotAsCII\x00",
     ];
     for sample in samples {
         // A malformed sample must yield an error, and reading it must not panic.
@@ -123,6 +130,20 @@ fn arbitrary_bytes_never_panic() {
     for _ in 0..2000 {
         let len = (state as usize % 96) + 1;
         let mut bytes = Vec::with_capacity(len);
+        for _ in 0..len {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            bytes.push((state >> 16) as u8);
+        }
+        let _ = read(&bytes);
+    }
+
+    // Same sweep, but every sample opens with the binary magic so the fuzz
+    // exercises the binary reader's cursor and text-field decoding instead of
+    // falling through to the text/encoding path.
+    let mut state: u32 = 0x4321_8765;
+    for _ in 0..2000 {
+        let len = (state as usize % 96) + 1;
+        let mut bytes = b"ooBinaryFile".to_vec();
         for _ in 0..len {
             state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             bytes.push((state >> 16) as u8);
