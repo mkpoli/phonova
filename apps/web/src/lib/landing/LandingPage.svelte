@@ -469,7 +469,7 @@
       <div class="wrap">
         <div class="sec-head" data-rv>
           <p class="eyebrow">Capabilities</p>
-          <h2>Five capabilities.</h2>
+          <h2>Record, measure, annotate, and plot.</h2>
         </div>
         <div class="cap-grid">
           <article class="card" data-rv>
@@ -612,15 +612,23 @@
       <div class="wrap">
         <div class="sec-head" data-rv>
           <p class="eyebrow">Learning</p>
-          <h2>One set of conventions.</h2>
+          <h2>Interface conventions</h2>
         </div>
-        <div class="learn-text" data-rv>
-          <p>
-            The command palette (Ctrl/Cmd-K) lists every action with its keyboard shortcut. One
-            undo stack (Ctrl/Cmd-Z) covers every kind of edit, and one selection model runs across
-            the waveform, the spectrogram, and the annotation tiers.
-          </p>
-        </div>
+        <ul class="learn-list" data-rv>
+          <li>
+            <strong>Command palette (Ctrl/Cmd-K).</strong> Every action is listed with its shortcut,
+            so nothing is buried two menus deep.
+          </li>
+          <li>
+            <strong>One undo stack (Ctrl/Cmd-Z).</strong> Annotation edits and library changes —
+            a renamed recording, a deleted tier — share the same history, so one shortcut reaches
+            back through all of it.
+          </li>
+          <li>
+            <strong>One selection.</strong> A range selected on the waveform is the same range on
+            the spectrogram and in the tiers — playback, readouts, and export all use it.
+          </li>
+        </ul>
       </div>
     </section>
 
@@ -628,7 +636,7 @@
       <div class="wrap">
         <div class="sec-head" data-rv>
           <p class="eyebrow">Validation</p>
-          <h2>Checked against Praat.</h2>
+          <h2>Every measurement is checked against Praat.</h2>
         </div>
         <div class="val-grid">
           <div class="val-text" data-rv>
@@ -668,7 +676,7 @@
       <div class="wrap">
         <div class="sec-head" data-rv>
           <p class="eyebrow">The application</p>
-          <h2>Embedded below.</h2>
+          <h2>This frame runs the live application.</h2>
           <p class="sec-sub">
             The frame below loads the same build served at this site's root.
           </p>
@@ -1207,13 +1215,36 @@
     background: rgba(94, 234, 212, 0.55);
   }
 
-  .learn-text {
+  .learn-list {
     max-width: 46rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
   }
 
-  .learn-text p {
+  .learn-list li {
     color: var(--l-muted);
-    margin: 0;
+    padding-left: 1.1rem;
+    position: relative;
+  }
+
+  .learn-list li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.55em;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--l-teal);
+  }
+
+  .learn-list strong {
+    color: var(--l-text);
+    font-weight: 600;
   }
 
   .val-grid {
