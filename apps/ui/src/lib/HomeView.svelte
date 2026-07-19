@@ -779,16 +779,16 @@
     justify-content: center;
   }
 
-  /* The one primary form action is blue, kept distinct from the teal brand. */
+  /* Primary form actions use the teal identity accent. */
   .action {
-    border-color: var(--action);
-    background: var(--action);
+    border-color: var(--accent);
+    background: var(--accent);
     color: var(--on-accent);
   }
 
   .action:hover:not(:disabled) {
-    background: var(--action-strong);
-    border-color: var(--action-strong);
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
   }
 
   .ghost {

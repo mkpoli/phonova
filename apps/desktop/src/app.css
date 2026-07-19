@@ -6,7 +6,7 @@
      transcriptions; a serif stack reserved for the Phonia wordmark.
    - Brand teal ramp anchored on the values the app already used
      (teal-600 in light, teal-300 in dark), refined into a full scale.
-   - Blue ramp is the functional-action accent, kept apart from brand teal. */
+   - Teal is the single accent for identity, chrome, and primary form actions. */
 @theme {
   --font-sans:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -24,12 +24,6 @@
   --color-teal-700: #115e59;
   --color-teal-800: #134e4a;
   --color-teal-900: #123f3b;
-
-  --color-action-300: #93c5fd;
-  --color-action-400: #60a5fa;
-  --color-action-500: #3b82f6;
-  --color-action-600: #2563eb;
-  --color-action-700: #1d4ed8;
 
   --radius-sm: 5px;
   --radius-md: 7px;
@@ -49,12 +43,10 @@
   --text: #1a1a16;
   --muted: #6c6a61;
 
-  /* Teal is identity/chrome; blue is the functional form action. */
+  /* Teal is the single accent for identity, chrome, and primary form actions. */
   --accent: var(--color-teal-600);
   --accent-strong: var(--color-teal-700);
   --accent-tint: color-mix(in oklab, var(--color-teal-600) 14%, var(--panel));
-  --action: var(--color-action-600);
-  --action-strong: var(--color-action-700);
   --on-accent: #ffffff;
 
   --warn: #b45309;
@@ -97,8 +89,6 @@
   --accent: var(--color-teal-300);
   --accent-strong: var(--color-teal-200);
   --accent-tint: color-mix(in oklab, var(--color-teal-300) 20%, var(--panel));
-  --action: var(--color-action-400);
-  --action-strong: var(--color-action-300);
   --on-accent: #10201d;
 
   --warn: #fbbf24;

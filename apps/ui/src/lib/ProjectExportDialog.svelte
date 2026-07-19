@@ -219,10 +219,10 @@
     align-items: center;
     justify-content: center;
     gap: 0.4rem;
-    border: 1px solid var(--action);
+    border: 1px solid var(--accent);
     border-radius: var(--radius-md);
-    background: var(--action);
-    color: #fff;
+    background: var(--accent);
+    color: var(--on-accent);
     padding: 0.5rem 0.6rem;
     font-size: 0.88rem;
     font-weight: 600;
@@ -237,8 +237,8 @@
   }
 
   .download:hover:not(:disabled) {
-    background: var(--action-strong);
-    border-color: var(--action-strong);
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
   }
 
   .download:disabled {

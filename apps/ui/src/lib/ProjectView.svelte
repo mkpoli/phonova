@@ -602,14 +602,14 @@
   }
 
   .action {
-    border-color: var(--action);
-    background: var(--action);
-    color: #fff;
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
   }
 
   .action:hover:not(:disabled) {
-    background: var(--action-strong);
-    border-color: var(--action-strong);
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
   }
 
   .action:disabled {

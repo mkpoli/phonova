@@ -74,23 +74,26 @@ keeps its own visual identity:
 
 ### Color
 
-Two accent families with strict separation of duty, over warm neutrals:
+One accent family over warm neutrals:
 
 | Role | Light | Dark | Use |
 |---|---|---|---|
 | Paper | `#f7f6f3` | `#262624` | app background |
 | Ink ramp | warm grays | warm grays | text, borders, surfaces |
-| Identity (teal) | anchored `teal-600` | anchored `teal-300` | wordmark, selection, active states, chrome accents |
-| Action (blue) | `blue-600` family | `blue-400` family | form actions: Create, Save, Download, Recover |
+| Identity (teal) | anchored `teal-600` | anchored `teal-300` | wordmark, selection, active states, chrome accents, primary form actions |
 | Semantic | green / amber / red triads | same, dark-tuned | success, warning, destructive |
 
 The neutrals are warm (red ≥ green ≥ blue) in both themes; the dark theme is
 charcoal, never blue-black. The dark ground holds red and green equal at
 `#262624` with blue a shade lower, so it reads neutral rather than
 orange-cast; panels lift a touch to `#2c2c29`, wells drop to `#171715` for
-the waveform and spectrogram floor, and hairlines run `#3c3b37`. Identity
-color never marks a destructive or primary form action, and action blue
-never decorates chrome — the separation is what keeps both meaningful.
+the waveform and spectrogram floor, and hairlines run `#3c3b37`. Teal is the
+single accent across chrome and primary form actions: Create,
+Save, Download, and Recover. Semantic colors retain their separate roles for
+success, warning, and destructive states; teal never substitutes for them.
+`--on-accent` supplies each theme's readable label color against a solid teal
+fill. The light pairing has a 5.47:1 contrast ratio and the dark pairing has
+an 11.39:1 ratio; both clear WCAG AA for normal text.
 
 Data colors are a separate, frozen vocabulary (see Data display).
 
@@ -208,7 +211,7 @@ say what happened and what to do next.
 - **Home and corpus**: card grid and data table, Carbon-style discipline,
   identity accents on hover and active states only.
 - **Dialogs and overlays**: `--radius-xl`, `--shadow-lg`, backdrop blur,
-  one primary action in action blue.
+  one primary action in the identity accent.
 - **Landing and documentation**: may use the serif more freely and show the
   product at work — real screenshots over illustrations; effects may be
   richer than in-app, and every effect respects reduced motion. The palette

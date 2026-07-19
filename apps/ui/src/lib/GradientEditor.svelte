@@ -424,13 +424,13 @@
   }
 
   .primary {
-    border-color: var(--action);
-    background: var(--action);
-    color: #fff;
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
   }
 
   .primary:hover {
-    background: var(--action-strong);
-    border-color: var(--action-strong);
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
   }
 </style>
