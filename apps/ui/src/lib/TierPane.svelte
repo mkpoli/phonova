@@ -6,7 +6,8 @@
   import IconX from '~icons/lucide/x';
   import SearchBar from './SearchBar.svelte';
   import TierLane from './TierLane.svelte';
-  import { registerCommands } from './commands.svelte';
+  import { getCommandRegistry, registerCommands } from './commands.svelte';
+  import { chordFromEvent, getKeyBindings } from './keybindings.svelte';
   import type {
     AnnotationClientLike,
     AppliedChange,
@@ -494,6 +495,19 @@
     }
   }
 
+  const keyBindings = getKeyBindings();
+  const commandRegistry = getCommandRegistry();
+
+  // The `tierpane` scope's rebindable actions. Which chord fires which of
+  // these is data (`keyBindings`, mode-dependent) — see keybindings.svelte.ts.
+  const tierPaneActions: Record<string, () => void> = {
+    insertBoundary: () => void splitAtCursor(),
+    removeBoundary: () => void mergeActive(),
+    editLabel: () => openEditor(activeIndex),
+    nextInterval: () => selectIndex(activeIndex + 1),
+    previousInterval: () => selectIndex(activeIndex - 1)
+  };
+
   function handleKeydown(event: KeyboardEvent) {
     if (editing) return;
     if (annotationId === null) return;
@@ -515,34 +529,34 @@
       focusTierByDigit(Number(key));
       return;
     }
-    if (key === 'Tab') {
-      event.preventDefault();
-      event.stopPropagation();
-      selectIndex(activeIndex + (event.shiftKey ? -1 : 1));
-      return;
-    }
-    if (key === 'Enter') {
-      event.preventDefault();
-      event.stopPropagation();
-      openEditor(activeIndex);
-      return;
+    if (keyBindings) {
+      const chord = chordFromEvent(event);
+      const tierCommandId = keyBindings.commandForChord('tierpane', chord);
+      const tierAction = tierCommandId ? tierPaneActions[tierCommandId] : undefined;
+      if (tierAction) {
+        event.preventDefault();
+        event.stopPropagation();
+        tierAction();
+        return;
+      }
+      // No tier-pane command claims this chord in the active mode — Praat
+      // mode leaves Tab unbound here on purpose, since Praat's Tab plays
+      // regardless of what has focus. Fall back to whatever the editor
+      // scope binds the same chord to, through the shared command registry
+      // so it runs the identical code path a Space press or palette click
+      // would.
+      const editorCommandId = keyBindings.commandForChord('editor', chord);
+      if (editorCommandId && commandRegistry?.find(editorCommandId)) {
+        event.preventDefault();
+        event.stopPropagation();
+        void commandRegistry.run(editorCommandId);
+        return;
+      }
     }
     if (key === 'ArrowLeft' || key === 'ArrowRight') {
       event.preventDefault();
       event.stopPropagation();
       void nudgeBoundary(key === 'ArrowLeft' ? -1 : 1, event.altKey);
-      return;
-    }
-    if (key === 's' || key === 'S') {
-      event.preventDefault();
-      event.stopPropagation();
-      void splitAtCursor();
-      return;
-    }
-    if (key === 'm' || key === 'M') {
-      event.preventDefault();
-      event.stopPropagation();
-      void mergeActive();
       return;
     }
     // Type-to-edit: a printable character opens the label editor seeded with it.
@@ -556,13 +570,13 @@
   function handleGlobalKeydown(event: KeyboardEvent) {
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-    if (!(event.ctrlKey || event.metaKey)) return;
-    const lower = event.key.toLowerCase();
-    if (lower === 'z') {
+    if (!keyBindings) return;
+    const chord = chordFromEvent(event);
+    const commandId = keyBindings.commandForChord('global', chord);
+    if (commandId === 'undo') {
       event.preventDefault();
-      if (event.shiftKey) void redo();
-      else void undo();
-    } else if (lower === 'y') {
+      void undo();
+    } else if (commandId === 'redo') {
       event.preventDefault();
       void redo();
     }
@@ -606,7 +620,7 @@
       title: 'Split interval at cursor',
       group: 'Annotation',
       api: ['insertBoundary'],
-      shortcut: 'S',
+      shortcut: () => keyBindings?.labelFor('insertBoundary') ?? 'S',
       keywords: ['boundary', 'divide'],
       enabled: onIntervalTier,
       run: () => void splitAtCursor()
@@ -616,7 +630,7 @@
       title: 'Merge intervals',
       group: 'Annotation',
       api: ['removeBoundary'],
-      shortcut: 'M',
+      shortcut: () => keyBindings?.labelFor('removeBoundary') ?? 'M',
       keywords: ['boundary', 'join'],
       enabled: () => onIntervalTier() && activeIntervals.length >= 2,
       run: () => void mergeActive()
@@ -626,7 +640,7 @@
       title: 'Edit label',
       group: 'Annotation',
       api: ['setIntervalLabel', 'setPointLabel'],
-      shortcut: 'Enter',
+      shortcut: () => keyBindings?.labelFor('editLabel') ?? 'Enter',
       enabled: () => activeCount > 0,
       run: () => openEditor(activeIndex)
     },
@@ -634,7 +648,7 @@
       id: 'nextInterval',
       title: 'Next interval',
       group: 'Annotation',
-      shortcut: 'Tab',
+      shortcut: () => keyBindings?.labelFor('nextInterval') ?? 'Tab',
       enabled: () => activeCount > 0,
       run: () => selectIndex(activeIndex + 1)
     },
@@ -642,7 +656,7 @@
       id: 'previousInterval',
       title: 'Previous interval',
       group: 'Annotation',
-      shortcut: 'Shift+Tab',
+      shortcut: () => keyBindings?.labelFor('previousInterval') ?? 'Shift+Tab',
       enabled: () => activeCount > 0,
       run: () => selectIndex(activeIndex - 1)
     },
@@ -651,7 +665,7 @@
       title: 'Undo',
       group: 'Annotation',
       api: ['undo'],
-      shortcut: 'Ctrl/Cmd+Z',
+      shortcut: () => keyBindings?.labelFor('undo') ?? 'Ctrl/Cmd+Z',
       enabled: () => undoDepth > 0,
       run: () => void undo()
     },
@@ -660,7 +674,7 @@
       title: 'Redo',
       group: 'Annotation',
       api: ['redo'],
-      shortcut: 'Ctrl/Cmd+Shift+Z',
+      shortcut: () => keyBindings?.labelFor('redo') ?? 'Ctrl/Cmd+Shift+Z',
       enabled: () => redoDepth > 0,
       run: () => void redo()
     },

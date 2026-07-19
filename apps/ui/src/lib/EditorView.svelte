@@ -1,29 +1,29 @@
 <script lang="ts">
   import IconArrowLeft from '~icons/lucide/arrow-left';
-  import IconImage from '~icons/lucide/image';
-  import IconAudioLines from '~icons/lucide/audio-lines';
-  import IconMic from '~icons/lucide/mic';
-  import IconPanelRight from '~icons/lucide/panel-right';
+  import IconFolderOpen from '~icons/lucide/folder-open';
+  import IconSun from '~icons/lucide/sun';
+  import IconMoon from '~icons/lucide/moon';
   import AudioExportDialog from './AudioExportDialog.svelte';
   import ExportDialog from './ExportDialog.svelte';
   import RecordingSwitcher from './RecordingSwitcher.svelte';
   import InspectorPanel from './InspectorPanel.svelte';
   import OverviewStrip from './OverviewStrip.svelte';
+  import PalettePicker from './PalettePicker.svelte';
   import ReadoutBar from './ReadoutBar.svelte';
   import SpectrogramPane from './SpectrogramPane.svelte';
   import TierPane from './TierPane.svelte';
   import TimeRuler from './TimeRuler.svelte';
-  import TransportBar from './TransportBar.svelte';
+  import Transport from './Transport.svelte';
   import GradientEditor from './GradientEditor.svelte';
   import VoiceReportCard from './VoiceReportCard.svelte';
   import WaveformPane from './WaveformPane.svelte';
   import { registerCommands } from './commands.svelte';
-  import { newRampTemplate, type CustomRamp, type PaletteSelection } from './palette';
+  import { chordFromEvent, getKeyBindings } from './keybindings.svelte';
+  import { BUILTIN_PALETTES, newRampTemplate, type CustomRamp, type PaletteSelection } from './palette';
   import {
     clampViewport,
     defaultOverlayParams,
     defaultViewport,
-    formatTime,
     type AudioInfo,
     type CoreClientLike,
     type OverlayParams,
@@ -54,11 +54,15 @@
     isPlaying: boolean;
     theme: 'light' | 'dark';
     palette: PaletteSelection;
+    /** Whether the active ramp renders reversed (floor in the ceiling color). */
+    paletteInvert: boolean;
     customRamps: CustomRamp[];
     onFile: (file: File) => void;
     onPlayToggle: () => void;
     onThemeChange: (theme: 'light' | 'dark') => void;
     onPaletteChange: (palette: PaletteSelection) => void;
+    /** Flips the palette-inversion flag. */
+    onPaletteInvertToggle: () => void;
     /** Persists a created or edited custom ramp. */
     onSaveRamp: (ramp: CustomRamp) => void;
     /** Removes a custom ramp by id. */
@@ -86,6 +90,10 @@
     recording?: boolean;
     /** Seconds captured so far; shown inside the REC pill while `recording`. */
     recordingElapsedSeconds?: number;
+    /** Whether the transport repeats the active playback range; absent hides
+     *  the loop control (the host has no loop-capable playback engine). */
+    loopEnabled?: boolean;
+    onLoopToggle?: () => void;
   }
 
   let {
@@ -96,11 +104,13 @@
     isPlaying,
     theme,
     palette,
+    paletteInvert,
     customRamps,
     onFile,
     onPlayToggle,
     onThemeChange,
     onPaletteChange,
+    onPaletteInvertToggle,
     onSaveRamp,
     onDeleteRamp,
     onCursorChange,
@@ -117,8 +127,25 @@
     onExportAudio,
     onStartRecording,
     recording = false,
-    recordingElapsedSeconds = 0
+    recordingElapsedSeconds = 0,
+    loopEnabled = false,
+    onLoopToggle
   }: Props = $props();
+
+  let fileInput = $state<HTMLInputElement | null>(null);
+
+  function takeFileList(files: FileList | null) {
+    const file = files?.item(0);
+    if (file) onFile(file);
+  }
+
+  function skipToStart() {
+    onCursorChange?.(0);
+  }
+
+  function skipToEnd() {
+    if (audio) onCursorChange?.(audio.duration);
+  }
 
   let audioExportOpen = $state(false);
 
@@ -333,6 +360,15 @@
     onPlayToggle();
   }
 
+  // Praat's "Play window" (Shift-Tab in Praat mode): always plays the whole
+  // visible window, ignoring any selection, and always restarts rather than
+  // toggling to a stop on a second press — unlike playPause/handleTransportToggle.
+  function playWindow() {
+    if (!audio) return;
+    onCursorChange?.(viewport.t0);
+    onPlaySelection?.(viewport.t0, viewport.t1);
+  }
+
   // Double-click on a pane: inside the live selection zooms to it, empty pane
   // space fits the whole file.
   function handleDoubleZoom(intent: 'zoom' | 'fit') {
@@ -460,36 +496,42 @@
     onCursorChange?.(time);
   }
 
+  const keyBindings = getKeyBindings();
+
+  // The `editor` scope's rebindable actions, keyed by command id. Which chord
+  // fires which of these is entirely data (`keyBindings`, mode-dependent) —
+  // this map only says what each command *does*, never what key it is.
+  const editorActions: Record<string, () => void> = {
+    playPause: handleTransportToggle,
+    playWindow,
+    fitFile,
+    zoomToSelection: fitSelectionOrFile,
+    toggleInspector: () => {
+      inspectorOpen = !inspectorOpen;
+    },
+    toggleWaveform,
+    clearSelection,
+    exportFigure: () => {
+      if (audio) exportOpen = !exportOpen;
+    }
+  };
+
   function handleKeydown(event: KeyboardEvent) {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
+    // Escape closes whichever overlay sits on top before it does anything
+    // else; this is baseline modal behavior, not a rebindable command.
     if (event.key === 'Escape' && (selection || voiceReportOpen)) {
       event.preventDefault();
       if (voiceReportOpen) voiceReportOpen = false;
       else clearSelection();
       return;
     }
-    // The single-key view shortcuts below never combine with a modifier; a
-    // Ctrl/Cmd chord belongs to the app (UI scale, palette), so let it pass.
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
-    if (event.code === 'Space') {
-      event.preventDefault();
-      handleTransportToggle();
-    } else if (event.key === '0') {
-      event.preventDefault();
-      fitFile();
-    } else if (event.key.toLowerCase() === 'f') {
-      event.preventDefault();
-      fitSelectionOrFile();
-    } else if (event.key.toLowerCase() === 'i') {
-      event.preventDefault();
-      inspectorOpen = !inspectorOpen;
-    } else if (event.key.toLowerCase() === 'w') {
-      event.preventDefault();
-      toggleWaveform();
-    } else if (event.key.toLowerCase() === 'e' && audio) {
-      event.preventDefault();
-      exportOpen = !exportOpen;
-    }
+    if (!keyBindings) return;
+    const commandId = keyBindings.commandForChord('editor', chordFromEvent(event));
+    const action = commandId ? editorActions[commandId] : undefined;
+    if (!action) return;
+    event.preventDefault();
+    action();
   }
 
   const hasSelection = () => selection !== null;
@@ -500,16 +542,25 @@
       id: 'playPause',
       title: 'Play / pause',
       group: 'Playback',
-      shortcut: 'Space',
+      shortcut: () => keyBindings?.labelFor('playPause') ?? 'Space',
       keywords: ['transport', 'stop', 'play selection', 'play visible'],
       enabled: hasAudio,
       run: handleTransportToggle
     },
     {
+      id: 'playWindow',
+      title: 'Play visible window',
+      group: 'Playback',
+      shortcut: () => keyBindings?.labelFor('playWindow') ?? '',
+      keywords: ['transport', 'play view', 'praat', 'play window'],
+      enabled: hasAudio,
+      run: playWindow
+    },
+    {
       id: 'fitFile',
       title: 'Fit whole file',
       group: 'View',
-      shortcut: '0',
+      shortcut: () => keyBindings?.labelFor('fitFile') ?? '0',
       keywords: ['zoom out', 'reset zoom', 'overview'],
       enabled: hasAudio,
       run: fitFile
@@ -518,7 +569,7 @@
       id: 'zoomToSelection',
       title: 'Zoom to selection',
       group: 'View',
-      shortcut: 'F',
+      shortcut: () => keyBindings?.labelFor('zoomToSelection') ?? 'F',
       keywords: ['fit selection'],
       enabled: hasSelection,
       run: zoomToSelection
@@ -554,7 +605,7 @@
       id: 'toggleInspector',
       title: 'Toggle inspector',
       group: 'View',
-      shortcut: 'I',
+      shortcut: () => keyBindings?.labelFor('toggleInspector') ?? 'I',
       keywords: ['parameters', 'panel'],
       run: () => {
         inspectorOpen = !inspectorOpen;
@@ -564,7 +615,7 @@
       id: 'toggleWaveform',
       title: 'Toggle waveform pane',
       group: 'View',
-      shortcut: 'W',
+      shortcut: () => keyBindings?.labelFor('toggleWaveform') ?? 'W',
       keywords: ['waveform', 'ghost', 'overlay', 'envelope', 'hide'],
       enabled: hasAudio,
       run: toggleWaveform
@@ -637,7 +688,7 @@
       id: 'clearSelection',
       title: 'Clear selection',
       group: 'Selection',
-      shortcut: 'Esc',
+      shortcut: () => keyBindings?.labelFor('clearSelection') ?? 'Esc',
       enabled: hasSelection,
       run: clearSelection
     },
@@ -646,7 +697,7 @@
       title: 'Export figure',
       group: 'Figures',
       api: ['buildFigure', 'exportFigure'],
-      shortcut: 'E',
+      shortcut: () => keyBindings?.labelFor('exportFigure') ?? 'E',
       keywords: ['svg', 'pdf', 'png', 'save image'],
       enabled: hasAudio,
       run: () => {
@@ -664,54 +715,19 @@
         audioExportOpen = true;
       }
     },
+    ...BUILTIN_PALETTES.map((p) => ({
+      id: `colormap${p.name}`,
+      title: `Spectrogram palette: ${p.label}`,
+      group: 'Appearance' as const,
+      keywords: ['colormap', 'color', p.label.toLowerCase(), ...(p.keywords ?? [])],
+      run: () => onPaletteChange({ kind: 'builtin', name: p.name })
+    })),
     {
-      id: 'colormapPhonia',
-      title: 'Spectrogram palette: Phonia',
+      id: 'invertPalette',
+      title: 'Invert spectrogram palette',
       group: 'Appearance',
-      keywords: ['colormap', 'color', 'default', 'brand'],
-      run: () => onPaletteChange({ kind: 'builtin', name: 'Phonia' })
-    },
-    {
-      id: 'colormapViridis',
-      title: 'Spectrogram palette: Viridis',
-      group: 'Appearance',
-      keywords: ['colormap', 'color', 'color-blind', 'cvd', 'accessible'],
-      run: () => onPaletteChange({ kind: 'builtin', name: 'Viridis' })
-    },
-    {
-      id: 'colormapMagma',
-      title: 'Spectrogram palette: Magma',
-      group: 'Appearance',
-      keywords: ['colormap', 'color'],
-      run: () => onPaletteChange({ kind: 'builtin', name: 'Magma' })
-    },
-    {
-      id: 'colormapInferno',
-      title: 'Spectrogram palette: Inferno',
-      group: 'Appearance',
-      keywords: ['colormap', 'color'],
-      run: () => onPaletteChange({ kind: 'builtin', name: 'Inferno' })
-    },
-    {
-      id: 'colormapPlasma',
-      title: 'Spectrogram palette: Plasma',
-      group: 'Appearance',
-      keywords: ['colormap', 'color'],
-      run: () => onPaletteChange({ kind: 'builtin', name: 'Plasma' })
-    },
-    {
-      id: 'colormapCividis',
-      title: 'Spectrogram palette: Cividis',
-      group: 'Appearance',
-      keywords: ['colormap', 'color', 'color-blind', 'cvd', 'accessible'],
-      run: () => onPaletteChange({ kind: 'builtin', name: 'Cividis' })
-    },
-    {
-      id: 'colormapGrayscale',
-      title: 'Spectrogram palette: Grayscale',
-      group: 'Appearance',
-      keywords: ['colormap', 'grayscale', 'print', 'publication'],
-      run: () => onPaletteChange({ kind: 'builtin', name: 'Grayscale' })
+      keywords: ['colormap', 'color', 'invert', 'reverse', 'negative', 'flip'],
+      run: () => onPaletteInvertToggle()
     },
     {
       id: 'colormapNewRamp',
@@ -770,41 +786,45 @@
       {:else}
         <span class="crumb-current">{recordings?.[0]?.name ?? audio?.name ?? ''}</span>
       {/if}
-      {#if onStartRecording}
-        <button
-          type="button"
-          class="crumb-record"
-          class:recording
-          data-testid="record"
-          aria-label={recording ? `Recording, ${formatTime(recordingElapsedSeconds)}` : 'Start recording'}
-          disabled={recording}
-          onclick={() => onStartRecording?.()}
-        >
-          {#if recording}
-            <span class="rec-dot" aria-hidden="true"></span>
-            <span>{formatTime(recordingElapsedSeconds)}</span>
-          {:else}
-            <IconMic aria-hidden="true" />
-            <span>Record</span>
-          {/if}
-        </button>
-      {/if}
-    </nav>
 
-  <TransportBar
-    {audio}
-    {cursorTime}
-    {isPlaying}
-    {theme}
-    {palette}
-    {customRamps}
-    {onFile}
-    onPlayToggle={handleTransportToggle}
-    {onThemeChange}
-    onPaletteChange={onPaletteChange}
-    onNewRamp={openNewRamp}
-    onEditRamp={openEditRamp}
-  />
+      <div class="crumb-spacer"></div>
+
+      <label class="crumb-import" title="Open a recording">
+        <IconFolderOpen aria-hidden="true" />
+        <span>Open</span>
+        <input
+          bind:this={fileInput}
+          data-testid="file-input"
+          type="file"
+          accept=".wav,audio/wav,audio/x-wav,.aiff,.aif,audio/aiff,.flac,audio/flac"
+          onchange={(event) => takeFileList(event.currentTarget.files)}
+        />
+      </label>
+
+      <PalettePicker
+        {palette}
+        invert={paletteInvert}
+        {customRamps}
+        onSelect={onPaletteChange}
+        onToggleInvert={onPaletteInvertToggle}
+        onNewRamp={openNewRamp}
+        onEditRamp={openEditRamp}
+      />
+
+      <button
+        type="button"
+        class="icon-button"
+        aria-label="Toggle theme"
+        title={theme === 'light' ? 'Switch to dark' : 'Switch to light'}
+        onclick={() => onThemeChange(theme === 'light' ? 'dark' : 'light')}
+      >
+        {#if theme === 'light'}
+          <IconMoon aria-hidden="true" />
+        {:else}
+          <IconSun aria-hidden="true" />
+        {/if}
+      </button>
+    </nav>
 
   {#if editingRamp}
     <div class="ramp-editor-slot" data-testid="ramp-editor-slot">
@@ -872,6 +892,7 @@
         {cursorTime}
         {theme}
         palette={activePalette}
+        {paletteInvert}
         {overlayParams}
         onOverlayStats={(stats) => (overlayStats = stats)}
         {selection}
@@ -901,47 +922,27 @@
     {/if}
   </div>
 
-  <footer class="status">
-    <span>t {formatTime(cursorTime)}</span>
-    <span class="status-right">
-      <span>{audio ? `${audio.sampleRate.toFixed(0)} Hz / ${audio.channels} ch` : 'No audio'}</span>
-      {#if onExportAudio}
-        <button
-          type="button"
-          class="inspector-toggle"
-          data-testid="open-audio-export"
-          disabled={!audio}
-          aria-pressed={audioExportOpen}
-          onclick={() => (audioExportOpen = !audioExportOpen)}
-        >
-          <IconAudioLines aria-hidden="true" />
-          <span>Export audio</span>
-        </button>
-      {/if}
-      <button
-        type="button"
-        class="inspector-toggle"
-        data-testid="open-export"
-        disabled={!audio}
-        aria-pressed={exportOpen}
-        onclick={() => (exportOpen = !exportOpen)}
-      >
-        <IconImage aria-hidden="true" />
-        <span>Export figure</span>
-      </button>
-      <button
-        type="button"
-        class="inspector-toggle"
-        class:on={inspectorOpen}
-        data-testid="inspector-toggle"
-        aria-pressed={inspectorOpen}
-        onclick={() => (inspectorOpen = !inspectorOpen)}
-      >
-        <IconPanelRight aria-hidden="true" />
-        <span>Inspector</span>
-      </button>
-    </span>
-  </footer>
+  <Transport
+    {audio}
+    {cursorTime}
+    {isPlaying}
+    {loopEnabled}
+    selectionSeconds={selection ? selection.t1 - selection.t0 : null}
+    viewSpanSeconds={viewport.t1 - viewport.t0}
+    onSkipStart={skipToStart}
+    onPlayToggle={handleTransportToggle}
+    onSkipEnd={skipToEnd}
+    {onLoopToggle}
+    {onStartRecording}
+    {recording}
+    {recordingElapsedSeconds}
+    {inspectorOpen}
+    onToggleInspector={() => (inspectorOpen = !inspectorOpen)}
+    {exportOpen}
+    onToggleExportFigure={() => (exportOpen = !exportOpen)}
+    onExportAudio={onExportAudio && (() => (audioExportOpen = !audioExportOpen))}
+    {audioExportOpen}
+  />
 
   {#if exportOpen && audio}
     <ExportDialog
@@ -999,9 +1000,9 @@
      opening it never reflows the panes and the live preview stays visible. */
   .ramp-editor-slot {
     position: absolute;
-    top: 5.6rem;
+    top: 3rem;
     right: 0.85rem;
-    max-height: calc(100% - 6.5rem);
+    max-height: calc(100% - 4rem);
     overflow-y: auto;
     z-index: 40;
   }
@@ -1052,78 +1053,58 @@
     color: var(--muted);
   }
 
-  /* Compact record pill: neutral chrome at rest, danger colors while recording. */
-  .crumb-record {
+  .crumb-spacer {
+    flex: 1 1 auto;
+  }
+
+  .crumb-import {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.35rem;
     border: 1px solid var(--chrome-strong);
-    border-radius: 999px;
-    background: transparent;
+    border-radius: var(--radius-sm);
+    background: var(--panel-soft);
     color: var(--text);
     min-height: 1.6rem;
-    padding: 0.2rem 0.65rem;
-    font-size: 0.76rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    font-variant-numeric: tabular-nums;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.78rem;
+    cursor: pointer;
     transition:
       background var(--t-fast),
-      border-color var(--t-fast),
-      color var(--t-fast);
+      border-color var(--t-fast);
   }
 
-  .crumb-record:hover:not(:disabled) {
-    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
+  .crumb-import:hover {
     background: var(--panel);
+    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
   }
 
-  .crumb-record :global(svg) {
-    color: var(--danger);
+  .crumb-import :global(svg) {
     font-size: 0.95rem;
-    flex: none;
   }
 
-  .crumb-record.recording {
-    border-color: var(--danger);
-    color: var(--danger);
-    background: color-mix(in oklab, var(--danger) 14%, transparent);
+  .crumb-import input {
+    display: none;
   }
 
-  .crumb-record:disabled {
-    cursor: not-allowed;
+  .icon-button {
+    display: grid;
+    place-items: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border: 1px solid var(--chrome-strong);
+    border-radius: var(--radius-sm);
+    background: var(--panel-soft);
+    color: var(--text);
+    font-size: 1rem;
+    transition:
+      background var(--t-fast),
+      border-color var(--t-fast);
   }
 
-  .crumb-record:disabled:not(.recording) {
-    opacity: 0.5;
-  }
-
-  .rec-dot {
-    width: 0.5rem;
-    height: 0.5rem;
-    flex: none;
-    border-radius: 50%;
-    background: var(--danger);
-  }
-
-  .crumb-record.recording .rec-dot {
-    animation: rec-blink 1.1s ease-in-out infinite;
-  }
-
-  @keyframes rec-blink {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.35;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .crumb-record.recording .rec-dot {
-      animation: none;
-    }
+  .icon-button:hover {
+    background: var(--panel);
+    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
   }
 
   .workspace {
@@ -1141,60 +1122,4 @@
     touch-action: none;
   }
 
-  .status {
-    min-height: 2.1rem;
-    padding: 0.35rem 0.75rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    border-top: 1px solid var(--chrome-strong);
-    color: var(--muted);
-    background: var(--panel);
-    font-size: 0.82rem;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .status-right {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .inspector-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    border: 1px solid var(--chrome-strong);
-    border-radius: var(--radius-sm);
-    background: var(--panel-soft);
-    color: var(--text);
-    min-height: 1.6rem;
-    padding: 0.2rem 0.55rem;
-    font-size: 0.78rem;
-    transition:
-      background var(--t-fast),
-      border-color var(--t-fast),
-      color var(--t-fast);
-  }
-
-  .inspector-toggle :global(svg) {
-    font-size: 0.95rem;
-  }
-
-  .inspector-toggle:hover:not(:disabled) {
-    background: var(--panel);
-    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
-  }
-
-  .inspector-toggle:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .inspector-toggle.on {
-    color: var(--accent-strong);
-    border-color: color-mix(in oklab, var(--accent) 45%, var(--chrome-strong));
-    background: var(--accent-tint);
-  }
 </style>
