@@ -113,7 +113,7 @@ hand-placement.
 | Corpus | License (verified at) | Offers | Bundled as |
 |---|---|---|---|
 | CMU ARCTIC | CMU's own permissive grant (MIT-equivalent); `festvox.org/cmu_arctic/.../COPYING` | Real phone-level forced alignment, multiple English accents, 16 kHz | `bdl`, `slt`, `awb`, `ksp` — same sentence, four accents |
-| LibriSpeech | CC BY 4.0; `openslr.org/12/` | Public-domain-sourced audiobook narration, connected speech | One `dev-clean` utterance, orthographic-only tier |
+| LibriSpeech | CC BY 4.0; `openslr.org/12/` | Public-domain-sourced audiobook narration, connected speech | One `dev-clean` utterance, genuine word+phone MFA alignment |
 | Wikimedia Commons ("Zh-pinyin tones with ma") | CC BY 3.0; Commons API `extmetadata` for the file | Mandarin tone minimal set, 44.1 kHz, non-Latin script | `zh_tones_ma.wav`, no tier |
 | Original synthesis (this repo) | Project license (MIT OR Apache-2.0) | Modal/breathy/creaky sustained vowel contrast | `synth_vowel_{modal,breathy,creaky,perturbed}.wav` |
 
@@ -153,19 +153,28 @@ directly on the resource page: CC BY 4.0. Attribution requested: "LibriSpeech
 **Accepted** as a connected-speech counterpart to ARCTIC's citation-form
 sentences, using the utterance already cached in this repo
 (`tests/fixtures/audio/librispeech_2277-149896-0005.wav`, dev-clean,
-speaker 2277, chapter 149896). **Not phone-aligned**: the only openly
-licensed LibriSpeech forced-alignment release found is Zenodo record
-`2619474` (Lugosch et al., Mila, built with the Montreal Forced Aligner's
-pretrained LibriSpeech acoustic model), explicitly CC BY 4.0 — but it ships
-as one 623 MB archive covering all 980 hours, with no per-utterance
-download, so pulling it just for one file's alignment would violate this
-task's fetch-modest-files constraint. A widely-cited alternative,
+speaker 2277, chapter 149896). **Phone-aligned**: the only openly licensed
+LibriSpeech forced-alignment release found is Zenodo record `2619474`
+(Lugosch et al., Mila, built with the Montreal Forced Aligner's pretrained
+LibriSpeech acoustic model), explicitly CC BY 4.0. It ships as one 623 MB
+archive covering all 980 hours with no per-utterance download link — but
+the archive is a standard zip, so its central directory (a small index at
+the end of the file) can be read with a couple of HTTP range requests to
+locate one entry, then only that entry's compressed bytes need fetching.
+Doing exactly that pulled `dev-clean/2277/149896/2277-149896-0005.TextGrid`
+(1117 compressed bytes) without downloading anything close to the full
+archive; its CRC32 was checked against the central directory's own
+checksum to confirm a byte-perfect extraction. The file was reformatted
+through `phx-textgrid`'s own reader and writer
+(`crates/phx-textgrid/examples/reformat_textgrid.rs`) to normalize it to
+this repo's canonical output — boundaries and labels unchanged — and now
+carries genuine `words` (18 intervals) and `phones` (70 intervals, ARPABET
+with MFA's stress digits) tiers, spot-checked against the waveform and
+spectrogram in the running app. A widely-cited alternative,
 `CorentinJ/librispeech-alignments` on GitHub, carries **no license file and
 no license statement at all** — under default copyright that is
 unredistributable regardless of the underlying audio's license, so it is
-rejected outright rather than treated as a licensing gray area. The bundled
-clip ships with a whole-utterance orthographic tier only (one interval, the
-published transcript, no per-word timing invented).
+rejected outright rather than treated as a licensing gray area.
 
 ### Wikimedia Commons — Mandarin tone demonstration
 
@@ -224,9 +233,10 @@ the only license-clean option for this dimension.
 | Speech Accent Archive | CC BY-NC-SA 2.0; `accent.gmu.edu/about.php` | Reject — NC term |
 | Praat demo/tutorial audio | No redistributable asset found | Not applicable |
 | VCTK | CC BY 4.0 (verified); `datashare.ed.ac.uk/handle/10283/3443` | Accept-in-principle, not fetched — only an 11 GB archive at the primary source |
-| THCHS-30 | Apache 2.0 (verified); `openslr.org/18/` | Accept-in-principle, not fetched — only a 6 GB archive |
-| THCHS-30 forced alignment (Zenodo 7528596) | MIT (verified on the record page) | Accept-in-principle, paired with unfetchable audio |
-| AISHELL | Apache 2.0 (verified); `openslr.org/33/` | Same as THCHS-30, and no phone alignment exists for it at all |
+| THCHS-30 | OpenSLR tags Apache 2.0; the corpus's own about page says "free to academic users" | Uncertain / rejected — two primary sources from the same rights holder disagree |
+| THCHS-30 forced alignment (Zenodo 7528596) | MIT (verified on the record page) | Moot — paired with audio whose own license is unresolved |
+| AISHELL-1 | Same pattern as THCHS-30; `openslr.org/33/` | Uncertain / rejected, same reasoning |
+| AISHELL-3 | OpenSLR tags Apache 2.0, no caveat found there | Uncertain / rejected — rights holder's own site unreachable to confirm |
 | `CorentinJ/librispeech-alignments` | None stated | Reject — unlicensed, a clean rejection rather than a gray area |
 
 ### TIMIT
@@ -311,17 +321,36 @@ licensing.
 ### THCHS-30 and AISHELL (Mandarin, OpenSLR)
 
 <https://www.openslr.org/18/> and <https://www.openslr.org/33/> — both
-Apache License 2.0, confirmed directly on their OpenSLR resource pages.
-THCHS-30 (Tsinghua CSLT) ships word-level Chinese transcripts with its
-audio; a separate, independently-hosted forced alignment exists at Zenodo
-record `7528596` ("THCHS-30 – Aligned IPA transcriptions," Stefan Taubert),
-**MIT licensed** (confirmed on the record page), word + tone-marked-IPA
-phoneme tiers, built with the Montreal Forced Aligner's Mandarin acoustic
-model. AISHELL has no phone alignment published
-anywhere and is otherwise a strictly worse fit (15 GB vs. 6 GB, word/character
-transcript only).
+tagged Apache License 2.0 on their OpenSLR resource pages. That tag
+conflicts with a second primary source, though: THCHS-30's own "about"
+text, hosted by the same rights holder (CSLT, Tsinghua University, fetched
+directly at `openslr.org/resources/18/about.html`), says plainly "the
+database is totally free to **academic** users" — language that reads as
+narrower than Apache-2.0's unrestricted grant, including commercial use.
+AISHELL-1's own about text carries the same "free for academic use"
+wording. Neither about page states a LICENSE file resolving the
+discrepancy, and neither corpus's downloaded resource bundle (a small
+lexicon/metadata tarball, not the full audio, checked for exactly this
+question) contains one either. Two primary sources from the same rights
+holder disagreeing is exactly the case this survey's brief says to treat
+as **uncertain, not accepted** — downgraded here from an earlier pass's
+"confirmed" wording once the about-page text was checked directly rather
+than trusting the OpenSLR tag alone. AISHELL-3 (OpenSLR-93) tags
+Apache-2.0 too, with no academic-use caveat visible on OpenSLR's own page,
+but its rights holder's own site (aishelltech.com) could not be reached to
+confirm independently (rate-limited); also left uncertain rather than
+assumed clean by absence of a caveat. THCHS-30 (Tsinghua CSLT) ships
+word-level Chinese transcripts with its audio; a separate,
+independently-hosted forced alignment exists at Zenodo record `7528596`
+("THCHS-30 – Aligned IPA transcriptions," Stefan Taubert), **MIT
+licensed** (confirmed on the record page), word + tone-marked-IPA phoneme
+tiers, built with the Montreal Forced Aligner's Mandarin acoustic model —
+of no use while the underlying audio's own license is unresolved. AISHELL
+has no phone alignment published anywhere and is otherwise a strictly
+worse fit (15 GB vs. 6 GB, word/character transcript only).
 
-**Accept-in-principle, not fetched**: THCHS-30's audio is distributed only
+**Not fetched, license unresolved rather than merely impractical**:
+independent of the license question, THCHS-30's audio is distributed only
 as a single 6.0 GB tarball (confirmed via the Apache directory listing;
 `Accept-Ranges: bytes` is present but does not make an individual tar
 member separately addressable over HTTP). No HTTP-browsable mirror with

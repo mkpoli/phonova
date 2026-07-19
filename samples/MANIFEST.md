@@ -84,17 +84,29 @@ no label is anything but the corpus's own ARPABET phone symbol.
   Attribution: "LibriSpeech (c) 2014 by Vassil Panayotov, licensed under a
   Creative Commons Attribution 4.0 International License."
 - 16 kHz, 16-bit PCM, mono, 5.600 s.
-- Annotation: **orthographic-only**. No forced alignment is bundled — the
-  only openly-licensed LibriSpeech alignment release found (Zenodo record
-  2619474, Lugosch et al., CC BY 4.0) ships as a single 623 MB archive with
-  no per-utterance download, which this task's fetch-budget explicitly
-  rules out. The `orthographic` tier is one interval spanning the whole
-  file, text "many little wrinkles gathered between his eyes as he
-  contemplated this and his brow moistened" (the utterance's published
-  transcript) — a single span, not per-word timing, so no boundary is
-  invented.
+- Alignment source: "LibriSpeech Alignments" (Loren Lugosch, Mila), Zenodo
+  record <https://zenodo.org/records/2619474> (DOI 10.5281/zenodo.2619474),
+  archive member `dev-clean/2277/149896/2277-149896-0005.TextGrid` inside
+  `librispeech_alignments.zip`. Generated with the Montreal Forced
+  Aligner's pretrained LibriSpeech acoustic model. License: CC BY 4.0, per
+  the Zenodo record's own metadata (`license.id = "cc-by-4.0"`),
+  independent of and consistent with the audio's license.
+- Annotation: **word + phone forced alignment**, not orthographic-only.
+  The 623 MB archive was never downloaded — the alignment for this one
+  utterance was obtained by reading the zip's central directory over HTTP
+  range requests and fetching only that one entry (1117 compressed bytes),
+  then verifying its CRC32 against the central-directory checksum. The
+  file was re-serialized through `phx-textgrid`'s reader and writer
+  (`crates/phx-textgrid/examples/reformat_textgrid.rs`) to normalize
+  formatting to this repo's canonical long-format output; every boundary
+  time and label is unchanged from the Zenodo release. `words` (18
+  intervals) and `phones` (70 intervals, MFA's ARPABET-with-stress-digit
+  labels, e.g. `AY1`) tiers, both spot-checked against the waveform and
+  spectrogram in the running app.
 - Illustrates: continuous audiobook narration against ARCTIC's citation-style
-  isolated sentences — the connected-speech side of that contrast.
+  isolated sentences — the connected-speech side of that contrast — now
+  with a genuine two-tier alignment from a different aligner than the
+  ARCTIC voices' own.
 
 ## Mandarin tones — `zh_tones_ma.wav`
 
