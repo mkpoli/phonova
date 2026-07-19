@@ -91,7 +91,8 @@ test('open sample project loads the bundled corpus', async ({ page }) => {
   await page.getByTestId('open-sample').click();
 
   // Three recordings (two ARCTIC sentences and the perturbed vowel); the two
-  // ARCTIC sentences carry their word-tier TextGrids.
+  // ARCTIC sentences carry their phone-tier TextGrids (CMU ARCTIC forced
+  // alignment).
   await expect(page.getByTestId('corpus')).toBeVisible();
   await expect(page.getByTestId('corpus-row')).toHaveCount(3, { timeout: 30_000 });
   await expect(page.locator('[data-testid="corpus-row"][data-has-annotation="true"]')).toHaveCount(

@@ -115,6 +115,41 @@ material is present.
 - License: original work, project license (MIT OR Apache-2.0).
 - Processing: none beyond the copy. FLAC, 16-bit PCM, stereo, 44.1 kHz.
 
+## Alignments — `tests/fixtures/alignments/`
+
+Genuine forced-alignment label files published by CMU ARCTIC alongside its
+audio, kept separate from the hand-authored `textgrids/` fixtures below
+because these carry real phonetic content and must never be edited by hand.
+`tests/fixtures/scripts/build_sample_project.ts` converts each into a
+TextGrid via `phx-textgrid`'s own writer
+(`crates/phx-textgrid/examples/lab_to_textgrid.rs`) for the web app's bundled
+sample project; the conversion preserves every boundary time verbatim and
+only extends the final interval to the audio's true duration (a forced
+aligner's last labeled frame commonly falls short of the file's sample count
+by a few milliseconds of untranscribed trailing silence).
+
+### `arctic_bdl_a0001.lab`
+
+- Source: CMU_ARCTIC, `cmu_us_bdl_arctic`, phone-level forced alignment for
+  utterance `arctic_a0001`, HTK label format (`<end_time_s> <state>
+  <ARPABET phone>`, cumulative end times, one line per phone).
+- URL: <http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_bdl_arctic/lab/arctic_a0001.lab>
+- License: CMU_ARCTIC license (Carnegie Mellon University, Copyright (c)
+  2003, All Rights Reserved), identical text to `arctic_bdl_a0001.wav`'s
+  `COPYING` file above.
+- Processing: none. Annotates `arctic_bdl_a0001.wav` (same corpus,
+  utterance, and speaker).
+
+### `arctic_slt_a0001.lab`
+
+- Source: CMU_ARCTIC, `cmu_us_slt_arctic`, phone-level forced alignment for
+  utterance `arctic_a0001`, same HTK label format as above.
+- URL: <http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_slt_arctic/lab/arctic_a0001.lab>
+- License: CMU_ARCTIC license, identical text to `arctic_slt_a0001.wav`'s
+  `COPYING` file above.
+- Processing: none. Annotates `arctic_slt_a0001.wav` (same corpus,
+  utterance, and speaker).
+
 ## TextGrids — `tests/fixtures/textgrids/`
 
 Redistributable real-world TextGrid corpora with a clear license are not
@@ -349,6 +384,14 @@ elsewhere in the file.
 
 All four are executable (`uv run tests/fixtures/scripts/<name>.py`) and
 regenerate their output deterministically.
+
+- `build_sample_project.ts` — assembles the web app's bundled sample project
+  in `apps/web/static/sample/`: copies `arctic_bdl_a0001.wav`,
+  `arctic_slt_a0001.wav`, and `synth_vowel_perturbed.wav` from `audio/`
+  unchanged, converts `alignments/arctic_bdl_a0001.lab` and
+  `alignments/arctic_slt_a0001.lab` into TextGrids (see "Alignments"
+  above), and writes `manifest.json`. `bun run
+  tests/fixtures/scripts/build_sample_project.ts`.
 
 ## Generators — `tools/oracle/`
 
