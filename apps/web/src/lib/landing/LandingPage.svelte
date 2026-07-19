@@ -1414,17 +1414,27 @@
     color: var(--l-teal);
   }
 
-  .landing :global(.rvl) {
-    opacity: 0;
-    transform: translateY(16px);
-    transition:
-      opacity 0.7s cubic-bezier(0.2, 0.6, 0.2, 1),
-      transform 0.7s cubic-bezier(0.2, 0.6, 0.2, 1);
+  /* Content is visible by default — a crawler, a share-preview generator, or
+     a full-page capture taken without scrolling must see every section, not
+     a hero followed by blank space. `.rvl` on its own has no visual effect;
+     scrolling a section into view only adds a one-shot rise-and-fade played
+     via the `.in` class's animation, matching where the content already
+     sits. An element that never earns `.in` — no JS, or never scrolled to —
+     simply never animates and stays at its normal, fully visible resting
+     state. */
+  .landing :global(.rvl.in) {
+    animation: rv-reveal 0.7s cubic-bezier(0.2, 0.6, 0.2, 1);
   }
 
-  .landing :global(.rvl.in) {
-    opacity: 1;
-    transform: none;
+  @keyframes rv-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 
   @media (prefers-reduced-motion: no-preference) {
