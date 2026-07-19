@@ -36,6 +36,7 @@
     ProjectStore,
     type ProjectState
   } from '$lib/project/ProjectStore';
+  import LandingPage from '$lib/landing/LandingPage.svelte';
 
   type Route = 'home' | 'project' | 'editor';
 
@@ -132,6 +133,53 @@
   let recordDestinationNew = $state(false);
 
   const commands = provideCommandRegistry();
+
+  // First-time visitors land on the marketing page instead of the app; a
+  // returning visitor (the flag below) skips straight to the app. Three
+  // cases override the flag entirely:
+  //  - Embedded in an iframe: always the app, never the landing page. The
+  //    landing page's own live-app preview embeds this same route, so
+  //    without this check a first-time visitor's landing page would embed
+  //    a copy of itself embedding the app, recursing without end.
+  //  - `?app=1`: the landing page's own "Open Phonia" link, when served
+  //    from the marketing subdomain, uses this to land straight in the app
+  //    on the very first cross-origin visit rather than showing the
+  //    landing page a second time (localStorage isn't shared across
+  //    origins, so the flag below can't do this on its own).
+  //  - `about.phonia.app`: the marketing subdomain is the landing page at
+  //    every path, regardless of visit history.
+  const LANDING_VISITED_KEY = 'phonia:visited';
+
+  function computeShowLanding(): boolean {
+    if (typeof window === 'undefined') return false;
+    if (window.top !== window.self) return false;
+    if (new URLSearchParams(window.location.search).get('app') === '1') return false;
+    if (window.location.hostname === 'about.phonia.app') return true;
+    try {
+      return localStorage.getItem(LANDING_VISITED_KEY) !== '1';
+    } catch {
+      return false;
+    }
+  }
+
+  let showLanding = $state(computeShowLanding());
+
+  function enterApp() {
+    try {
+      localStorage.setItem(LANDING_VISITED_KEY, '1');
+    } catch {
+      // Storage unavailable: the landing page simply shows again next visit.
+    }
+    showLanding = false;
+  }
+
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('app') === '1') {
+    try {
+      localStorage.setItem(LANDING_VISITED_KEY, '1');
+    } catch {
+      // Storage unavailable: nothing to persist.
+    }
+  }
 
   // Autosave debounce, driven from a coarse tick against the engine state hash.
   let lastHash: bigint | null = null;
@@ -1167,6 +1215,7 @@
   ]);
 
   function handleWindowKeydown(event: KeyboardEvent) {
+    if (showLanding) return;
     // App-wide UI scale on Ctrl/Cmd +/-/0, ahead of the record shortcut and
     // regardless of recording support. Preventing default also stops the
     // browser's own page zoom from firing.
@@ -1224,6 +1273,9 @@
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
+{#if showLanding}
+  <LandingPage onEnterApp={enterApp} />
+{:else}
 <ModeRail active={mode} analyzeEnabled={audio !== null} onNavigate={handleModeNavigate} />
 
 <div class="app-content">
@@ -1394,6 +1446,7 @@
 {/if}
 
 <CommandPalette registry={commands} />
+{/if}
 
 <style>
   .app-content {

@@ -5,6 +5,9 @@
 		"directory": "./build",
 		"not_found_handling": "single-page-application"
 	},
-	"routes": [{ "pattern": "phonia.app", "custom_domain": true }],
+	"routes": [
+		{ "pattern": "phonia.app", "custom_domain": true },
+		{ "pattern": "about.phonia.app", "custom_domain": true }
+	],
 	"observability": { "enabled": true }
 }

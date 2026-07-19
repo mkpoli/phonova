@@ -23,7 +23,7 @@
 </script>
 
 <nav class="rail" aria-label="Modes">
-  <div class="brand" aria-hidden="true">
+  <a class="brand" href="/landing" aria-label="Phonia — about this app">
     <svg
       class="mark"
       aria-hidden="true"
@@ -36,7 +36,7 @@
       <path stroke="currentColor" d="M14 36 C20 24 25 24 31 32 C37 40 41 40 50 24" />
       <circle class="dot" cx="52" cy="20" r="5" />
     </svg>
-  </div>
+  </a>
 
   <div class="modes">
     {#each MODES as mode (mode.id)}
@@ -74,6 +74,9 @@
     height: 4rem;
     display: grid;
     place-items: center;
+    color: inherit;
+    text-decoration: none;
+    border-radius: var(--radius-sm);
   }
 
   .mark {
