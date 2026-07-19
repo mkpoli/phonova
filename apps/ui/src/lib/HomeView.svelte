@@ -444,10 +444,13 @@
   <main class="body">
     {#if projects.length === 0}
       <div class="empty" data-testid="home-empty">
-        <p class="lead">Drop a folder of recordings here to start a project.</p>
+        <p class="lead">
+          Phonia analyzes recorded speech — waveform, spectrogram, pitch, and annotation tiers in
+          one workspace.
+        </p>
         <p class="sub">
-          Every WAV, AIFF, or FLAC file becomes a browsable entry. A TextGrid beside a recording of
-          the same name attaches as its annotation.
+          Start by dropping a folder of recordings, choosing files, opening the sample project, or
+          recording one now.
         </p>
         <div class="empty-actions">
           {#if onOpenSample}
@@ -473,11 +476,6 @@
             </button>
           {/if}
         </div>
-        {#if onOpenSample}
-          <p class="empty-note">
-            The sample holds two CMU ARCTIC sentences with word tiers and a synthesized vowel.
-          </p>
-        {/if}
       </div>
     {:else if !manage}
       <div class="grid" data-testid="project-grid">
@@ -848,11 +846,6 @@
 
   .empty-actions .primary:hover {
     background: color-mix(in oklab, var(--accent) 24%, var(--panel));
-  }
-
-  .empty-note {
-    font-size: 0.82rem;
-    color: var(--muted);
   }
 
   .toolbar {
