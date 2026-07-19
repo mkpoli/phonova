@@ -346,6 +346,19 @@
   />
 {/snippet}
 
+{#snippet addCard()}
+  <button
+    type="button"
+    class="add-card"
+    data-testid="new-project-card"
+    aria-label="New project"
+    onclick={() => onNewProject('')}
+  >
+    <IconPlus aria-hidden="true" />
+    <span>New project</span>
+  </button>
+{/snippet}
+
 <svelte:window onpointermove={handlePointerMove} onpointerup={handlePointerUp} />
 
 <div
@@ -482,6 +495,7 @@
         {#each projects as project (project.id)}
           {@render card(project)}
         {/each}
+        {@render addCard()}
       </div>
     {:else}
       <div class="toolbar">
@@ -598,15 +612,15 @@
         data-drop-zone="__ungrouped__"
         aria-label={index.groups.length > 0 ? 'Other projects' : undefined}
       >
-        {#if ungrouped.length > 0}
-          <div class="grid">
-            {#each ungrouped as project (project.id)}
-              {@render card(project)}
-            {/each}
-          </div>
-        {:else if index.groups.length > 0}
+        {#if ungrouped.length === 0 && index.groups.length > 0}
           <p class="zone-hint">Drag projects here to ungroup them.</p>
         {/if}
+        <div class="grid">
+          {#each ungrouped as project (project.id)}
+            {@render card(project)}
+          {/each}
+          {@render addCard()}
+        </div>
       </section>
 
       {#if q && flatVisible.length === 0}
@@ -1049,6 +1063,36 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
     gap: 1rem;
+  }
+
+  .add-card {
+    min-height: calc(6.5rem + 0.4rem + 0.4rem + 0.2rem + 0.2rem + 0.75rem + 0.375rem + 5px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 1rem;
+    border: 1px dashed var(--chrome-strong);
+    border-radius: var(--radius-xl);
+    background: transparent;
+    color: var(--muted);
+    box-shadow: none;
+  }
+
+  .add-card :global(svg) {
+    font-size: 1.4rem;
+  }
+
+  .add-card span {
+    font-size: 0.85rem;
+  }
+
+  .add-card:hover:not(:disabled),
+  .add-card:focus-visible {
+    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
+    background: transparent;
+    color: var(--text);
   }
 
   .export-progress {
