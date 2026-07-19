@@ -184,10 +184,13 @@ target has nothing to show yet.
   the colors a Praat user already reads fluently; changing them would break
   twenty years of trained eyes. The formant color is frozen; its mark is not
   — speckles sized by bandwidth (default, the Praat-familiar view) or
-  connected per-formant tracks, user-selectable in the inspector. A track
-  breaks wherever a frame has no candidate for that formant rather than
-  interpolating across the gap, so it never draws a measurement the analysis
-  did not produce.
+  connected per-formant tracks, user-selectable in the inspector. Tracks
+  need the Viterbi-smoothed candidates, disabled otherwise: only that pass
+  assigns a candidate to a specific formant, so only it has a track to draw.
+  A track breaks wherever a frame has no candidate for that formant and
+  wherever consecutive frames jump further than a formant plausibly moves in
+  one frame, rather than joining across either gap, so it never draws a
+  measurement the analysis did not produce.
 - Overlay strokes carry a dark halo so they stay legible over any palette in
   either theme.
 - Readouts state units (`Hz`, `dB`, `s`) and never round below measurement

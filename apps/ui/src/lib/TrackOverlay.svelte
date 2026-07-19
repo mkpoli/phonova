@@ -222,7 +222,11 @@
   }
 
   function drawFormants(ctx: CanvasRenderingContext2D, width: number, height: number) {
-    if (params.formant.mark === 'track') {
+    // A connected track is only drawn from the Viterbi-smoothed candidates
+    // (see the inspector note): raw Burg candidates carry no cross-frame
+    // identity, so speckles are the honest fallback if smoothing is off even
+    // when 'track' is still selected mid-toggle.
+    if (params.formant.mark === 'track' && params.formant.smoothed) {
       drawFormantTracks(ctx, width, height, groupFormantFrames(formant!.points));
       return;
     }
@@ -276,13 +280,29 @@
     return frames.map((f) => ({ time: f.time, freqs: Float64Array.from(f.freqs) }));
   }
 
+  // Rank identity can still slip even in the smoothed track: the engine's
+  // Viterbi assignment is per-slot, but a frame where a low slot has no
+  // candidate compacts the remaining ones down by one position before this
+  // array ever sees them (see phx-formant's `track_smoothed`), which can
+  // shift a rank onto its neighboring formant for that one frame. A
+  // same-formant transition stays within a bounded frequency ratio frame to
+  // frame; a slot collision does not, since adjacent formants typically sit
+  // 1.5-3x apart. Doubling (or halving) is a deliberately generous
+  // engineering threshold — wide enough to pass a fast genuine transition,
+  // tight enough to catch a jump onto the wrong formant — not a value from
+  // any tracking literature.
+  const MAX_FRAME_TO_FRAME_RATIO = 2.0;
+
   /**
    * Connected per-formant tracks: one polyline per rank (lowest candidate in
-   * a frame is rank 0, the next is rank 1, and so on). A frame that has no
-   * candidate at a rank — an unvoiced stretch, or a higher formant the LPC
-   * gate dropped that frame — breaks the path there instead of joining
-   * across it, so the line never implies a measurement the analysis did not
-   * produce.
+   * a frame is rank 0, the next is rank 1, and so on) over the
+   * Viterbi-smoothed candidates, whose slot assignment is an actual tracking
+   * decision rather than frame-local sort order. The path breaks wherever a
+   * frame has no candidate at a rank — an unvoiced stretch, or a formant the
+   * tracker dropped that frame — and wherever consecutive frames jump more
+   * than `MAX_FRAME_TO_FRAME_RATIO`, since that is the signature of a rank
+   * landing on a different formant rather than a fast but genuine move. A
+   * broken path never implies a measurement the analysis did not produce.
    */
   function drawFormantTracks(
     ctx: CanvasRenderingContext2D,
@@ -299,6 +319,7 @@
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
       let drawing = false;
+      let prevFreq = 0;
       ctx.beginPath();
       for (const frame of frames) {
         const freq = frame.freqs[rank];
@@ -312,14 +333,18 @@
           drawing = false;
           continue;
         }
+        const ratio = drawing ? freq / prevFreq : 1;
+        const plausibleContinuation =
+          ratio <= MAX_FRAME_TO_FRAME_RATIO && ratio >= 1 / MAX_FRAME_TO_FRAME_RATIO;
         const x = timeToX(frame.time, width);
         const y = freqToY(freq, height);
-        if (!drawing) {
+        if (!drawing || !plausibleContinuation) {
           ctx.moveTo(x, y);
           drawing = true;
         } else {
           ctx.lineTo(x, y);
         }
+        prevFreq = freq;
       }
       ctx.stroke();
     };

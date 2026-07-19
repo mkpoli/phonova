@@ -21,6 +21,19 @@
   let formantClipped = $derived(
     stats.formantMaxHz > 0 && stats.formantMaxHz >= params.formant.ceilingHz * 0.95
   );
+
+  // A connected track asserts that consecutive candidates are the same
+  // formant. Only the Viterbi-smoothed track carries that assignment; raw
+  // Burg candidates are just "N loudest resonances this frame" with no
+  // cross-frame identity, so drawing a line through them would claim a
+  // tracking decision nothing made. Turning smoothing off while a track is
+  // selected falls back to speckles rather than silently rendering a track
+  // the data no longer supports.
+  $effect(() => {
+    if (!params.formant.smoothed && params.formant.mark === 'track') {
+      params.formant.mark = 'speckle';
+    }
+  });
 </script>
 
 <aside class="inspector" data-testid="inspector" aria-label="Analysis inspector">
@@ -131,13 +144,21 @@
       <div class="label-row"><span>Mark</span></div>
       <select data-testid="formant-mark" bind:value={params.formant.mark}>
         <option value="speckle">Speckles</option>
-        <option value="track">Connected tracks</option>
+        <option value="track" disabled={!params.formant.smoothed}>Connected tracks</option>
       </select>
-      <p class="note">
-        Speckles are the Praat-familiar dot-per-candidate view, sized by bandwidth. Tracks connect
-        each formant across time and break wherever a frame has no candidate for it, rather than
-        drawing through the gap.
-      </p>
+      {#if params.formant.smoothed}
+        <p class="note">
+          Speckles are the Praat-familiar dot-per-candidate view, sized by bandwidth. Tracks
+          connect each formant across time and break wherever a frame has no candidate for it,
+          rather than drawing through the gap.
+        </p>
+      {:else}
+        <p class="note">
+          Connected tracks needs Tracked (provisional) on: raw candidates carry no identity from
+          one frame to the next, so a line through them would join points that were never the
+          same formant.
+        </p>
+      {/if}
     </div>
   </section>
 
