@@ -78,17 +78,23 @@ One accent family over warm neutrals:
 
 | Role | Light | Dark | Use |
 |---|---|---|---|
-| Paper | `#f7f6f3` | `#262624` | app background |
+| Paper | `#f7f6f3` | `#1d1d1a` | app background |
 | Ink ramp | warm grays | warm grays | text, borders, surfaces |
 | Identity (teal) | anchored `teal-600` | anchored `teal-300` | wordmark, selection, active states, chrome accents, primary form actions |
 | Semantic | green / amber / red triads | same, dark-tuned | success, warning, destructive |
 
 The neutrals are warm (red ≥ green ≥ blue) in both themes; the dark theme is
 charcoal, never blue-black. The dark ground holds red and green equal at
-`#262624` with blue a shade lower, so it reads neutral rather than
-orange-cast; panels lift a touch to `#2c2c29`, wells drop to `#171715` for
-the waveform and spectrogram floor, and hairlines run `#3c3b37`. Teal is the
-single accent across chrome and primary form actions: Create,
+`#1d1d1a` with blue a shade lower, so it reads neutral rather than
+orange-cast. Depth in the dark theme recedes toward the signal: chrome is
+the brightest structural layer, panels sink a touch below it to `#191917`,
+and wells drop further to `#121210` for the waveform and spectrogram floor,
+keeping the eye pulled toward the data per the material-honesty principle.
+Hairlines run `#37372e`, brighter than the surfaces they separate so a
+border always reads before the fill on either side of it. Elevation itself
+is a shadow property, not a fill property (see Space, radius, depth) — the
+recede-toward-data ordering here is about focus, not stacking height. Teal
+is the single accent across chrome and primary form actions: Create,
 Save, Download, and Recover. Semantic colors retain their separate roles for
 success, warning, and destructive states; teal never substitutes for them.
 `--on-accent` supplies each theme's readable label color against a solid teal

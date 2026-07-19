@@ -82,12 +82,13 @@
   color-scheme: dark;
 
   /* Warm charcoal, red and green held equal and blue a shade lower so the
-     surface reads neutral rather than orange-cast; panels lift a touch above
-     it, wells drop below it for the waveform and spectrogram floor. */
-  --chrome: #262624;
-  --chrome-strong: #3c3b37;
-  --panel: #2c2c29;
-  --panel-soft: #343430;
+     surface reads neutral rather than orange-cast; panels recede a touch
+     below it, wells drop further still for the waveform and spectrogram
+     floor. */
+  --chrome: #1d1d1a;
+  --chrome-strong: #37372e;
+  --panel: #191917;
+  --panel-soft: #24241f;
   --text: #eeede7;
   --muted: #a3a096;
 
@@ -99,7 +100,7 @@
   --warn: #fbbf24;
   --danger: #f87171;
 
-  --canvas: #171715;
+  --canvas: #121210;
   --grid: rgba(238, 237, 231, 0.14);
   --chip-bg: rgba(15, 14, 11, 0.84);
   --chip-fg: #eeede7;
