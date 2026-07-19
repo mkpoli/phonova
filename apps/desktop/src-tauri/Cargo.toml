@@ -35,3 +35,13 @@ phx-playback = { path = "../../../crates/phx-playback", features = ["cpal-backen
 [features]
 # Larger binary but the default Tauri custom-protocol path; enabled for release.
 custom-protocol = ["tauri/custom-protocol"]
+
+# cpal 0.18.1 declares independent version ranges for `windows` and its own
+# direct `windows-core` dependency; the resolver satisfies them with two
+# different windows-core versions, and cpal's #[windows::core::implement]
+# macro then implements a trait from the wrong one on Windows
+# (RustAudio/cpal#1242). The fix landed upstream in
+# RustAudio/cpal#1244 but has not shipped in a crates.io release yet, so pull
+# the fixed manifest straight from the same commit.
+[patch.crates-io]
+cpal = { git = "https://github.com/RustAudio/cpal", rev = "a62677dd811e39048e277e214fe22af75ecf6bf0" }
