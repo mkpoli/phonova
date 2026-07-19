@@ -48,8 +48,11 @@
 
 <style>
   .card {
+    /* Bottom-right, not bottom-left — HomeView's own palette hint already
+       lives at bottom-left, and the two must never stack on top of each
+       other. */
     position: fixed;
-    left: 1.25rem;
+    right: 1.25rem;
     bottom: 1.25rem;
     z-index: 20;
     display: flex;
