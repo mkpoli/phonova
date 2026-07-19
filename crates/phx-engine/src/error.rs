@@ -25,7 +25,8 @@ pub enum EngineError {
     UnknownAnnotationId(AnnotationId),
     /// The given [`RecordingId`] does not name an open capture take.
     UnknownRecordingId(RecordingId),
-    /// WAV import failed.
+    /// Audio decoding failed. The wrapped [`AudioError`] distinguishes an
+    /// unrecognized container from a recognized one this crate cannot decode.
     Audio(AudioError),
     /// An annotation mutation was rejected by [`phx_annot`].
     Annotation(AnnotationError),

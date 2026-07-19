@@ -26,9 +26,11 @@ use crate::store::AudioId;
 /// coexists with a redo entry it could contradict.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Command {
-    /// Decode a WAV buffer and add it to the audio store under `name`.
+    /// Decode a WAV, AIFF, or FLAC buffer and add it to the audio store under
+    /// `name`.
     ImportAudio {
-        /// RIFF/WAVE bytes.
+        /// WAV, AIFF, or FLAC bytes; the container is detected from its
+        /// leading signature.
         bytes: Vec<u8>,
         /// Display name recorded on the decoded buffer.
         name: String,
@@ -164,7 +166,7 @@ pub enum Command {
 /// needs it to repaint, the spans that moved or merged.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Applied {
-    /// A WAV buffer entered the audio store.
+    /// A decoded audio buffer entered the audio store.
     AudioImported {
         /// New audio id.
         audio: AudioId,

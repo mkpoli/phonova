@@ -708,7 +708,7 @@ mod tests {
 
     fn engine_with_audio() -> (Engine, u64, f64) {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let id = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let duration = engine.audio_info(id).unwrap().duration;
         (engine, id.as_u64(), duration)
     }

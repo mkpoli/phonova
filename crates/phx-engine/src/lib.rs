@@ -9,7 +9,7 @@
 //! state-hash-identical documents (design rule 5, `docs/plan/architecture.md`;
 //! invariant 5, `docs/plan/validation.md`). Most of it goes through
 //! [`Engine::apply`] against a [`Command`]; the three entry points that add
-//! audio outside the command surface — [`Engine::import_wav_bytes`],
+//! audio outside the command surface — [`Engine::import_audio_bytes`],
 //! [`Engine::open_streaming_wav`], and [`Engine::finish_recording`] — record
 //! the same kind of journal entry directly, since a streamed source's byte
 //! reader and a recording's accumulated samples cannot ride inside a `Command`
@@ -143,16 +143,24 @@ impl Engine {
         Self::default()
     }
 
-    /// Decodes RIFF/WAVE bytes and returns the id of the new store entry.
+    /// Decodes a WAV, AIFF, or FLAC byte buffer and returns the id of the new
+    /// store entry.
+    ///
+    /// The container is detected from its leading signature (see
+    /// [`phx_audio::Audio::from_bytes`]); a caller does not choose the format
+    /// ahead of time.
     ///
     /// Journaled exactly like [`Command::ImportAudio`]: [`Engine::undo`] drops
     /// the buffer and [`Engine::redo`] reinserts the clone captured here.
     ///
     /// # Errors
-    /// Returns [`EngineError::Audio`] when the bytes are not a WAV file this
-    /// crate can decode (see [`phx_audio::Audio::from_wav_bytes`]).
-    pub fn import_wav_bytes(&mut self, bytes: &[u8]) -> Result<AudioId, EngineError> {
-        let audio = Audio::from_wav_bytes(bytes)?;
+    /// Returns [`EngineError::Audio`] with [`AudioError::UnrecognizedFormat`]
+    /// when the bytes match none of the three container signatures, or with a
+    /// container-specific `Malformed*`/`Unsupported*` variant when the bytes
+    /// are a recognized container this crate cannot decode (see
+    /// [`phx_audio::Audio::from_bytes`]).
+    pub fn import_audio_bytes(&mut self, bytes: &[u8]) -> Result<AudioId, EngineError> {
+        let audio = Audio::from_bytes(bytes)?;
         Ok(self.journal_eager_import(audio))
     }
 
@@ -198,7 +206,7 @@ impl Engine {
     /// Frame count at or below which an import stays eager (whole-signal
     /// decode). Two minutes of 48 kHz audio; longer takes belong on the
     /// streamed path so their decoded footprint and per-sample pyramid never
-    /// enter memory. Frontends deciding between [`Engine::import_wav_bytes`]
+    /// enter memory. Frontends deciding between [`Engine::import_audio_bytes`]
     /// and [`Engine::open_streaming_wav`] read this bound from
     /// [`Engine::eager_import_frame_limit`].
     #[must_use]
@@ -248,7 +256,7 @@ impl Engine {
     /// the host persist the take beside imported media through its own storage
     /// path. Finishing consumes the take; the id is invalid afterwards.
     ///
-    /// Journaled exactly like [`Engine::import_wav_bytes`]: [`Engine::undo`]
+    /// Journaled exactly like [`Engine::import_audio_bytes`]: [`Engine::undo`]
     /// drops the materialized take and [`Engine::redo`] reinserts it.
     ///
     /// # Errors
@@ -1218,7 +1226,7 @@ impl Engine {
     }
 
     /// Inserts a fully decoded buffer and records the same undo/redo pair
-    /// [`Command::ImportAudio`] would, so [`Engine::import_wav_bytes`] and
+    /// [`Command::ImportAudio`] would, so [`Engine::import_audio_bytes`] and
     /// [`Engine::finish_recording`] — the two paths that add a whole-decoded
     /// buffer outside the command surface — still leave a real journal entry.
     fn journal_eager_import(&mut self, audio: Audio) -> AudioId {
@@ -1256,7 +1264,7 @@ impl Engine {
 
         match cmd {
             Command::ImportAudio { bytes, name } => {
-                let audio = Audio::from_wav_bytes(&bytes)?.with_name(name);
+                let audio = Audio::from_bytes(&bytes)?.with_name(name);
                 let replay = audio.clone();
                 let id = self.store.insert(audio);
                 Ok((
@@ -1815,6 +1823,13 @@ mod tests {
 
     const FIXTURE_WAV: &[u8] = include_bytes!("../../../tests/fixtures/audio/arctic_bdl_a0001.wav");
     const VOWEL_WAV: &[u8] = include_bytes!("../../../tests/fixtures/audio/synth_vowel_a.wav");
+    const FIXTURE_AIFF: &[u8] =
+        include_bytes!("../../phx-audio/tests/fixtures/aiff_stereo_16_44100.aiff");
+    const FIXTURE_AIFF_WAV_TWIN: &[u8] =
+        include_bytes!("../../phx-audio/tests/fixtures/aiff_stereo_16_44100.wav");
+    const FIXTURE_FLAC: &[u8] = include_bytes!("../../phx-audio/tests/fixtures/flac_level5.flac");
+    const FIXTURE_FLAC_WAV_TWIN: &[u8] =
+        include_bytes!("../../phx-audio/tests/fixtures/flac_base16.wav");
 
     fn sine_wav_bytes(sample_rate: u32, seconds: f64, frequency: f64) -> Vec<u8> {
         let frames = (sample_rate as f64 * seconds).round() as u32;
@@ -1840,7 +1855,7 @@ mod tests {
     #[test]
     fn band_energy_is_finite_over_a_voiced_box_and_errors_on_nan() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let id = engine.import_audio_bytes(VOWEL_WAV).unwrap();
         let info = engine.audio_info(id).unwrap();
         let value = engine
             .band_energy(id, info.duration * 0.3, info.duration * 0.6, 0.0, 4000.0)
@@ -1860,7 +1875,7 @@ mod tests {
     #[test]
     fn selection_readout_band_energy_equals_the_direct_query() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let id = engine.import_audio_bytes(VOWEL_WAV).unwrap();
         let info = engine.audio_info(id).unwrap();
         let (t0, t1, f0, f1) = (info.duration * 0.3, info.duration * 0.6, 0.0, 4000.0);
         let readout = engine
@@ -1877,7 +1892,7 @@ mod tests {
     #[test]
     fn colormap_change_recolorizes_cached_db_without_recomputing() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let id = engine.import_audio_bytes(VOWEL_WAV).unwrap();
         let info = engine.audio_info(id).unwrap();
         let req = TileRequest {
             t0: 0.0,
@@ -1930,7 +1945,7 @@ mod tests {
     #[test]
     fn changing_analysis_params_keys_new_blocks() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let id = engine.import_audio_bytes(VOWEL_WAV).unwrap();
         let info = engine.audio_info(id).unwrap();
         let display = DisplayMapping::default();
         let base = TileRequest {
@@ -1965,7 +1980,7 @@ mod tests {
     #[test]
     fn voice_report_on_clean_vowel_has_low_perturbation_and_high_hnr() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let id = engine.import_audio_bytes(VOWEL_WAV).unwrap();
         let info = engine.audio_info(id).unwrap();
         let report = engine
             .voice_report(id, info.duration * 0.2, info.duration * 0.8, 75.0, 600.0)
@@ -1988,7 +2003,7 @@ mod tests {
     fn import_then_info_reports_the_decoded_buffer() {
         let mut engine = Engine::new();
         let bytes = sine_wav_bytes(16_000, 0.5, 440.0);
-        let id = engine.import_wav_bytes(&bytes).unwrap();
+        let id = engine.import_audio_bytes(&bytes).unwrap();
         let info = engine.audio_info(id).unwrap();
         assert_eq!(info.sample_rate, 16_000.0);
         assert_eq!(info.channels, 1);
@@ -2118,18 +2133,93 @@ mod tests {
     }
 
     #[test]
-    fn malformed_wav_bytes_are_a_typed_error_not_a_panic() {
+    fn unrecognized_bytes_are_a_typed_error_not_a_panic() {
         let mut engine = Engine::new();
         assert!(matches!(
-            engine.import_wav_bytes(b"not a wav file"),
-            Err(EngineError::Audio(_))
+            engine.import_audio_bytes(b"not any audio container"),
+            Err(EngineError::Audio(AudioError::UnrecognizedFormat))
         ));
+    }
+
+    #[test]
+    fn truncated_known_container_is_distinguished_from_unrecognized_bytes() {
+        let mut engine = Engine::new();
+        // A RIFF/WAVE signature with the rest of the file cut off: recognized
+        // as WAV, but too short to decode, so the error names the corrupt
+        // container instead of falling back to "unrecognized format".
+        let err = engine.import_audio_bytes(&FIXTURE_WAV[..16]).unwrap_err();
+        assert!(
+            matches!(err, EngineError::Audio(AudioError::MalformedWav(_))),
+            "truncated WAV bytes should report MalformedWav, got {err:?}"
+        );
+
+        let err = engine.import_audio_bytes(&FIXTURE_AIFF[..16]).unwrap_err();
+        assert!(
+            matches!(err, EngineError::Audio(AudioError::MalformedAiff(_))),
+            "truncated AIFF bytes should report MalformedAiff, got {err:?}"
+        );
+
+        let err = engine.import_audio_bytes(&FIXTURE_FLAC[..16]).unwrap_err();
+        assert!(
+            matches!(err, EngineError::Audio(AudioError::MalformedFlac(_))),
+            "truncated FLAC bytes should report MalformedFlac, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn import_audio_bytes_decodes_aiff_and_flac() {
+        let mut engine = Engine::new();
+
+        let aiff_id = engine.import_audio_bytes(FIXTURE_AIFF).unwrap();
+        let wav_twin = Audio::from_wav_bytes(FIXTURE_AIFF_WAV_TWIN).unwrap();
+        let aiff_info = engine.audio_info(aiff_id).unwrap();
+        assert_eq!(aiff_info.sample_rate, wav_twin.sample_rate());
+        assert_eq!(aiff_info.channels, wav_twin.channel_count());
+
+        let flac_id = engine.import_audio_bytes(FIXTURE_FLAC).unwrap();
+        let wav_twin = Audio::from_wav_bytes(FIXTURE_FLAC_WAV_TWIN).unwrap();
+        let flac_info = engine.audio_info(flac_id).unwrap();
+        assert_eq!(flac_info.sample_rate, wav_twin.sample_rate());
+        assert_eq!(flac_info.channels, wav_twin.channel_count());
+    }
+
+    #[test]
+    fn command_import_audio_also_accepts_aiff_and_flac() {
+        let mut engine = Engine::new();
+
+        let applied = engine
+            .apply(Command::ImportAudio {
+                bytes: FIXTURE_AIFF.to_vec(),
+                name: "aiff take".to_string(),
+            })
+            .unwrap();
+        let Applied::AudioImported { audio } = applied else {
+            panic!("expected AudioImported, got {applied:?}");
+        };
+        assert_eq!(
+            engine.audio_info(audio).unwrap().name.as_deref(),
+            Some("aiff take")
+        );
+
+        let applied = engine
+            .apply(Command::ImportAudio {
+                bytes: FIXTURE_FLAC.to_vec(),
+                name: "flac take".to_string(),
+            })
+            .unwrap();
+        let Applied::AudioImported { audio } = applied else {
+            panic!("expected AudioImported, got {applied:?}");
+        };
+        assert_eq!(
+            engine.audio_info(audio).unwrap().name.as_deref(),
+            Some("flac take")
+        );
     }
 
     #[test]
     fn non_finite_tile_request_bounds_are_a_typed_error_not_a_panic() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let id = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let req = TileRequest {
             t0: f64::NAN,
             t1: 0.1,
@@ -2154,7 +2244,7 @@ mod tests {
     #[test]
     fn non_finite_waveform_bounds_are_a_typed_error_not_a_panic() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let id = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         assert!(matches!(
             engine.waveform_slice(id, f64::NAN, 1.0, 8),
             Err(EngineError::InvalidRequest { .. })
@@ -2164,7 +2254,7 @@ mod tests {
     #[test]
     fn waveform_pyramid_agrees_with_direct_min_max_on_fixture_audio() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let id = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let audio = Audio::from_wav_bytes(FIXTURE_WAV).unwrap();
         let mono = audio.mono_mix().into_owned();
         let sample_rate = audio.sample_rate();
@@ -2214,7 +2304,7 @@ mod tests {
     fn waveform_pyramid_agrees_with_direct_min_max_on_synthetic_audio() {
         let mut engine = Engine::new();
         let bytes = sine_wav_bytes(8_000, 1.0, 220.0);
-        let id = engine.import_wav_bytes(&bytes).unwrap();
+        let id = engine.import_audio_bytes(&bytes).unwrap();
         let audio = Audio::from_wav_bytes(&bytes).unwrap();
         let mono = audio.mono_mix().into_owned();
 
@@ -2242,7 +2332,7 @@ mod tests {
     #[test]
     fn spectrogram_tile_has_expected_dimensions_and_is_deterministic() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let id = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let req = TileRequest {
             t0: 0.05,
             t1: 0.35,
@@ -2266,7 +2356,7 @@ mod tests {
     #[test]
     fn pitch_track_on_fixture_is_voiced_in_the_male_speech_band() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let id = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let track = engine.pitch_track(id, &PitchParams::default()).unwrap();
         let voiced: Vec<f64> = track.frames().iter().filter_map(|frame| frame.f0).collect();
         assert!(!voiced.is_empty(), "male speech fixture should be voiced");
@@ -2292,7 +2382,7 @@ mod tests {
     #[test]
     fn pitch_track_span_places_frames_on_the_absolute_timeline() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let id = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let info = engine.audio_info(id).unwrap();
         let t0 = info.duration * 0.3;
         let t1 = info.duration * 0.6;
@@ -2315,7 +2405,7 @@ mod tests {
     #[test]
     fn formant_track_raw_and_smoothed_share_the_frame_grid() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let id = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let params = FormantParams::default();
         let raw = engine.formant_track(id, &params).unwrap();
         let smoothed = engine.formant_track_smoothed(id, &params).unwrap();
@@ -2332,7 +2422,7 @@ mod tests {
     #[test]
     fn bad_formant_ceiling_is_a_typed_error_not_a_panic() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let id = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let params = FormantParams {
             ceiling_hz: 10.0,
             ..FormantParams::default()
@@ -2346,7 +2436,7 @@ mod tests {
     #[test]
     fn intensity_track_on_fixture_is_non_empty_and_finite() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let id = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let track = engine
             .intensity_track(id, &IntensityParams::default())
             .unwrap();
@@ -2357,7 +2447,7 @@ mod tests {
     #[test]
     fn bad_intensity_floor_is_a_typed_error_not_a_panic() {
         let mut engine = Engine::new();
-        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let id = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let params = IntensityParams {
             pitch_floor_hz: 0.0,
             ..IntensityParams::default()
@@ -2390,7 +2480,7 @@ mod tests {
     fn tile_request_too_short_for_a_frame_is_a_typed_error() {
         let mut engine = Engine::new();
         let bytes = sine_wav_bytes(8_000, 0.001, 440.0);
-        let id = engine.import_wav_bytes(&bytes).unwrap();
+        let id = engine.import_audio_bytes(&bytes).unwrap();
         let req = TileRequest {
             t0: 0.0,
             t1: 0.001,
@@ -2582,13 +2672,13 @@ mod tests {
     }
 
     #[test]
-    fn import_wav_bytes_is_journaled_and_undo_redo_is_hash_stable() {
+    fn import_audio_bytes_is_journaled_and_undo_redo_is_hash_stable() {
         let (mut engine, _audio, _doc) = base_engine();
         let before = engine.state_hash();
         let before_depth = engine.undo_depth();
 
         let imported = engine
-            .import_wav_bytes(&sine_wav_bytes(8_000, 0.3, 330.0))
+            .import_audio_bytes(&sine_wav_bytes(8_000, 0.3, 330.0))
             .unwrap();
         assert!(engine.audio_info(imported).is_ok());
         assert_eq!(engine.undo_depth(), before_depth + 1);
@@ -2698,7 +2788,7 @@ mod tests {
 
         // A raw eager import, outside the command surface.
         let imported = engine
-            .import_wav_bytes(&sine_wav_bytes(8_000, 0.2, 440.0))
+            .import_audio_bytes(&sine_wav_bytes(8_000, 0.2, 440.0))
             .unwrap();
         applied_hashes.push(engine.state_hash());
 
@@ -2764,7 +2854,7 @@ mod tests {
     fn export_span_wav_equals_a_direct_sample_slice_bit_for_bit() {
         let mut engine = Engine::new();
         let bytes = sine_wav_bytes(8_000, 1.0, 220.0);
-        let audio = engine.import_wav_bytes(&bytes).unwrap();
+        let audio = engine.import_audio_bytes(&bytes).unwrap();
         let info = engine.audio_info(audio).unwrap();
         let sr = info.sample_rate;
 
@@ -2964,7 +3054,7 @@ mod tests {
 
         // Another journaled operation lands inside the toast's window.
         let intervening = engine
-            .import_wav_bytes(&sine_wav_bytes(8_000, 0.1, 500.0))
+            .import_audio_bytes(&sine_wav_bytes(8_000, 0.1, 500.0))
             .unwrap();
 
         // The captured id no longer names the head: a blind `undo()` would
@@ -3557,7 +3647,7 @@ mod tests {
 
     fn eager_and_streamed(bytes: &[u8]) -> (Engine, AudioId, Engine, AudioId) {
         let mut eager = Engine::new();
-        let eager_id = eager.import_wav_bytes(bytes).unwrap();
+        let eager_id = eager.import_audio_bytes(bytes).unwrap();
         let mut streamed = Engine::new();
         let streamed_id = streamed
             .open_streaming_wav(BytesReader::new(bytes.to_vec()), Some("take".to_string()))
