@@ -12,7 +12,12 @@
     type PlotBox
   } from './spectrogram';
 
-  const PHRASES = ['in your browser', 'on your phone', 'on your computer', 'offline, as a desktop app'];
+  const PHRASES = [
+    'in your browser',
+    "in your phone's browser",
+    'offline, as a desktop app',
+    'without an account'
+  ];
 
   interface Props {
     /** Called instead of navigating when this page is shown inline at the
@@ -406,9 +411,10 @@
         <h1>Phonetics software that runs <RollingWord phrases={PHRASES} /></h1>
         <p class="lede">
           Phonia is a phonetics workstation for recording, annotating, and measuring speech,
-          built as a modern alternative to Praat. The analysis engine is written in Rust and
-          compiled to WebAssembly, and a desktop app is also available. Measurements are validated
-          against Praat itself.
+          built to replace Praat for everyday research tasks. The analysis engine is written in
+          Rust, compiled to WebAssembly for the browser build; a desktop build runs the same
+          engine offline. Pitch, formant, and intensity measurements are checked against Praat
+          under matched settings.
         </p>
         <div class="cta-row">
           <a class="btn btn-primary" href={appHref} onclick={handleOpenPhonia}>Open Phonia</a>
@@ -442,7 +448,6 @@
         <div class="sec-head" data-rv>
           <p class="eyebrow">Capabilities</p>
           <h2>Five capabilities.</h2>
-          <p class="sec-note">Named as they appear in the product.</p>
         </div>
         <div class="cap-grid">
           <article class="card" data-rv>
@@ -506,8 +511,8 @@
           <article class="card" data-rv>
             <div class="card-top"><span class="card-num">03</span><h3>Show Spectrograms</h3></div>
             <p>
-              Wide-band and narrow-band views with adjustable window shape, pre-emphasis, dynamic
-              range, and frequency limits.
+              Formant and pitch tracks drawn over the signal, with a choice of built-in color
+              scales or a custom gradient.
             </p>
             <div class="viz">
               <canvas bind:this={miniCanvas}
@@ -516,7 +521,7 @@
             </div>
           </article>
           <article class="card" data-rv>
-            <div class="card-top"><span class="card-num">04</span><h3>Easy Annotations</h3></div>
+            <div class="card-top"><span class="card-num">04</span><h3>Annotate Recordings</h3></div>
             <p>
               Tiered intervals over the signal. Create boundaries by listening, nudge them by the
               sample, and export TextGrids.
@@ -546,7 +551,8 @@
           <article class="card" data-rv>
             <div class="card-top"><span class="card-num">05</span><h3>Draw Plots</h3></div>
             <p>
-              Vowel spaces, pitch contours, and formant tracks exported as SVG vector figures.
+              Pitch contours and formant tracks exported as SVG, PDF, TikZ, Typst, or Vega-Lite,
+              or as plotting code for Python, R, and Julia.
             </p>
             <div class="viz">
               <svg viewBox="0 0 360 226" role="img" aria-label="Vowel plot with F1 on the vertical axis and F2 on the horizontal axis">
@@ -584,14 +590,13 @@
       <div class="wrap">
         <div class="sec-head" data-rv>
           <p class="eyebrow">Learning</p>
-          <h2>Little new to learn.</h2>
+          <h2>One set of conventions.</h2>
         </div>
         <div class="learn-text" data-rv>
           <p>
-            The interface follows conventions from software people already know. The command
-            palette (Ctrl/Cmd-K) lists every action with its shortcut. One undo stack
-            (Ctrl/Cmd-Z) covers every kind of edit, and one selection model is shared by the whole
-            editor. A first session can start directly on the work.
+            The command palette (Ctrl/Cmd-K) lists every action with its keyboard shortcut. One
+            undo stack (Ctrl/Cmd-Z) covers every kind of edit, and one selection model runs across
+            the waveform, the spectrogram, and the annotation tiers.
           </p>
         </div>
       </div>
@@ -609,12 +614,14 @@
               <a href="https://www.fon.hum.uva.nl/praat/" rel="external">Praat</a> is the standard
               tool in phonetics research and teaching. Phonia's pitch, intensity, and formant
               measurements are compared against a Praat oracle under matched settings, each with a
-              documented tolerance; differences beyond the tolerance are recorded, not hidden.
+              documented tolerance band. A continuous-integration job re-runs the comparison on
+              every change; a measurement drifting past its tolerance fails the build.
             </p>
             <p>
-              For formants, a residual attributable to Praat's own undocumented resampling
-              precision is accepted and written up in the repository. Voice-report measures —
-              jitter, shimmer, and harmonicity — are validated on sustained-vowel cases.
+              Most formant checks agree exactly; the remaining residual traces to Praat's own
+              unpublished sinc-interpolation window, and is recorded in the repository's
+              validation notes. Voice-report measures — jitter, shimmer, and harmonicity — are
+              checked on sustained-vowel cases.
             </p>
           </div>
           <div data-rv>
@@ -624,7 +631,7 @@
               </thead>
               <tbody>
                 <tr><td>Pitch (F0)</td><td>Sound: To Pitch (ac)</td><td><span class="ok">Validated</span></td></tr>
-                <tr><td>Formants F1–F4</td><td>Sound: To Formant (burg)</td><td><span class="ok">Validated</span></td></tr>
+                <tr><td>Formants F1–F3</td><td>Sound: To Formant (burg)</td><td><span class="ok">Validated</span></td></tr>
                 <tr><td>Intensity</td><td>Sound: To Intensity</td><td><span class="ok">Validated</span></td></tr>
                 <tr><td>Harmonicity</td><td>Sound: To Harmonicity (ac)</td><td><span class="ok">Validated</span></td></tr>
               </tbody>
@@ -639,9 +646,9 @@
       <div class="wrap">
         <div class="sec-head" data-rv>
           <p class="eyebrow">The application</p>
-          <h2>Running, on this page.</h2>
+          <h2>Embedded below.</h2>
           <p class="sec-sub">
-            The app below is the same build served at this site's root, embedded live.
+            The frame below loads the same build served at this site's root.
           </p>
         </div>
         <figure data-rv>
@@ -672,7 +679,7 @@
               {/if}
             </div>
           </div>
-          <figcaption>The running application, embedded. Open Phonia in a full window.</figcaption>
+          <figcaption>The application in an embedded frame. Open Phonia in its own window to use it.</figcaption>
         </figure>
       </div>
     </section>
@@ -1045,13 +1052,6 @@
   .sec-sub {
     margin: 1rem 0 0;
     color: var(--l-muted);
-  }
-
-  .sec-note {
-    margin: 0.6rem 0 0;
-    font-family: var(--l-mono);
-    font-size: 0.75rem;
-    color: var(--l-faint);
   }
 
   .cap-grid {
