@@ -737,7 +737,7 @@ impl phx_engine::ByteReader for JsByteReader {
 ///
 /// The worker reads this before importing so it can route a file over the eager
 /// frame threshold to [`WasmEngine::open_streaming_wav`] and a shorter one to
-/// [`WasmEngine::import_wav_bytes`], each at header speed. `frames` is `f64`
+/// [`WasmEngine::import_audio_bytes`], each at header speed. `frames` is `f64`
 /// because a JavaScript number holds a frame count exactly well past any real
 /// recording length.
 #[wasm_bindgen]
@@ -822,17 +822,22 @@ impl WasmEngine {
         Self::default()
     }
 
-    /// Decodes RIFF/WAVE bytes and returns the id of the new store entry.
+    /// Decodes a WAV, AIFF, or FLAC byte buffer and returns the id of the new
+    /// store entry.
     ///
-    /// `bytes` crosses the boundary as a borrowed slice: wasm-bindgen copies
-    /// the JS `Uint8Array` once into wasm linear memory for the call, and
-    /// decoding reads that copy directly with no further duplication.
+    /// The container is detected from `bytes`' leading signature; a caller
+    /// does not choose the format ahead of time. `bytes` crosses the boundary
+    /// as a borrowed slice: wasm-bindgen copies the JS `Uint8Array` once into
+    /// wasm linear memory for the call, and decoding reads that copy directly
+    /// with no further duplication.
     ///
     /// # Errors
-    /// Rejects when `bytes` is not a WAV file `phx-audio` can decode.
-    #[wasm_bindgen(js_name = importWavBytes)]
-    pub fn import_wav_bytes(&mut self, bytes: &[u8]) -> Result<u64, JsError> {
-        let id = self.inner.import_wav_bytes(bytes)?;
+    /// Rejects when `bytes` matches none of the three container signatures,
+    /// or matches one `phx-audio` cannot decode — the rejection message names
+    /// which.
+    #[wasm_bindgen(js_name = importAudioBytes)]
+    pub fn import_audio_bytes(&mut self, bytes: &[u8]) -> Result<u64, JsError> {
+        let id = self.inner.import_audio_bytes(bytes)?;
         Ok(id.as_u64())
     }
 
@@ -2695,7 +2700,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn project_bundle_embeds_and_reads_media() {
         let mut engine = WasmEngine::new();
-        let audio = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let audio = engine.import_audio_bytes(VOWEL_WAV).unwrap();
         let info = engine.audio_info(audio).unwrap();
         let doc = engine
             .create_annotation(audio, 0.0, info.duration())
@@ -2752,7 +2757,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn selection_and_voice_report_cross_the_boundary() {
         let mut engine = WasmEngine::new();
-        let id = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let id = engine.import_audio_bytes(VOWEL_WAV).unwrap();
         let info = engine.audio_info(id).unwrap();
         let (t0, t1, f0, f1) = (info.duration() * 0.3, info.duration() * 0.6, 0.0, 4000.0);
 
@@ -2807,7 +2812,7 @@ mod tests {
             .open_streaming_wav(len, Some("streamed".to_string()), read_at)
             .unwrap();
         let mut eager = WasmEngine::new();
-        let eid = eager.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let eid = eager.import_audio_bytes(FIXTURE_WAV).unwrap();
 
         let si = streamed.audio_info(sid).unwrap();
         let ei = eager.audio_info(eid).unwrap();
@@ -2829,7 +2834,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn import_then_info_then_tile_round_trip() {
         let mut engine = WasmEngine::new();
-        let id = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let id = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let info = engine.audio_info(id).unwrap();
         assert!(info.duration() > 0.0);
         assert!(info.sample_rate() > 0.0);
@@ -2972,7 +2977,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn annotation_apply_undo_redo_through_bindings() {
         let mut engine = WasmEngine::new();
-        let audio = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let audio = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let info = engine.audio_info(audio).unwrap();
 
         let doc = engine
@@ -3033,7 +3038,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn textgrid_export_then_import_round_trips_labels() {
         let mut engine = WasmEngine::new();
-        let audio = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let audio = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let info = engine.audio_info(audio).unwrap();
 
         let doc = engine
@@ -3071,7 +3076,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn list_annotations_tracks_attach_undo_redo() {
         let mut engine = WasmEngine::new();
-        let audio = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let audio = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let info = engine.audio_info(audio).unwrap();
 
         assert!(engine.list_annotations(audio).is_empty());
@@ -3111,7 +3116,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn point_insert_move_remove_round_trip_through_bindings() {
         let mut engine = WasmEngine::new();
-        let audio = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let audio = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let info = engine.audio_info(audio).unwrap();
         let doc = engine
             .create_annotation(audio, 0.0, info.duration())
@@ -3160,7 +3165,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn project_container_round_trips_media_and_annotation() {
         let mut engine = WasmEngine::new();
-        let audio = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let audio = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let info = engine.audio_info(audio).unwrap();
         let doc = engine
             .create_annotation(audio, 0.0, info.duration())
@@ -3207,7 +3212,7 @@ mod tests {
 
         // Re-attaching the document to a fresh audio restores the label.
         let mut restored = WasmEngine::new();
-        let audio2 = restored.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let audio2 = restored.import_audio_bytes(FIXTURE_WAV).unwrap();
         let doc2 = restored
             .attach_annotation_json(audio2, annotation_json)
             .unwrap();
@@ -3230,7 +3235,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn aligned_interval_tier_moves_both_tiers_and_reorders() {
         let mut engine = WasmEngine::new();
-        let audio = engine.import_wav_bytes(FIXTURE_WAV).unwrap();
+        let audio = engine.import_audio_bytes(FIXTURE_WAV).unwrap();
         let info = engine.audio_info(audio).unwrap();
         let doc = engine
             .create_annotation(audio, 0.0, info.duration())
@@ -3284,7 +3289,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn rename_detach_and_span_audio_cross_the_boundary() {
         let mut engine = WasmEngine::new();
-        let audio = engine.import_wav_bytes(VOWEL_WAV).unwrap();
+        let audio = engine.import_audio_bytes(VOWEL_WAV).unwrap();
         let info = engine.audio_info(audio).unwrap();
         let dur = info.duration();
 
@@ -3307,7 +3312,7 @@ mod tests {
             .export_span_wav(audio, t0, t1, WasmBitDepth::Float32)
             .unwrap();
         let mut check = WasmEngine::new();
-        let reimported = check.import_wav_bytes(&wav.to_vec()).unwrap();
+        let reimported = check.import_audio_bytes(&wav.to_vec()).unwrap();
         let span_info = check.audio_info(reimported).unwrap();
         assert!((span_info.duration() - (t1 - t0)).abs() < 2.0 / info.sample_rate());
 
