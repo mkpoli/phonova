@@ -932,7 +932,7 @@
   h1 {
     font-family: var(--l-serif);
     font-weight: 500;
-    font-size: clamp(2.5rem, 5.6vw, 4.2rem);
+    font-size: clamp(1.6rem, 7.5vw, 4.2rem);
     line-height: 1.08;
     letter-spacing: -0.01em;
     max-width: 16ch;
