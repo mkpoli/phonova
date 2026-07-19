@@ -1,8 +1,8 @@
 //! Colormap selection and dB→color sampling.
 
 use crate::data::{
-    cividis::CIVIDIS_DATA, inferno::INFERNO_DATA, magma::MAGMA_DATA, phonia::PHONIA_DATA,
-    plasma::PLASMA_DATA, viridis::VIRIDIS_DATA,
+    cividis::CIVIDIS_DATA, golden::GOLDEN_DATA, inferno::INFERNO_DATA, magma::MAGMA_DATA,
+    phonia::PHONIA_DATA, plasma::PLASMA_DATA, viridis::VIRIDIS_DATA,
 };
 use crate::theme::Theme;
 
@@ -29,6 +29,11 @@ pub enum Colormap {
     /// color-vision deficiency. Monotonically increasing in relative
     /// luminance.
     Cividis,
+    /// Warm sibling of Phonia: the same charcoal floor through a
+    /// burnt-umber and amber midtone into a golden-cream highlight, more
+    /// saturated than Phonia's paper cream. Monotonically increasing in
+    /// relative luminance.
+    Golden,
     /// Achromatic ramp, tuned separately per [`Theme`] rather than
     /// inverted.
     Grayscale,
@@ -46,6 +51,7 @@ impl Colormap {
             Colormap::Inferno => sample_lut(&INFERNO_DATA, t),
             Colormap::Plasma => sample_lut(&PLASMA_DATA, t),
             Colormap::Cividis => sample_lut(&CIVIDIS_DATA, t),
+            Colormap::Golden => sample_lut(&GOLDEN_DATA, t),
             Colormap::Grayscale => sample_grayscale(t, theme),
         }
     }
@@ -167,6 +173,17 @@ mod tests {
     fn cividis_endpoints_match_published_hex() {
         assert_eq!(sample_lut(&CIVIDIS_DATA, 0.0), [0, 34, 78]);
         assert_eq!(sample_lut(&CIVIDIS_DATA, 1.0), [254, 232, 56]);
+    }
+
+    #[test]
+    fn golden_endpoints_are_the_charcoal_floor_and_golden_highlight() {
+        assert_eq!(sample_lut(&GOLDEN_DATA, 0.0), [23, 22, 15]);
+        assert_eq!(sample_lut(&GOLDEN_DATA, 1.0), [245, 214, 138]);
+    }
+
+    #[test]
+    fn golden_luminance_is_monotonic() {
+        assert_monotonic_luminance(&GOLDEN_DATA, "golden");
     }
 
     fn assert_monotonic_luminance(data: &[[f32; 3]; 256], name: &str) {

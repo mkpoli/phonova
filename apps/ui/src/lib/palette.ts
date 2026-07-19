@@ -79,6 +79,12 @@ export const BUILTIN_PALETTES: BuiltinPalette[] = [
     preview: ['#00224e', '#35456c', '#666970', '#97925b', '#cbba69', '#fee838']
   },
   {
+    name: 'Golden',
+    label: 'Golden',
+    preview: ['#17160f', '#482a15', '#6b3f1f', '#c9862f', '#f5d68a'],
+    note: 'Warm sibling of Phonia'
+  },
+  {
     name: 'Grayscale',
     label: 'Grayscale',
     preview: ['#1e1e1e', '#5a5a5a', '#969696', '#c8c8c8', '#ebebeb'],

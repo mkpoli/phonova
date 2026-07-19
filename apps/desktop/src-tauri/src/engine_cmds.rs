@@ -54,6 +54,7 @@ pub struct TileReq {
 fn colormap_of(name: &str) -> Colormap {
     match name {
         "Magma" => Colormap::Magma,
+        "Golden" => Colormap::Golden,
         "Grayscale" => Colormap::Grayscale,
         _ => Colormap::Viridis,
     }

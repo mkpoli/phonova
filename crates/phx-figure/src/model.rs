@@ -499,6 +499,7 @@ enum ColormapDef {
     Inferno,
     Plasma,
     Cividis,
+    Golden,
     Grayscale,
 }
 

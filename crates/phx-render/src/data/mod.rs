@@ -1,6 +1,7 @@
 //! Embedded colormap control-point tables.
 
 pub(crate) mod cividis;
+pub(crate) mod golden;
 pub(crate) mod inferno;
 pub(crate) mod magma;
 pub(crate) mod phonia;

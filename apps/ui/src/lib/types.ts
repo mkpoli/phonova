@@ -24,6 +24,7 @@ export type WasmColormapName =
   | 'Inferno'
   | 'Plasma'
   | 'Cividis'
+  | 'Golden'
   | 'Grayscale';
 export type WasmThemeName = 'Light' | 'Dark';
 

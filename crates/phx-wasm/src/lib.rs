@@ -33,6 +33,9 @@ pub enum WasmColormap {
     /// Perceptually uniform dark-blue→gray→yellow ramp for color-vision
     /// deficiency.
     Cividis,
+    /// Warm sibling of Phonia: the same charcoal floor through a
+    /// burnt-umber and amber midtone into a golden-cream highlight.
+    Golden,
     /// Achromatic ramp, tuned separately per theme.
     Grayscale,
 }
@@ -46,6 +49,7 @@ impl From<WasmColormap> for EngineColormap {
             WasmColormap::Inferno => EngineColormap::Inferno,
             WasmColormap::Plasma => EngineColormap::Plasma,
             WasmColormap::Cividis => EngineColormap::Cividis,
+            WasmColormap::Golden => EngineColormap::Golden,
             WasmColormap::Grayscale => EngineColormap::Grayscale,
         }
     }

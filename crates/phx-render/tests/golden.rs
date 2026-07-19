@@ -135,6 +135,24 @@ fn cividis_dark_matches_golden() {
 }
 
 #[test]
+fn golden_light_matches_golden() {
+    check(
+        Colormap::Golden,
+        Theme::Light,
+        include_bytes!("golden/golden_light.rgba"),
+    );
+}
+
+#[test]
+fn golden_dark_matches_golden() {
+    check(
+        Colormap::Golden,
+        Theme::Dark,
+        include_bytes!("golden/golden_dark.rgba"),
+    );
+}
+
+#[test]
 fn grayscale_light_matches_golden() {
     check(
         Colormap::Grayscale,

@@ -162,6 +162,9 @@ pub(crate) fn colormap_name(cm: Colormap) -> &'static str {
         Colormap::Inferno => "inferno",
         Colormap::Plasma => "plasma",
         Colormap::Cividis => "cividis",
+        // Golden is a Phonia-family brand ramp with no native matplotlib
+        // equivalent; falls back to viridis for the same reason Phonia does.
+        Colormap::Golden => "viridis",
         Colormap::Grayscale => "gray",
     }
 }

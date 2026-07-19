@@ -154,9 +154,9 @@ target has nothing to show yet.
 
 ## Data display
 
-- **Spectrogram palettes**: Phonia (default), Viridis, Magma, Inferno,
-  Plasma, Cividis, and Grayscale tuned per theme for print. Palette changes
-  recolor instantly; they never recompute analysis.
+- **Spectrogram palettes**: Phonia (default), Golden, Viridis, Magma,
+  Inferno, Plasma, Cividis, and Grayscale tuned per theme for print. Palette
+  changes recolor instantly; they never recompute analysis.
 - **Phonia** is the default because the spectrogram should read as the same
   material as the rest of the interface: it runs from a warm charcoal floor,
   just below the dark-theme paper, up through the teal identity ramp into a
@@ -165,6 +165,10 @@ target has nothing to show yet.
   monotonically in WCAG relative luminance, so a louder region never renders
   darker than a quieter one. The floor stops short of pure black and the
   highlight short of pure white, keeping headroom at both ends.
+- **Golden** is a warm sibling of Phonia: the same charcoal floor through a
+  burnt-umber and amber midtone into a golden-cream highlight, more
+  saturated than Phonia's paper cream. Built the same way — Oklab control
+  points, verified monotonically increasing in WCAG relative luminance.
 - **Viridis** is the colorblind-validated alternative, kept for any figure a
   reader must trust under color-vision deficiency; the other perceptual ramps
   and the grayscale print ramp stay selectable alongside it.
