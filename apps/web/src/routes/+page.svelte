@@ -423,13 +423,18 @@
     error = caught instanceof Error ? caught.message : String(caught);
   }
 
+  const AUDIO_EXTENSIONS = ['.wav', '.aiff', '.aif', '.flac'];
+
   function deriveName(files: File[]): string {
     for (const file of files) {
       const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
       if (rel && rel.includes('/')) return rel.split('/')[0];
     }
-    const wav = files.find((file) => file.name.toLowerCase().endsWith('.wav'));
-    if (wav) return wav.name.replace(/\.[^.]+$/, '');
+    const audio = files.find((file) => {
+      const lower = file.name.toLowerCase();
+      return AUDIO_EXTENSIONS.some((ext) => lower.endsWith(ext));
+    });
+    if (audio) return audio.name.replace(/\.[^.]+$/, '');
     return 'Untitled project';
   }
 

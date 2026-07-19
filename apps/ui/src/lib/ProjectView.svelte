@@ -356,7 +356,7 @@
   <input
     bind:this={fileInput}
     type="file"
-    accept=".wav,audio/wav,.TextGrid"
+    accept=".wav,audio/wav,.aiff,.aif,audio/aiff,.flac,audio/flac,.TextGrid"
     multiple
     class="hidden-input"
     data-testid="corpus-file-input"

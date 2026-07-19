@@ -70,6 +70,14 @@
     return hz >= 1000 ? `${(hz / 1000).toFixed(hz % 1000 === 0 ? 0 : 1)} kHz` : `${hz} Hz`;
   }
 
+  /** Container format for the corpus row badge, read from the stored file's extension. */
+  function formatLabel(fileName: string): string {
+    const dot = fileName.lastIndexOf('.');
+    const ext = dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : '';
+    if (ext === 'aif') return 'AIFF';
+    return ext ? ext.toUpperCase() : '—';
+  }
+
   // Reordering reads the live tree, not the flattened (collapse-aware) rows, so a
   // move lands among every sibling including those hidden under a collapsed group.
   function siblingsOf(nodes: LibraryNode[], parentGroupId: number | null): LibraryNode[] {
@@ -345,6 +353,7 @@
             testId="rename-corpus"
             onRename={(next) => onRenameRecording(rec.mediaId, next)}
           />
+          <span class="tag muted" data-testid="corpus-format">{formatLabel(rec.fileName)}</span>
         </div>
         <span class="c-num">{formatTime(rec.duration)}</span>
         <span class="c-num">{sampleRateLabel(rec.sampleRate)}</span>

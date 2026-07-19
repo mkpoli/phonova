@@ -95,8 +95,11 @@ function isTextGrid(fileName: string): boolean {
   return extension(fileName) === 'textgrid';
 }
 
-function isWav(fileName: string): boolean {
-  return extension(fileName) === 'wav';
+/** Extensions of the audio containers the engine decodes: WAV, AIFF, FLAC. */
+const AUDIO_EXTENSIONS = new Set(['wav', 'aiff', 'aif', 'flac']);
+
+function isAudio(fileName: string): boolean {
+  return AUDIO_EXTENSIONS.has(extension(fileName));
 }
 
 async function opfsRoot(): Promise<FileSystemDirectoryHandle> {
@@ -291,22 +294,36 @@ export class ProjectStore {
   /**
    * Imports audio and TextGrid files into an open project.
    *
-   * Every WAV is decoded, stored under `audio/`, and appended as a recording; a
-   * TextGrid whose stem matches a WAV imported in the same batch attaches as its
-   * annotation. Progress is reported per file so the caller can stream rows.
+   * Every WAV, AIFF, or FLAC file is decoded, stored under `audio/`, and
+   * appended as a recording; a TextGrid whose stem matches an audio file
+   * imported in the same batch attaches as its annotation. Progress is
+   * reported per file so the caller can stream rows.
+   *
+   * @throws {Error} listing any file that is neither a recognized audio
+   * container nor a TextGrid, naming each by filename; nothing in the batch
+   * imports when this happens.
    */
   async importFiles(
     project: ProjectState,
     files: File[],
     onRecording?: (recording: RecordingEntry) => void
   ): Promise<void> {
+    const audioFiles = files.filter((file) => isAudio(file.name));
+    const textGrids = files.filter((file) => isTextGrid(file.name));
+    const unsupported = files.filter((file) => !isAudio(file.name) && !isTextGrid(file.name));
+    if (unsupported.length > 0) {
+      const names = unsupported.map((file) => file.name).join(', ');
+      const noun = unsupported.length === 1 ? 'file' : 'files';
+      throw new Error(
+        `${names}: unrecognized ${noun}. Phonia imports WAV, AIFF, and FLAC audio, and TextGrid annotations.`
+      );
+    }
+
     const dir = await projectDir(project.id, true);
     const audioDir = await dir.getDirectoryHandle(AUDIO_DIR, { create: true });
-    const wavs = files.filter((file) => isWav(file.name));
-    const textGrids = files.filter((file) => isTextGrid(file.name));
     const byStem = new Map<string, RecordingEntry>();
 
-    for (const file of wavs) {
+    for (const file of audioFiles) {
       const fileName = uniqueName(file.name, project.recordings);
       await writeFileStream(audioDir, fileName, file);
       const info = await this.#client.openAudioFile(
