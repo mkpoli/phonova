@@ -70,14 +70,23 @@ and `"TextTier"` and any other content simply fails that comparison.
 ## Text fields (tier names, interval/point labels)
 
 Tier names and interval/point labels use a different, richer encoding than
-class names — a signed 2-byte length that doubles as a narrow/wide flag:
+class names — an **unsigned** 2-byte length that doubles as a narrow/wide
+flag. This crate's derivation from samples originally described the field as
+signed (`i16`, escape value `-1`); source-level confirmation
+(`docs/formats/praat-formats.md` in this repository, §1.4) shows the actual
+field type is `u16`, with the escape sentinel being the bit pattern `0xFFFF`
+— which is bit-identical to `-1` when read as a signed 16-bit value, so a
+`read i16; escape if -1` implementation behaves identically to the correct
+`read u16; escape if 0xFFFF` one for every length that occurs in practice.
+The distinction only matters for validating the non-escape range, which is
+`0..=0xFFFE` (unsigned), not "any non-negative `i16`":
 
 ```
-<i16> n
-if n == -1:                        wide (UTF-16BE) string
+<u16> n
+if n == 0xFFFF:                    wide (UTF-16BE) string
     <u16> char_count
     <UTF-16BE code units>          char_count *codepoints*, 2 or 4 bytes each
-if n >= 0:                         narrow string
+if n <= 0xFFFE:                    narrow string
     <n bytes>                      one Latin-1 byte per character
 ```
 
