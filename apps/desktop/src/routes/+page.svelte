@@ -3,9 +3,12 @@
   import {
     CommandPalette,
     EditorView,
+    FirstRunKeyModePrompt,
     HomeView,
     ProjectView,
+    ShortcutEditor,
     provideCommandRegistry,
+    provideKeyBindings,
     registerCommands,
     type AudioInfo,
     type ProjectSummary,
@@ -58,6 +61,20 @@
   let recovery = $state<{ id: string; name: string } | null>(null);
 
   const commands = provideCommandRegistry();
+  const keyBindings = provideKeyBindings();
+  let shortcutEditorOpen = $state(false);
+
+  registerCommands([
+    {
+      id: 'openShortcutEditor',
+      title: 'Keyboard shortcuts…',
+      group: 'Appearance',
+      keywords: ['keymap', 'rebind', 'key mode', 'praat', 'shortcuts', 'keyboard'],
+      run: () => {
+        shortcutEditorOpen = true;
+      }
+    }
+  ]);
 
   // Autosave debounce, driven from a coarse tick against the engine state hash.
   let lastHash: bigint | null = null;
@@ -583,6 +600,7 @@
     onDeleteProject={deleteProject}
     onDuplicateProject={duplicateProject}
     onThemeChange={handleThemeChange}
+    onOpenShortcuts={() => (shortcutEditorOpen = true)}
   />
 {:else if route === 'project' && project}
   <ProjectView
@@ -658,6 +676,17 @@
 {/if}
 
 <CommandPalette registry={commands} />
+
+{#if keyBindings.promptDue}
+  <FirstRunKeyModePrompt
+    onChoose={(mode) => keyBindings.answerPrompt(mode)}
+    onDismiss={() => keyBindings.dismissPrompt()}
+  />
+{/if}
+
+{#if shortcutEditorOpen}
+  <ShortcutEditor onClose={() => (shortcutEditorOpen = false)} />
+{/if}
 
 <style>
   .error {
