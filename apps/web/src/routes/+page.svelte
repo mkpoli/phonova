@@ -5,6 +5,7 @@
     CommandPalette,
     EditorView,
     HomeView,
+    ModeRail,
     ProjectView,
     RecordingStrip,
     provideCommandRegistry,
@@ -49,6 +50,16 @@
   let recording = $state<RecordingEntry | null>(null);
 
   let audio = $state<AudioInfo | null>(null);
+  const mode = $derived<'library' | 'analyze'>(route === 'editor' ? 'analyze' : 'library');
+
+  function handleModeNavigate(next: 'library' | 'analyze') {
+    if (next === 'library') {
+      if (route === 'editor') backToProject();
+    } else if (next === 'analyze') {
+      if (audio) route = 'editor';
+    }
+  }
+
   let annotationId = $state<bigint | null>(null);
   let cursorTime = $state(0);
   let isPlaying = $state(false);
@@ -1213,120 +1224,124 @@
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
-{#if route === 'home'}
-  <HomeView
-    {projects}
-    {busy}
-    {busyLabel}
-    {theme}
-    onImportFiles={importToNewProject}
-    onNewProject={createEmptyProject}
-    onOpenSample={openSampleProject}
-    onOpenProjectFile={openProjectFile}
-    onOpenProject={requestOpen}
-    onRenameProject={renameProject}
-    onDeleteProject={deleteProject}
-    onDuplicateProject={duplicateProject}
-    onThemeChange={handleThemeChange}
-    onStartRecording={recordingSupported ? startRecording : undefined}
-    recording={capturing}
-    {homeIndex}
-    onTogglePin={togglePin}
-    onCreateGroupFrom={createGroupFrom}
-    onRenameGroup={renameHomeGroup}
-    onDissolveGroup={dissolveHomeGroup}
-    onToggleGroupCollapse={toggleGroupCollapse}
-    onMoveToGroup={moveToGroup}
-    onExportStored={exportStoredProject}
-    onBatchDelete={batchDeleteProjects}
-  />
-{:else if route === 'project' && project}
-  <ProjectView
-    {client}
-    projectName={project.name}
-    recordings={project.recordings}
-    {theme}
-    {busy}
-    {busyLabel}
-    {dirty}
-    savedAt={project.savedAt}
-    onOpenRecording={openRecording}
-    onImportFiles={addFilesToProject}
-    onBack={backToHome}
-    onSave={saveProject}
-    onThemeChange={handleThemeChange}
-    onStartRecording={recordingSupported ? startRecording : undefined}
-    recording={capturing}
-    groups={project.groups}
-    collapsed={collapsedOf(project)}
-    onToggleCollapse={toggleCollapse}
-    onCreateGroup={createGroup}
-    onRenameGroup={renameGroup}
-    onDissolveGroup={dissolveGroup}
-    onMoveNode={moveNode}
-    onRenameRecording={renameRecording}
-    onDeleteRecording={deleteRecording}
-    onExportProject={exportProject}
-    onExportRecording={exportRecordingAudio}
-    onUpdateRecordingMetadata={updateRecordingMetadata}
-    onUpdateProjectMetadata={updateProjectMetadata}
-    projectDescription={project.description}
-    projectAuthors={project.authors}
-    projectTags={project.tags}
-    {pendingRemovals}
-    {removalUndo}
-    onUndoRemoval={undoRemoval}
-  />
-{:else if route === 'editor'}
-  <EditorView
-    {client}
-    {audio}
-    {annotationId}
-    {cursorTime}
-    {isPlaying}
-    {theme}
-    {palette}
-    {customRamps}
-    onFile={editorImportFile}
-    onPlayToggle={handlePlayToggle}
-    onThemeChange={handleThemeChange}
-    onPaletteChange={handlePaletteChange}
-    onSaveRamp={saveRamp}
-    onDeleteRamp={deleteRamp}
-    onCursorChange={handleCursorChange}
-    onAnnotationChange={(id) => {
-      annotationId = id;
-      if (recording) {
-        recording.annotationId = id;
-        recording.hasAnnotation = id !== null;
-      }
-    }}
-    onExit={backToProject}
-    projectName={project?.name}
-    recordings={recordingChoices}
-    groups={project?.groups}
-    currentRecordingId={recording?.mediaId ?? null}
-    onSwitchRecording={switchRecording}
-    onRenameRecording={renameRecording}
-    onPlaySelection={(t0, t1) => {
-      cursorTime = t0;
-      void playback?.playRange(t0, t1);
-    }}
-    onPlayFilteredSelection={async (t0, t1, f0, f1) => {
-      if (!client || !audio || !playback) return;
-      try {
-        const samples = await client.bandFilteredSpan(audio.id, t0, t1, f0, f1);
-        await playback.playBuffer(samples, audio.sampleRate);
-      } catch (caught) {
-        report(caught);
-      }
-    }}
-    onExportAudio={exportEditorAudio}
-    onStartRecording={recordingSupported ? startRecording : undefined}
-    recording={capturing}
-    recordingElapsedSeconds={recordElapsed}
-  />
-{/if}
+<ModeRail active={mode} analyzeEnabled={audio !== null} onNavigate={handleModeNavigate} />
+
+<div class="app-content">
+  {#if route === 'home'}
+    <HomeView
+      {projects}
+      {busy}
+      {busyLabel}
+      {theme}
+      onImportFiles={importToNewProject}
+      onNewProject={createEmptyProject}
+      onOpenSample={openSampleProject}
+      onOpenProjectFile={openProjectFile}
+      onOpenProject={requestOpen}
+      onRenameProject={renameProject}
+      onDeleteProject={deleteProject}
+      onDuplicateProject={duplicateProject}
+      onThemeChange={handleThemeChange}
+      onStartRecording={recordingSupported ? startRecording : undefined}
+      recording={capturing}
+      {homeIndex}
+      onTogglePin={togglePin}
+      onCreateGroupFrom={createGroupFrom}
+      onRenameGroup={renameHomeGroup}
+      onDissolveGroup={dissolveHomeGroup}
+      onToggleGroupCollapse={toggleGroupCollapse}
+      onMoveToGroup={moveToGroup}
+      onExportStored={exportStoredProject}
+      onBatchDelete={batchDeleteProjects}
+    />
+  {:else if route === 'project' && project}
+    <ProjectView
+      {client}
+      projectName={project.name}
+      recordings={project.recordings}
+      {theme}
+      {busy}
+      {busyLabel}
+      {dirty}
+      savedAt={project.savedAt}
+      onOpenRecording={openRecording}
+      onImportFiles={addFilesToProject}
+      onBack={backToHome}
+      onSave={saveProject}
+      onThemeChange={handleThemeChange}
+      onStartRecording={recordingSupported ? startRecording : undefined}
+      recording={capturing}
+      groups={project.groups}
+      collapsed={collapsedOf(project)}
+      onToggleCollapse={toggleCollapse}
+      onCreateGroup={createGroup}
+      onRenameGroup={renameGroup}
+      onDissolveGroup={dissolveGroup}
+      onMoveNode={moveNode}
+      onRenameRecording={renameRecording}
+      onDeleteRecording={deleteRecording}
+      onExportProject={exportProject}
+      onExportRecording={exportRecordingAudio}
+      onUpdateRecordingMetadata={updateRecordingMetadata}
+      onUpdateProjectMetadata={updateProjectMetadata}
+      projectDescription={project.description}
+      projectAuthors={project.authors}
+      projectTags={project.tags}
+      {pendingRemovals}
+      {removalUndo}
+      onUndoRemoval={undoRemoval}
+    />
+  {:else if route === 'editor'}
+    <EditorView
+      {client}
+      {audio}
+      {annotationId}
+      {cursorTime}
+      {isPlaying}
+      {theme}
+      {palette}
+      {customRamps}
+      onFile={editorImportFile}
+      onPlayToggle={handlePlayToggle}
+      onThemeChange={handleThemeChange}
+      onPaletteChange={handlePaletteChange}
+      onSaveRamp={saveRamp}
+      onDeleteRamp={deleteRamp}
+      onCursorChange={handleCursorChange}
+      onAnnotationChange={(id) => {
+        annotationId = id;
+        if (recording) {
+          recording.annotationId = id;
+          recording.hasAnnotation = id !== null;
+        }
+      }}
+      onExit={backToProject}
+      projectName={project?.name}
+      recordings={recordingChoices}
+      groups={project?.groups}
+      currentRecordingId={recording?.mediaId ?? null}
+      onSwitchRecording={switchRecording}
+      onRenameRecording={renameRecording}
+      onPlaySelection={(t0, t1) => {
+        cursorTime = t0;
+        void playback?.playRange(t0, t1);
+      }}
+      onPlayFilteredSelection={async (t0, t1, f0, f1) => {
+        if (!client || !audio || !playback) return;
+        try {
+          const samples = await client.bandFilteredSpan(audio.id, t0, t1, f0, f1);
+          await playback.playBuffer(samples, audio.sampleRate);
+        } catch (caught) {
+          report(caught);
+        }
+      }}
+      onExportAudio={exportEditorAudio}
+      onStartRecording={recordingSupported ? startRecording : undefined}
+      recording={capturing}
+      recordingElapsedSeconds={recordElapsed}
+    />
+  {/if}
+</div>
 
 {#if capturing}
   <RecordingStrip
@@ -1381,6 +1396,12 @@
 <CommandPalette registry={commands} />
 
 <style>
+  .app-content {
+    /* Keep this offset in sync with the ModeRail width. */
+    margin-left: 4.75rem;
+    min-height: 100dvh;
+  }
+
   .error {
     position: fixed;
     right: 1rem;

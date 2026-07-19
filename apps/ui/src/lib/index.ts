@@ -11,6 +11,7 @@ export { default as InlineRename } from './InlineRename.svelte';
 export { default as InspectorPanel } from './InspectorPanel.svelte';
 export { default as LabelEditor } from './LabelEditor.svelte';
 export { default as LibraryTree } from './LibraryTree.svelte';
+export { default as ModeRail } from './ModeRail.svelte';
 export { default as MetadataPanel } from './MetadataPanel.svelte';
 export { default as OverviewStrip } from './OverviewStrip.svelte';
 export { default as ProjectCard } from './ProjectCard.svelte';

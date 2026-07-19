@@ -132,6 +132,17 @@ Lucide, exclusively, via `unplugin-icons`. Icons accompany labels in chrome
 (icon + text); icon-only buttons carry `aria-label` and a tooltip. No second
 icon family, ever — mixed stroke registers read as clutter.
 
+### Navigation
+
+A vertical rail on the far left holds the brand mark and the app's modes:
+icon over an uppercase label, teal fill and a left border on the active one,
+`aria-current="page"` marking it for assistive tech. Library covers the
+project manager and its corpus view; Analyze is the annotation editor.
+Studio, Plot, and Script are planned modes — reserved in the rail's data
+order, not rendered until each one has a surface behind it. Every mode is a
+native button, reachable by Tab and disabled rather than hidden when its
+target has nothing to show yet.
+
 ## Data display
 
 - **Spectrogram palettes**: Phonia (default), Viridis, Magma, Inferno,

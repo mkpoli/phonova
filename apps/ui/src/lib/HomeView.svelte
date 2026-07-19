@@ -364,21 +364,6 @@
   ondrop={handleDrop}
 >
   <header class="top">
-    <div class="brand">
-      <svg
-        class="mark"
-        aria-hidden="true"
-        viewBox="0 0 64 64"
-        fill="none"
-        stroke-width="6"
-        stroke-linecap="round"
-      >
-        <path stroke="currentColor" d="M46.5 12.9 A 22 22 0 1 0 52.2 20.4" />
-        <path stroke="currentColor" d="M14 36 C20 24 25 24 31 32 C37 40 41 40 50 24" />
-        <circle class="dot" cx="52" cy="20" r="5" />
-      </svg>
-      <span class="title">Phonia</span>
-    </div>
     <div class="tools">
       <form
         class="create"
@@ -702,35 +687,11 @@
   .top {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 1rem;
     padding: 0.85rem 1.25rem;
     border-bottom: 1px solid var(--chrome-strong);
     background: var(--panel);
-  }
-
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 0.55rem;
-  }
-
-  .mark {
-    width: 1.35rem;
-    height: 1.35rem;
-    color: var(--accent);
-  }
-
-  .mark .dot {
-    fill: var(--warn);
-  }
-
-  .title {
-    font-family: var(--font-serif);
-    font-size: 1.35rem;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    color: var(--accent-strong);
   }
 
   .tools {
