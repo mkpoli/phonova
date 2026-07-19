@@ -177,13 +177,13 @@ so the linker's dead-code elimination dropped `symphonia` and its `aiff`,
 
 | build | raw | gzip -9 | brotli -q11 |
 |---|---|---|---|
-| WAV-only (dead-code-eliminated) | 2,602,603 B | 954,934 B | 672,673 B |
+| WAV-only (dead-code-eliminated) | 2,754,430 B | 1,008,435 B | 709,894 B |
 | WAV + AIFF + FLAC reachable | 3,200,698 B | 1,167,618 B | 820,232 B |
-| delta | +598,095 B (+23.0%) | +212,684 B (+22.3%) | +147,559 B (+21.9%) |
+| delta | +446,268 B (+16.2%) | +159,183 B (+15.8%) | +110,338 B (+15.5%) |
 
 `symphonia` (RIFF probe, the FLAC bundle, and the shared PCM/bit-reader core)
-costs roughly 580 KiB raw / 208 KiB gzipped on top of the WAV-only binary —
-a quarter more wasm shipped to every session, including the large majority
+costs roughly 436 KiB raw / 155 KiB gzipped on top of the WAV-only binary —
+one-sixth more wasm shipped to every session, including the large majority
 that only ever opens WAV. The decode path is reachable only from
 `WasmEngine::import_audio_bytes` and the `openAudioFile` worker branch; no
 other engine surface touches it, which makes it a clean split candidate:
