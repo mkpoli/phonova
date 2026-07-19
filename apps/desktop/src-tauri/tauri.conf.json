@@ -26,8 +26,37 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.png"]
+    "targets": ["msi", "nsis", "dmg", "appimage", "deb"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "publisher": "Phonia",
+    "category": "Productivity",
+    "copyright": "Copyright © 2026 Phonia contributors",
+    "homepage": "https://phonia.app",
+    "shortDescription": "Waveform, spectrogram, and annotation editor for phonetic analysis.",
+    "longDescription": "Phonia opens recordings for waveform and spectrogram analysis, pitch and formant tracking, and TextGrid-compatible annotation, with native playback and a project format that keeps a session's recordings, tiers, and view state together.",
+    "fileAssociations": [
+      {
+        "ext": ["wav"],
+        "name": "WAV recording",
+        "description": "Audio recording",
+        "mimeType": "audio/wav",
+        "role": "Editor"
+      },
+      {
+        "ext": ["textgrid"],
+        "name": "TextGrid annotation",
+        "description": "Praat-compatible tier annotation",
+        "mimeType": "text/x-praat-textgrid",
+        "role": "Editor"
+      },
+      {
+        "ext": ["phxproj"],
+        "name": "Phonia project",
+        "description": "Phonia project (recordings, tiers, and view state)",
+        "mimeType": "application/vnd.phonia.project+zip",
+        "role": "Editor"
+      }
+    ]
   },
   "plugins": {}
 }
