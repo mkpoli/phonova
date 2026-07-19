@@ -47,6 +47,19 @@
     }
   }
 
+  // The embed's maximize dot has no href to navigate through on its own, so
+  // it drives the same handoff as every other "Open Phonia" control and then
+  // — only when that handoff didn't already swap the view in place — sends
+  // the browser to appHref itself. `appHref` is already origin-aware (it
+  // points at phonia.app from the about subdomain), so this is the same
+  // mechanism the anchors use, not a second one.
+  function handleMaximize(event: MouseEvent) {
+    handleOpenPhonia(event);
+    if (!(onEnterApp && appHref === '/')) {
+      window.location.href = appHref;
+    }
+  }
+
   let root = $state<HTMLElement | null>(null);
   let heroCanvas = $state<HTMLCanvasElement | null>(null);
   let miniCanvas = $state<HTMLCanvasElement | null>(null);
@@ -59,6 +72,10 @@
   let frameFailed = $state(false);
   let appFrame = $state<HTMLIFrameElement | null>(null);
   let frameSection = $state<HTMLElement | null>(null);
+
+  // The embed's mock title-bar dots are wired to real state. Never persisted:
+  // every fresh load starts 'open', regardless of what a previous visit did.
+  let embedState = $state<'open' | 'minimized' | 'closed'>('open');
 
   let redrawHero: (() => void) | null = null;
 
@@ -682,34 +699,83 @@
           </p>
         </div>
         <figure data-rv>
-          <div class="shot-frame" bind:this={frameSection}>
-            <div class="shot-chrome">
-              <i></i><i></i><i></i>
-              <span class="shot-title">phonia — live</span>
+          {#if embedState === 'closed'}
+            <div class="shot-closed">
+              <p>The embedded preview was closed.</p>
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                onclick={() => (embedState = 'open')}
+              >
+                Show the preview again
+              </button>
             </div>
-            <div class="shot-body">
-              <div class="app-fallback" class:hidden={frameReady && !frameFailed}>
-                <svg width="44" height="44" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-                  <path d="M46.5 12.9 A 22 22 0 1 0 52.2 20.4" stroke="#5eead4" stroke-width="7" stroke-linecap="round" />
-                  <path d="M14 36 C20 24 25 24 31 32 C37 40 41 40 50 24" stroke="#5eead4" stroke-width="7" stroke-linecap="round" />
-                  <circle cx="52" cy="20" r="5.5" fill="#f5b04c" stroke="none" />
-                </svg>
-                <p>Open Phonia to see it live.</p>
-                <a class="btn btn-ghost btn-sm" href={appHref} onclick={handleOpenPhonia}>Open Phonia</a>
+          {:else}
+            <div class="shot-frame" bind:this={frameSection}>
+              <div class="shot-chrome" class:collapsed={embedState === 'minimized'}>
+                <button
+                  type="button"
+                  class="chrome-dot dot-close"
+                  aria-label="Close preview"
+                  onclick={() => (embedState = 'closed')}
+                ></button>
+                <button
+                  type="button"
+                  class="chrome-dot dot-min"
+                  aria-label={embedState === 'minimized' ? 'Restore preview' : 'Minimize preview'}
+                  onclick={() => (embedState = embedState === 'minimized' ? 'open' : 'minimized')}
+                ></button>
+                <button type="button" class="chrome-dot dot-max" aria-label="Open Phonia" onclick={handleMaximize}
+                ></button>
+                {#if embedState === 'minimized'}
+                  <button
+                    type="button"
+                    class="shot-title shot-title-btn"
+                    aria-label="Restore preview"
+                    onclick={() => (embedState = 'open')}
+                  >
+                    phonia — live
+                  </button>
+                {:else}
+                  <span class="shot-title">phonia — live</span>
+                {/if}
               </div>
-              {#if !frameFailed}
-                <iframe
-                  bind:this={appFrame}
-                  src="/"
-                  title="Phonia running live"
-                  loading="lazy"
-                  class:ready={frameReady}
-                  onload={handleFrameLoad}
-                ></iframe>
-              {/if}
+              <div class="shot-collapse" class:collapsed={embedState === 'minimized'}>
+                <div class="shot-collapse-inner" inert={embedState === 'minimized' ? true : undefined}>
+                  <div class="shot-body">
+                    <div class="app-fallback" class:hidden={frameReady && !frameFailed}>
+                      <svg width="44" height="44" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                        <path d="M46.5 12.9 A 22 22 0 1 0 52.2 20.4" stroke="#5eead4" stroke-width="7" stroke-linecap="round" />
+                        <path d="M14 36 C20 24 25 24 31 32 C37 40 41 40 50 24" stroke="#5eead4" stroke-width="7" stroke-linecap="round" />
+                        <circle cx="52" cy="20" r="5.5" fill="#f5b04c" stroke="none" />
+                      </svg>
+                      <p>Open Phonia to see it live.</p>
+                      <a class="btn btn-ghost btn-sm" href={appHref} onclick={handleOpenPhonia}>Open Phonia</a>
+                    </div>
+                    {#if !frameFailed}
+                      <iframe
+                        bind:this={appFrame}
+                        src="/"
+                        title="Phonia running live"
+                        loading="lazy"
+                        class:ready={frameReady}
+                        onload={handleFrameLoad}
+                      ></iframe>
+                    {/if}
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-          <figcaption>The application in an embedded frame.</figcaption>
+          {/if}
+          <figcaption>
+            {#if embedState === 'minimized'}
+              The application in an embedded frame, collapsed.
+            {:else if embedState === 'closed'}
+              The application in an embedded frame — closed.
+            {:else}
+              The application in an embedded frame.
+            {/if}
+          </figcaption>
         </figure>
         <div class="app-cta">
           <a class="btn btn-primary" href={appHref} onclick={handleOpenPhonia}>Open the full app</a>
@@ -755,6 +821,7 @@
     --l-teal: #5eead4;
     --l-teal-hi: #99f6e4;
     --l-amber: #f5b04c;
+    --l-danger: #f87171;
     --l-ink: #16211d;
     --l-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Charter, Georgia, 'Times New Roman', serif;
     --l-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -1316,18 +1383,94 @@
   .shot-chrome {
     display: flex;
     align-items: center;
-    gap: 0.45rem;
+    gap: 0.3rem;
     height: 34px;
-    padding: 0 0.9rem;
+    padding: 0 0.7rem;
     border-bottom: 1px solid var(--line-soft);
     background: var(--panel);
   }
 
-  .shot-chrome i {
+  .shot-chrome.collapsed {
+    border-bottom-color: transparent;
+  }
+
+  .shot-chrome .chrome-dot {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: transparent;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .shot-chrome .chrome-dot::before {
+    content: '';
     width: 9px;
     height: 9px;
     border-radius: 50%;
     background: #4a463c;
+    transition:
+      background 0.15s ease,
+      transform 0.15s ease;
+  }
+
+  .shot-chrome .chrome-dot::after {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--l-mono);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--l-ink);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .shot-chrome .dot-close::after {
+    content: '×';
+  }
+
+  .shot-chrome .dot-min::after {
+    content: '−';
+  }
+
+  .shot-chrome .dot-max::after {
+    content: '+';
+  }
+
+  .shot-chrome .dot-close:hover::before,
+  .shot-chrome .dot-close:focus-visible::before {
+    background: var(--l-danger);
+    transform: scale(1.15);
+  }
+
+  .shot-chrome .dot-min:hover::before,
+  .shot-chrome .dot-min:focus-visible::before {
+    background: var(--l-amber);
+    transform: scale(1.15);
+  }
+
+  .shot-chrome .dot-max:hover::before,
+  .shot-chrome .dot-max:focus-visible::before {
+    background: var(--l-teal);
+    transform: scale(1.15);
+  }
+
+  .shot-chrome .chrome-dot:hover::after,
+  .shot-chrome .chrome-dot:focus-visible::after {
+    opacity: 1;
   }
 
   .shot-title {
@@ -1337,11 +1480,59 @@
     font-size: 0.68rem;
     color: var(--l-faint);
     transform: translateX(-1.2rem);
+    pointer-events: none;
+  }
+
+  .shot-title-btn {
+    background: transparent;
+    border: none;
+    padding: 0.15rem 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: color 0.15s ease;
+  }
+
+  .shot-title-btn:hover {
+    color: var(--l-text);
+  }
+
+  .shot-collapse {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.28s ease;
+  }
+
+  .shot-collapse.collapsed {
+    grid-template-rows: 0fr;
+  }
+
+  .shot-collapse-inner {
+    overflow: hidden;
+    min-height: 0;
   }
 
   .shot-body {
     aspect-ratio: 16 / 10;
     position: relative;
+  }
+
+  .shot-closed {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--bg-deep);
+    padding: 2.6rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    text-align: center;
+  }
+
+  .shot-closed p {
+    margin: 0;
+    color: var(--l-muted);
+    font-size: 0.95rem;
   }
 
   .shot-body iframe {
