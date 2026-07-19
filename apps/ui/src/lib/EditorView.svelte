@@ -2,6 +2,7 @@
   import IconArrowLeft from '~icons/lucide/arrow-left';
   import IconImage from '~icons/lucide/image';
   import IconAudioLines from '~icons/lucide/audio-lines';
+  import IconMic from '~icons/lucide/mic';
   import IconPanelRight from '~icons/lucide/panel-right';
   import AudioExportDialog from './AudioExportDialog.svelte';
   import ExportDialog from './ExportDialog.svelte';
@@ -779,8 +780,13 @@
           disabled={recording}
           onclick={() => onStartRecording?.()}
         >
-          <span class="rec-dot" aria-hidden="true"></span>
-          <span>{recording ? formatTime(recordingElapsedSeconds) : 'REC'}</span>
+          {#if recording}
+            <span class="rec-dot" aria-hidden="true"></span>
+            <span>{formatTime(recordingElapsedSeconds)}</span>
+          {:else}
+            <IconMic aria-hidden="true" />
+            <span>Record</span>
+          {/if}
         </button>
       {/if}
     </nav>
@@ -1046,17 +1052,15 @@
     color: var(--muted);
   }
 
-  /* Compact REC pill: quiet by default (a dim red hint on the border, a muted
-     label), and only reads as loud on hover or while a take is actually
-     rolling — the dot itself stays red at rest as the affordance's identity. */
+  /* Compact record pill: neutral chrome at rest, danger colors while recording. */
   .crumb-record {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    border: 1px solid color-mix(in oklab, var(--danger) 28%, var(--chrome-strong));
+    border: 1px solid var(--chrome-strong);
     border-radius: 999px;
     background: transparent;
-    color: var(--muted);
+    color: var(--text);
     min-height: 1.6rem;
     padding: 0.2rem 0.65rem;
     font-size: 0.76rem;
@@ -1070,9 +1074,14 @@
   }
 
   .crumb-record:hover:not(:disabled) {
-    border-color: var(--danger);
+    border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
+    background: var(--panel);
+  }
+
+  .crumb-record :global(svg) {
     color: var(--danger);
-    background: color-mix(in oklab, var(--danger) 10%, transparent);
+    font-size: 0.95rem;
+    flex: none;
   }
 
   .crumb-record.recording {
