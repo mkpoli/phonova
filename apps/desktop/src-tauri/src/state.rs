@@ -6,6 +6,7 @@
 //! cross the IPC boundary as plain `u64` (the TypeScript client widens them back
 //! to `bigint`), matching the worker protocol.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -25,6 +26,15 @@ pub struct AppState {
     /// falls back to WebAudio. Its `&self` control methods need no lock: the
     /// engine carries its own state behind atomics and an audio thread.
     pub playback: Option<CpalPlayback>,
+    /// Absolute paths the OS handed this process to open (initial launch argv,
+    /// a second-instance relaunch, or a macOS open-file event) that the
+    /// frontend has not yet drained via `take_pending_opens`.
+    pub pending_opens: Mutex<Vec<String>>,
+    /// Every path ever recorded through [`AppState::pending_opens`] this
+    /// session, kept after draining so `read_external_file` only ever reads a
+    /// path the OS itself handed the app, never an arbitrary one a compromised
+    /// webview might request.
+    pub openable_paths: Mutex<HashSet<String>>,
 }
 
 impl AppState {
@@ -35,6 +45,8 @@ impl AppState {
             engine: Mutex::new(Engine::new()),
             root,
             playback: CpalPlayback::new().ok(),
+            pending_opens: Mutex::new(Vec::new()),
+            openable_paths: Mutex::new(HashSet::new()),
         }
     }
 }

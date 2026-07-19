@@ -351,6 +351,24 @@ export class ProjectStore {
     return bytes ? new File([bytes], recording.fileName) : null;
   }
 
+  /**
+   * Imports a project container handed to the app from outside its own
+   * store — the OS file-association handoff for a `.phxproj` file — into a
+   * fresh managed project directory.
+   *
+   * The desktop container has no embedded-media variant, so this brings in
+   * the project's structure, metadata, and annotations; a recording links to
+   * its audio only when a file of the same name already sits under the new
+   * directory (never true for a project handed in from outside), and
+   * otherwise opens with no audio attached, exactly as `open()` already
+   * tolerates for a recording whose file went missing from disk.
+   */
+  async importProjectFile(bytes: Uint8Array): Promise<OpenResult> {
+    const id = crypto.randomUUID();
+    await fsWrite(`${id}/${PROJECT_FILE}`, bytes);
+    return this.open(id);
+  }
+
   /** Removes a project's autosave sidecar, discarding unsaved work. */
   async discardRecovery(id: string): Promise<void> {
     await fsRemove(`${id}/${PROJECT_FILE}${AUTOSAVE_SUFFIX}`).catch(() => {});

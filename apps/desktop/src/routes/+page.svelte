@@ -16,6 +16,8 @@
     type CustomRamp,
     type PaletteSelection
   } from '@phonia/ui';
+  import { invoke } from '@tauri-apps/api/core';
+  import { listen, type UnlistenFn } from '@tauri-apps/api/event';
   import { TauriCoreClient } from '$lib/core/TauriCoreClient';
   import type { Playback } from '$lib/playback/Playback';
   import { NativePlayback } from '$lib/playback/NativePlayback';
@@ -28,6 +30,9 @@
   } from '$lib/project/ProjectStore';
 
   type Route = 'home' | 'project' | 'editor';
+
+  /** Matches the Rust side's `FILES_OPENED_EVENT` in `lib.rs`. */
+  const FILES_OPENED_EVENT = 'phonix://files-opened';
 
   let client = $state<TauriCoreClient | null>(null);
   let store = $state<ProjectStore | null>(null);
@@ -85,6 +90,15 @@
     palette = loadPalette(customRamps);
     void refreshProjects();
 
+    // Files the OS handed this launch (double-click, "Open with") — drained
+    // once now, and again on `filesOpenedUnlisten`'s event for a relaunch or
+    // macOS open-file while already running.
+    void drainPendingOpens();
+    let filesOpenedUnlisten: UnlistenFn | undefined;
+    void listen(FILES_OPENED_EVENT, () => void drainPendingOpens()).then((unlisten) => {
+      filesOpenedUnlisten = unlisten;
+    });
+
     const tick = () => {
       if (playback) {
         cursorTime = playback.position;
@@ -98,6 +112,7 @@
     return () => {
       cancelAnimationFrame(frame);
       if (saveTimer) clearInterval(saveTimer);
+      filesOpenedUnlisten?.();
       client?.destroy();
       playback?.close();
     };
@@ -233,6 +248,59 @@
     } catch (caught) {
       report(caught);
     }
+  }
+
+  /** Drains the paths the OS has handed this process and opens them. */
+  async function drainPendingOpens() {
+    try {
+      const paths = await invoke<string[]>('take_pending_opens');
+      if (paths.length > 0) await openExternalPaths(paths);
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  /**
+   * Opens files the OS handed the app outside its own project store — the
+   * `.wav` / `.TextGrid` / `.phxproj` file-association handoff.
+   *
+   * A `.phxproj` among the paths opens as its own project (there is exactly
+   * one meaningful project to land on, so the first one found wins); recording
+   * files otherwise land together in one freshly created project, the same
+   * outcome a drag-and-drop import onto Home produces.
+   */
+  async function openExternalPaths(paths: string[]) {
+    if (!store) return;
+    const projectPath = paths.find((path) => path.toLowerCase().endsWith('.phxproj'));
+    if (projectPath) {
+      error = '';
+      try {
+        const bytes = Uint8Array.from(await invoke<number[]>('read_external_file', { path: projectPath }));
+        const result = await store.importProjectFile(bytes);
+        project = result.project;
+        route = 'project';
+        dirty = false;
+        resetAutosaveBaseline();
+        await refreshProjects();
+      } catch (caught) {
+        report(caught);
+      }
+      return;
+    }
+
+    const files: File[] = [];
+    for (const path of paths) {
+      const lower = path.toLowerCase();
+      if (!lower.endsWith('.wav') && !lower.endsWith('.textgrid')) continue;
+      try {
+        const bytes = Uint8Array.from(await invoke<number[]>('read_external_file', { path }));
+        const name = path.split(/[/\\]/).pop() ?? path;
+        files.push(new File([bytes], name));
+      } catch (caught) {
+        report(caught);
+      }
+    }
+    if (files.length > 0) await importToNewProject(files);
   }
 
   function requestOpen(id: string) {

@@ -9,12 +9,18 @@
 //! hands the frontend paths.
 
 mod engine_cmds;
+mod platform_cmds;
 mod playback_cmds;
 mod project_cmds;
 mod state;
 
 use state::AppState;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+
+/// Event the frontend listens for after launch: a second instance (Windows,
+/// Linux) or a macOS open-file event queued more paths in
+/// [`AppState::pending_opens`] for `take_pending_opens` to drain.
+const FILES_OPENED_EVENT: &str = "phonix://files-opened";
 
 /// Builds and runs the desktop application.
 ///
@@ -22,7 +28,16 @@ use tauri::Manager;
 /// Panics if the app data directory cannot be resolved or the Tauri runtime
 /// fails to start — both are unrecoverable at launch.
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        // Must be the first plugin registered (see the plugin's own docs):
+        // Windows and Linux hand a file-association open-with to a *second*
+        // process, which this forwards to the one already running instead of
+        // opening a second window onto the same project store.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            let state = app.state::<AppState>();
+            platform_cmds::record_pending_opens(&state, argv.into_iter().skip(1));
+            let _ = app.emit(FILES_OPENED_EVENT, ());
+        }))
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let root = app
@@ -31,6 +46,10 @@ pub fn run() {
                 .expect("resolve app data dir")
                 .join("projects");
             app.manage(AppState::new(root));
+            // The paths this launch itself was opened with (first instance on
+            // Windows/Linux, or a macOS launch with a file argument).
+            let state = app.state::<AppState>();
+            platform_cmds::record_pending_opens(&state, std::env::args().skip(1));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -94,7 +113,27 @@ pub fn run() {
             playback_cmds::playback_stop,
             playback_cmds::playback_seek,
             playback_cmds::playback_status,
+            platform_cmds::take_pending_opens,
+            platform_cmds::read_external_file,
         ])
-        .run(tauri::generate_context!())
-        .expect("run the Phonia desktop application");
+        .build(tauri::generate_context!())
+        .expect("build the Phonia desktop application");
+
+    // `Builder::run` doesn't expose the run-loop event stream `Opened` arrives
+    // on, so open-with on macOS (double-click, or `Open With` while already
+    // running) needs the lower-level `build` + `run(callback)` split.
+    app.run(|app_handle, event| {
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Opened { urls } = event {
+            let state = app_handle.state::<AppState>();
+            let paths = urls
+                .into_iter()
+                .filter_map(|url| url.to_file_path().ok())
+                .map(|path| path.to_string_lossy().into_owned());
+            platform_cmds::record_pending_opens(&state, paths);
+            let _ = app_handle.emit(FILES_OPENED_EVENT, ());
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = (app_handle, event);
+    });
 }
