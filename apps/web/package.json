@@ -9,6 +9,7 @@
     "prebuild": "bun run build:wasm",
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "postbuild": "bun run scripts/dedupe-head.ts",
     "preview": "vite preview --host 127.0.0.1",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test:e2e": "playwright test"

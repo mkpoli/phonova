@@ -1,7 +1,12 @@
 <script lang="ts">
   import LandingPage from '$lib/landing/LandingPage.svelte';
 
-  const url = 'https://phonia.app/landing';
+  // Served at two addresses (about.phonia.app/ via the worker rewrite in
+  // src/worker.ts, and phonia.app/landing directly) with byte-identical
+  // markup. about.phonia.app is the dedicated marketing domain, so it is
+  // canonical; phonia.app/landing's own tags point there too, rather than
+  // at themselves, so the two don't read as duplicate content.
+  const url = 'https://about.phonia.app/';
   const title = 'Phonia — phonetics software for the browser and desktop';
   const description =
     "Phonia records, annotates, and measures speech, in the browser or as a desktop app. Pitch, formant, intensity, and harmonicity analysis are checked against Praat under matched settings. Free and open source.";
@@ -25,7 +30,7 @@
       "@type": "AboutPage",
       "name": "Phonia — phonetics software for the browser and desktop",
       "description": "Phonia records, annotates, and measures speech, in the browser or as a desktop app. Pitch, formant, intensity, and harmonicity analysis are checked against Praat under matched settings. Free and open source.",
-      "url": "https://phonia.app/landing",
+      "url": "https://about.phonia.app/",
       "mainEntity": {
         "@type": "SoftwareApplication",
         "name": "Phonia",
