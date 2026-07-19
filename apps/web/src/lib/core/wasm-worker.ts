@@ -265,6 +265,22 @@ function readAtOf(handle: SyncAccessHandle) {
   };
 }
 
+/**
+ * Detects a WAV, AIFF, or FLAC container from its leading bytes, mirroring
+ * `phx_audio::sniff_container`. Only WAV supports the streamed-open path
+ * ({@link wasmWavStreamHeader} parses a RIFF/WAVE header), so the worker reads
+ * this before deciding whether a stored file is a streaming candidate or
+ * belongs straight on the eager decode path.
+ */
+function sniffContainer(head: Uint8Array): 'wav' | 'aiff' | 'flac' | null {
+  if (head.length < 12) return null;
+  const ascii = (start: number, end: number) => String.fromCharCode(...head.subarray(start, end));
+  if (ascii(0, 4) === 'fLaC') return 'flac';
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WAVE') return 'wav';
+  if (ascii(0, 4) === 'FORM' && (ascii(8, 12) === 'AIFF' || ascii(8, 12) === 'AIFC')) return 'aiff';
+  return null;
+}
+
 function colormap(name: SpectrogramTileRequest['colormap']): WasmColormap {
   return WasmColormap[name];
 }
@@ -363,7 +379,7 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
     switch (message.method) {
       case 'importAudio': {
         const bytes = new Uint8Array(message.bytes);
-        const importedId = wasm.importWavBytes(bytes);
+        const importedId = wasm.importAudioBytes(bytes);
         const hash = wasmContentHash(bytes);
         const info = wasm.audioInfo(importedId);
         const result = {
@@ -381,14 +397,17 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
         // The file already lives in OPFS. A sync access handle serves its bytes
         // without them ever crossing postMessage: a short take is read whole and
         // decoded eagerly, a long one is opened streamed so only ranged reads
-        // reach wasm and the decoded signal never resides in memory.
+        // reach wasm and the decoded signal never resides in memory. Streaming
+        // is a WAV-only path (the header parse below is RIFF-specific), so an
+        // AIFF or FLAC file always takes the eager branch regardless of length.
         const handle = await openSyncHandle(message.dirSegments, message.fileName);
         const size = handle.getSize();
         const readAt = readAtOf(handle);
         let keepHandle = false;
         try {
-          const header = wasmWavStreamHeader(size, readAt);
-          const streamed = header.frames > WasmEngine.eagerImportFrameLimit();
+          const container = size >= 12 ? sniffContainer(readAt(0, 12)) : null;
+          const header = container === 'wav' ? wasmWavStreamHeader(size, readAt) : null;
+          const streamed = header !== null && header.frames > WasmEngine.eagerImportFrameLimit();
 
           let audioId: bigint;
           let hash: string;
@@ -413,7 +432,7 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
               if (read <= 0) break;
               offset += read;
             }
-            audioId = wasm.importWavBytes(bytes);
+            audioId = wasm.importAudioBytes(bytes);
             hash = wasmContentHash(bytes);
           }
 
