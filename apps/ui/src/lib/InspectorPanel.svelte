@@ -127,6 +127,18 @@
         provisional until gate review.
       </p>
     </div>
+    <div class="field">
+      <div class="label-row"><span>Mark</span></div>
+      <select data-testid="formant-mark" bind:value={params.formant.mark}>
+        <option value="speckle">Speckles</option>
+        <option value="track">Connected tracks</option>
+      </select>
+      <p class="note">
+        Speckles are the Praat-familiar dot-per-candidate view, sized by bandwidth. Tracks connect
+        each formant across time and break wherever a frame has no candidate for it, rather than
+        drawing through the gap.
+      </p>
+    </div>
   </section>
 
   <section class="group" data-testid="inspector-intensity">
@@ -280,6 +292,26 @@
   }
 
   input[type='number']:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 20%, transparent);
+  }
+
+  select {
+    width: 100%;
+    min-height: 2rem;
+    padding: 0.32rem 0.45rem;
+    border: 1px solid var(--chrome-strong);
+    border-radius: var(--radius-sm);
+    background: var(--panel-soft);
+    color: var(--text);
+    font: inherit;
+    transition:
+      border-color var(--t-fast),
+      box-shadow var(--t-fast);
+  }
+
+  select:focus {
     outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 20%, transparent);

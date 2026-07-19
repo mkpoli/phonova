@@ -180,9 +180,14 @@ target has nothing to show yet.
   luminance-monotonicity badge; a ramp is not checked for color-vision
   deficiency, so the built-ins remain the choice when that guarantee matters.
 - **Overlay conventions are frozen**: pitch `#9cc4ff` (blue line, right-hand
-  Hz scale), formants `#ff5a52` (speckles sized by bandwidth), intensity
-  `#ffcc33` (thin line). These match the colors a Praat user already reads
-  fluently; changing them would break twenty years of trained eyes.
+  Hz scale), formants `#ff5a52`, intensity `#ffcc33` (thin line). These match
+  the colors a Praat user already reads fluently; changing them would break
+  twenty years of trained eyes. The formant color is frozen; its mark is not
+  — speckles sized by bandwidth (default, the Praat-familiar view) or
+  connected per-formant tracks, user-selectable in the inspector. A track
+  breaks wherever a frame has no candidate for that formant rather than
+  interpolating across the gap, so it never draws a measurement the analysis
+  did not produce.
 - Overlay strokes carry a dark halo so they stay legible over any palette in
   either theme.
 - Readouts state units (`Hz`, `dB`, `s`) and never round below measurement

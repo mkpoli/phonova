@@ -571,10 +571,25 @@ export interface FigureExportResult {
   sidecars: FigureSidecar[];
 }
 
+/**
+ * How formant candidates render: `speckle` is the frozen Praat-familiar
+ * convention (dots sized by bandwidth); `track` connects same-formant
+ * candidates into a line per formant, breaking wherever the track has no
+ * candidate rather than interpolating across the gap. A display choice only
+ * — neither mode changes a measured value.
+ */
+export type FormantMark = 'speckle' | 'track';
+
 /** Per-track visibility and analysis parameters edited in the inspector. */
 export interface OverlayParams {
   pitch: { show: boolean; floorHz: number; ceilingHz: number };
-  formant: { show: boolean; ceilingHz: number; maxFormants: number; smoothed: boolean };
+  formant: {
+    show: boolean;
+    ceilingHz: number;
+    maxFormants: number;
+    smoothed: boolean;
+    mark: FormantMark;
+  };
   intensity: { show: boolean; floorHz: number };
 }
 
@@ -587,7 +602,7 @@ export interface OverlayStats {
 export function defaultOverlayParams(): OverlayParams {
   return {
     pitch: { show: true, floorHz: 75, ceilingHz: 600 },
-    formant: { show: true, ceilingHz: 5500, maxFormants: 5, smoothed: false },
+    formant: { show: true, ceilingHz: 5500, maxFormants: 5, smoothed: false, mark: 'speckle' },
     intensity: { show: true, floorHz: 100 }
   };
 }

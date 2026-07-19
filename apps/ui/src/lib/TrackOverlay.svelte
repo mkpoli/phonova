@@ -168,6 +168,7 @@
     formant;
     intensity;
     params.pitch.ceilingHz;
+    params.formant.mark;
     scheduleDraw();
   });
 
@@ -221,6 +222,10 @@
   }
 
   function drawFormants(ctx: CanvasRenderingContext2D, width: number, height: number) {
+    if (params.formant.mark === 'track') {
+      drawFormantTracks(ctx, width, height, groupFormantFrames(formant!.points));
+      return;
+    }
     const points = formant!.points;
     ctx.strokeStyle = HALO;
     ctx.lineWidth = 1;
@@ -241,6 +246,87 @@
       ctx.fill();
       ctx.globalAlpha = 1;
       ctx.stroke();
+    }
+  }
+
+  /** One analysis frame's formant candidates, ascending by frequency. */
+  interface FormantFrameCandidates {
+    time: number;
+    freqs: Float64Array;
+  }
+
+  /**
+   * Regroups the flat `[time, freq, bandwidth]` stream back into per-frame
+   * candidate lists. Points from the same analysis frame share the same
+   * `time` and arrive contiguously, so a run of equal `time` values is one
+   * frame; candidates within it are already ascending by frequency (the
+   * engine's own ordering), which is what a rank index below tracks.
+   */
+  function groupFormantFrames(points: Float64Array): FormantFrameCandidates[] {
+    const frames: { time: number; freqs: number[] }[] = [];
+    let current: { time: number; freqs: number[] } | null = null;
+    for (let i = 0; i < points.length; i += 3) {
+      const time = points[i];
+      if (!current || current.time !== time) {
+        current = { time, freqs: [] };
+        frames.push(current);
+      }
+      current.freqs.push(points[i + 1]);
+    }
+    return frames.map((f) => ({ time: f.time, freqs: Float64Array.from(f.freqs) }));
+  }
+
+  /**
+   * Connected per-formant tracks: one polyline per rank (lowest candidate in
+   * a frame is rank 0, the next is rank 1, and so on). A frame that has no
+   * candidate at a rank — an unvoiced stretch, or a higher formant the LPC
+   * gate dropped that frame — breaks the path there instead of joining
+   * across it, so the line never implies a measurement the analysis did not
+   * produce.
+   */
+  function drawFormantTracks(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    frames: FormantFrameCandidates[]
+  ) {
+    let maxRank = 0;
+    for (const frame of frames) maxRank = Math.max(maxRank, frame.freqs.length);
+
+    const strokeRank = (rank: number, color: string, lineWidth: number) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      let drawing = false;
+      ctx.beginPath();
+      for (const frame of frames) {
+        const freq = frame.freqs[rank];
+        const inView =
+          freq !== undefined &&
+          frame.time >= viewport.t0 &&
+          frame.time <= viewport.t1 &&
+          freq >= viewport.f0 &&
+          freq <= viewport.f1;
+        if (!inView) {
+          drawing = false;
+          continue;
+        }
+        const x = timeToX(frame.time, width);
+        const y = freqToY(freq, height);
+        if (!drawing) {
+          ctx.moveTo(x, y);
+          drawing = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+    };
+
+    for (let rank = 0; rank < maxRank; rank += 1) {
+      strokeRank(rank, HALO, 3.4);
+      strokeRank(rank, FORMANT_COLOR, 1.5);
     }
   }
 
