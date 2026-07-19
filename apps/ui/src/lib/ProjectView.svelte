@@ -369,8 +369,8 @@
         <div class="empty" data-testid="corpus-empty">
           <p class="empty-lead">No recordings yet.</p>
           <p class="empty-sub">
-            Drop WAV files here, or choose them. A TextGrid beside a WAV of the same name attaches as
-            its annotation.
+            Drop WAV, AIFF, or FLAC files here, or choose them. A TextGrid beside a recording of the
+            same name attaches as its annotation.
           </p>
           <div class="empty-actions">
             <button type="button" class="empty-action" data-testid="corpus-choose-files" onclick={() => fileInput?.click()}>

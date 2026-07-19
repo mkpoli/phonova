@@ -461,8 +461,8 @@
       <div class="empty" data-testid="home-empty">
         <p class="lead">Drop a folder of recordings here to start a project.</p>
         <p class="sub">
-          Every WAV becomes a browsable entry. A TextGrid beside a WAV of the same name attaches as
-          its annotation.
+          Every WAV, AIFF, or FLAC file becomes a browsable entry. A TextGrid beside a recording of
+          the same name attaches as its annotation.
         </p>
         <div class="empty-actions">
           {#if onOpenSample}

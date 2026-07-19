@@ -81,11 +81,11 @@
 
   <label class="drop-target">
     <IconFileAudio class="drop-icon" aria-hidden="true" />
-    <span>{audio?.name ?? 'Drop or choose a WAV'}</span>
+    <span>{audio?.name ?? 'Drop or choose a recording'}</span>
     <input
       data-testid="file-input"
       type="file"
-      accept=".wav,audio/wav,audio/x-wav"
+      accept=".wav,audio/wav,audio/x-wav,.aiff,.aif,audio/aiff,.flac,audio/flac"
       onchange={(event) => takeFileList(event.currentTarget.files)}
     />
   </label>
