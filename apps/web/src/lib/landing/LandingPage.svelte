@@ -58,6 +58,7 @@
   let frameReady = $state(false);
   let frameFailed = $state(false);
   let appFrame = $state<HTMLIFrameElement | null>(null);
+  let frameSection = $state<HTMLElement | null>(null);
 
   let redrawHero: (() => void) | null = null;
 
@@ -87,9 +88,29 @@
   }
 
   onMount(() => {
-    const timer = setTimeout(() => {
-      if (!frameReady) frameFailed = true;
-    }, 6000);
+    // The iframe is `loading="lazy"`, so the browser only starts fetching it
+    // once the frame nears the viewport — on a normal scroll pace that can
+    // be well past 6 seconds after mount. Starting the failure timer at
+    // mount would flag a slow scroller's frame as failed before it ever
+    // began loading, so the timer starts only once the frame's section is
+    // close enough to the viewport that the browser's own lazy-load has
+    // plausibly kicked in.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let frameObserver: IntersectionObserver | null = null;
+    if (frameSection) {
+      frameObserver = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) {
+            timer = setTimeout(() => {
+              if (!frameReady) frameFailed = true;
+            }, 6000);
+            frameObserver?.disconnect();
+          }
+        },
+        { rootMargin: '800px 0px' }
+      );
+      frameObserver.observe(frameSection);
+    }
 
     let raf = 0;
 
@@ -354,7 +375,8 @@
     }
 
     return () => {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
+      frameObserver?.disconnect();
       cancelAnimationFrame(raf);
       io?.disconnect();
     };
@@ -652,7 +674,7 @@
           </p>
         </div>
         <figure data-rv>
-          <div class="shot-frame">
+          <div class="shot-frame" bind:this={frameSection}>
             <div class="shot-chrome">
               <i></i><i></i><i></i>
               <span class="shot-title">phonia — live</span>
