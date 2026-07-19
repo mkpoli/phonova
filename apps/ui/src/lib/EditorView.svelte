@@ -719,16 +719,9 @@
       id: `colormap${p.name}`,
       title: `Spectrogram palette: ${p.label}`,
       group: 'Appearance' as const,
-      keywords: ['colormap', 'color', p.label.toLowerCase(), ...(p.keywords ?? [])],
+      keywords: ['colormap', 'color', p.label.toLowerCase()],
       run: () => onPaletteChange({ kind: 'builtin', name: p.name })
     })),
-    {
-      id: 'invertPalette',
-      title: 'Invert spectrogram palette',
-      group: 'Appearance',
-      keywords: ['colormap', 'color', 'invert', 'reverse', 'negative', 'flip'],
-      run: () => onPaletteInvertToggle()
-    },
     {
       id: 'colormapNewRamp',
       title: 'New custom spectrogram ramp…',
@@ -803,10 +796,8 @@
 
       <PalettePicker
         {palette}
-        invert={paletteInvert}
         {customRamps}
         onSelect={onPaletteChange}
-        onToggleInvert={onPaletteInvertToggle}
         onNewRamp={openNewRamp}
         onEditRamp={openEditRamp}
       />
@@ -892,7 +883,6 @@
         {cursorTime}
         {theme}
         palette={activePalette}
-        {paletteInvert}
         {overlayParams}
         onOverlayStats={(stats) => (overlayStats = stats)}
         {selection}
