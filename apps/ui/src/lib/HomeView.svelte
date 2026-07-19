@@ -461,10 +461,7 @@
           Phonia analyzes recorded speech — waveform, spectrogram, pitch, and annotation tiers in
           one workspace.
         </p>
-        <p class="sub">
-          Start by dropping a folder of recordings, choosing files, opening the sample project, or
-          recording one now.
-        </p>
+        <p class="sub">Drop a folder of recordings to start, or use the buttons below.</p>
         <div class="empty-actions">
           {#if onOpenSample}
             <button type="button" class="primary" data-testid="open-sample" onclick={onOpenSample}>

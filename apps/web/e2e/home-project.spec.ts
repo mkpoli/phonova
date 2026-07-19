@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { canvasForegroundCoverage } from './helpers';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../../..');
@@ -99,6 +100,35 @@ test('open sample project loads the bundled corpus', async ({ page }) => {
     2
   );
   await expect(page.locator('[data-recording-name="synth_vowel_perturbed"]')).toHaveCount(1);
+});
+
+test('opening the sample repeatedly always reaches a rendered editor', async ({ page }) => {
+  // Regression coverage for a home screen where the intro paragraph and the
+  // "Open sample project" button both mention "sample": a fuzzy text match
+  // picks the paragraph, clicks nothing, and fails silently. The control is
+  // only ever addressed by its test id here, and the whole open-to-render
+  // path runs several times so a one-in-N flake fails the suite too.
+  await page.goto('/');
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await expect(page.getByTestId('home-empty')).toBeVisible();
+    await page.getByTestId('open-sample').click();
+
+    await expect(page.getByTestId('corpus')).toBeVisible();
+    await expect(page.getByTestId('corpus-row')).toHaveCount(3, { timeout: 30_000 });
+
+    await page.getByTestId('corpus-row').first().click();
+    await expect(page.getByTestId('editor')).toHaveAttribute('data-visible-end', /[1-9]/);
+    await expect(page.getByTestId('waveform-canvas')).toHaveAttribute('data-render-token', /[1-9]/);
+    await expect(page.getByTestId('spectrogram-canvas')).toHaveAttribute('data-render-token', /[1-9]/);
+    expect(await canvasForegroundCoverage(page, 'waveform-canvas')).toBeGreaterThan(0);
+    expect(await canvasForegroundCoverage(page, 'spectrogram-canvas')).toBeGreaterThan(0);
+
+    await page.getByTestId('back-corpus').click();
+    await page.getByTestId('back-home').click();
+    await expect(page.getByTestId('project-card')).toHaveCount(1);
+    await page.getByTestId('delete-project').click();
+  }
 });
 
 test('annotate, recover after reload via autosave, then delete', async ({ page }) => {
