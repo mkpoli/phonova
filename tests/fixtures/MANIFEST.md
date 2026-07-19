@@ -97,6 +97,24 @@ material is present.
 - Processing: concatenation, looping, trimming, fade-out, as described
   above. 16 kHz, 16-bit PCM, mono, 600.0 s (19.2 MB).
 
+### `aiff_stereo_16_44100.aiff`
+
+- Source: copy of `crates/phx-audio/tests/fixtures/aiff_stereo_16_44100.aiff`;
+  see that directory's own `MANIFEST.md` for generation (`generate.sh`, two
+  sine tones — 440 Hz left, 660 Hz right — through `ffmpeg`). Synthetic, no
+  external corpus.
+- License: original work, project license (MIT OR Apache-2.0).
+- Processing: none beyond the copy. AIFF, 16-bit PCM, stereo, 44.1 kHz.
+
+### `flac_level5.flac`
+
+- Source: copy of `crates/phx-audio/tests/fixtures/flac_level5.flac`; see
+  that directory's own `MANIFEST.md` for generation (`generate.sh`, the
+  reference `flac` encoder at compression level 5 over the same two-tone PCM
+  as the AIFF fixture above). Synthetic, no external corpus.
+- License: original work, project license (MIT OR Apache-2.0).
+- Processing: none beyond the copy. FLAC, 16-bit PCM, stereo, 44.1 kHz.
+
 ## TextGrids — `tests/fixtures/textgrids/`
 
 Redistributable real-world TextGrid corpora with a clear license are not
