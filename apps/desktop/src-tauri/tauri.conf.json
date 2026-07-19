@@ -43,6 +43,20 @@
         "role": "Editor"
       },
       {
+        "ext": ["aiff", "aif"],
+        "name": "AIFF recording",
+        "description": "Audio recording",
+        "mimeType": "audio/aiff",
+        "role": "Editor"
+      },
+      {
+        "ext": ["flac"],
+        "name": "FLAC recording",
+        "description": "Audio recording",
+        "mimeType": "audio/flac",
+        "role": "Editor"
+      },
+      {
         "ext": ["textgrid"],
         "name": "TextGrid annotation",
         "description": "Praat-compatible tier annotation",

@@ -16,9 +16,10 @@ use tauri::State;
 use crate::state::{AppState, DmabufAdvisoryDto};
 
 /// Extensions the file-association handoff recognises, matched
-/// case-insensitively: `.wav` and `.TextGrid` recordings, and the `.phxproj`
-/// project container (`docs/formats/project.md`).
-const RECOGNIZED_EXTENSIONS: [&str; 3] = ["wav", "textgrid", "phxproj"];
+/// case-insensitively: `.wav`, `.aiff`/`.aif`, and `.flac` recordings,
+/// `.TextGrid` annotations, and the `.phxproj` project container
+/// (`docs/formats/project.md`).
+const RECOGNIZED_EXTENSIONS: [&str; 6] = ["wav", "aiff", "aif", "flac", "textgrid", "phxproj"];
 
 fn recognized(path: &str) -> bool {
     Path::new(path)

@@ -107,40 +107,63 @@ fn hash_file(path: &Path) -> std::io::Result<String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
+/// Reports whether `rel`'s extension is `.wav`, case-insensitively.
+///
+/// Only WAV supports the streamed-open path below — [`phx_engine::StreamingWav`]
+/// parses a RIFF/WAVE header — so an AIFF or FLAC recording always takes the
+/// eager branch of [`open_audio_streaming`] regardless of length.
+fn looks_like_wav(rel: &str) -> bool {
+    Path::new(rel)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("wav"))
+}
+
 /// Opens an audio file already stored under the projects root, choosing the
 /// eager or streamed path by its length.
 ///
-/// `rel` is a `/`-separated path beneath the root. A file over the engine's
-/// eager frame threshold opens streamed over a `Send + Sync` file reader — only
-/// the header and the bounded waveform pyramid are read up front, and analysis
-/// reads sample ranges on demand — so an hour-long take never decodes whole into
-/// memory. A shorter file decodes eagerly, exactly as [`import_audio`] does.
+/// `rel` is a `/`-separated path beneath the root. A WAV file over the
+/// engine's eager frame threshold opens streamed over a `Send + Sync` file
+/// reader — only the header and the bounded waveform pyramid are read up
+/// front, and analysis reads sample ranges on demand — so an hour-long take
+/// never decodes whole into memory. A shorter WAV, or any AIFF or FLAC file,
+/// decodes eagerly, exactly as [`import_audio`] does.
 #[tauri::command]
 pub fn open_audio_streaming(state: State<AppState>, rel: String) -> Result<AudioInfoDto, String> {
     let path = resolve(&state.root, &rel);
     let name = path.file_name().map(|s| s.to_string_lossy().into_owned());
-
-    let frames =
-        phx_engine::StreamingWav::open(FileReader::open(&path).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?
-            .frames();
 
     let mut engine = state
         .engine
         .lock()
         .map_err(|_| "engine lock poisoned".to_string())?;
 
-    let (id, hash) = if frames > Engine::eager_import_frame_limit() {
-        let hash = hash_file(&path).map_err(|e| e.to_string())?;
-        let reader = FileReader::open(&path).map_err(|e| e.to_string())?;
-        let id = engine
-            .open_streaming_wav(reader, name)
-            .map_err(|e| e.to_string())?;
-        (id, hash)
+    let (id, hash) = if looks_like_wav(&rel) {
+        let frames =
+            phx_engine::StreamingWav::open(FileReader::open(&path).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?
+                .frames();
+        if frames > Engine::eager_import_frame_limit() {
+            let hash = hash_file(&path).map_err(|e| e.to_string())?;
+            let reader = FileReader::open(&path).map_err(|e| e.to_string())?;
+            let id = engine
+                .open_streaming_wav(reader, name)
+                .map_err(|e| e.to_string())?;
+            (id, hash)
+        } else {
+            let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+            let hash = ContentHash::of(&bytes).to_hex();
+            let id = engine
+                .import_audio_bytes(&bytes)
+                .map_err(|e| e.to_string())?;
+            (id, hash)
+        }
     } else {
         let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
         let hash = ContentHash::of(&bytes).to_hex();
-        let id = engine.import_wav_bytes(&bytes).map_err(|e| e.to_string())?;
+        let id = engine
+            .import_audio_bytes(&bytes)
+            .map_err(|e| e.to_string())?;
         (id, hash)
     };
 
@@ -155,8 +178,9 @@ pub fn open_audio_streaming(state: State<AppState>, rel: String) -> Result<Audio
     })
 }
 
-/// Decodes RIFF/WAVE bytes into the engine, returning metadata and the BLAKE3
-/// content hash the project manifest records. Bytes cross as a raw request body.
+/// Decodes a WAV, AIFF, or FLAC byte buffer into the engine, returning
+/// metadata and the BLAKE3 content hash the project manifest records. Bytes
+/// cross as a raw request body.
 #[tauri::command]
 pub fn import_audio(state: State<AppState>, request: Request<'_>) -> Result<AudioInfoDto, String> {
     let bytes = raw_body(&request)?;
@@ -165,7 +189,9 @@ pub fn import_audio(state: State<AppState>, request: Request<'_>) -> Result<Audi
         .engine
         .lock()
         .map_err(|_| "engine lock poisoned".to_string())?;
-    let id = engine.import_wav_bytes(&bytes).map_err(|e| e.to_string())?;
+    let id = engine
+        .import_audio_bytes(&bytes)
+        .map_err(|e| e.to_string())?;
     let info = engine.audio_info(id).map_err(|e| e.to_string())?;
     Ok(AudioInfoDto {
         id: id.as_u64(),
