@@ -210,6 +210,11 @@ target has nothing to show yet.
 - **Non-modal by default.** Inspectors, readouts, the export dialog, and the
   recording strip are panels beside the work. A blocking modal is reserved
   for data-loss decisions (recovery, deletion).
+- **The transport docks to the bottom edge**, spanning the editor, and carries
+  play/pause with skip and loop, the record control, the timecode against
+  total duration, and the readouts that report the open signal (selection
+  length, view span, sample position, format) — one bar, not a transport row
+  stacked over a separate status footer.
 - **Focus** is always visible: one `:focus-visible` ring style everywhere.
 - Empty states name the one action that fills them, in one or two sentences,
   with keycap chips for the relevant keys.
@@ -225,7 +230,8 @@ say what happened and what to do next.
 ## Per-surface register
 
 - **Editor**: chrome shrinks to labels-on-chips; the data area owns the
-  viewport. Panels (inspector, readout) dock to edges.
+  viewport. Panels (inspector, readout) dock to edges; the transport docks to
+  the bottom.
 - **Home and corpus**: card grid and data table, Carbon-style discipline,
   identity accents on hover and active states only.
 - **Dialogs and overlays**: `--radius-xl`, `--shadow-lg`, backdrop blur,

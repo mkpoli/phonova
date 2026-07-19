@@ -5,6 +5,13 @@ export class WebAudioPlayback {
   #startedAt = 0;
   #offset = 0;
   #playing = false;
+  // Loop state: `#loop` is the user's toggle; `#loopStart`/`#loopEnd` are the
+  // bounds of whatever range is currently sounding (the whole file for
+  // `play()`, a span for `playRange()`), kept live so a mid-playback toggle
+  // wraps the segment that is actually playing, not a stale one.
+  #loop = false;
+  #loopStart = 0;
+  #loopEnd = 0;
 
   async load(file: File) {
     const context = this.#audioContext();
@@ -32,6 +39,11 @@ export class WebAudioPlayback {
     source.buffer = this.#buffer;
     source.connect(context.destination);
     const offset = Math.min(Math.max(0, cursorTime), Math.max(0, this.#buffer.duration - 0.001));
+    this.#loopStart = 0;
+    this.#loopEnd = this.#buffer.duration;
+    source.loop = this.#loop;
+    source.loopStart = this.#loopStart;
+    source.loopEnd = this.#loopEnd;
     source.start(0, offset);
     this.#offset = offset;
     this.#startedAt = context.currentTime;
@@ -57,6 +69,11 @@ export class WebAudioPlayback {
     const source = context.createBufferSource();
     source.buffer = this.#buffer;
     source.connect(context.destination);
+    this.#loopStart = start;
+    this.#loopEnd = end > start ? end : duration;
+    source.loop = this.#loop;
+    source.loopStart = this.#loopStart;
+    source.loopEnd = this.#loopEnd;
     // A non-positive span falls back to playing from the start point.
     if (end - start > 0) source.start(0, start, end - start);
     else source.start(0, start);
@@ -71,6 +88,18 @@ export class WebAudioPlayback {
         this.#source = null;
       }
     };
+  }
+
+  /** Toggles whether the currently sounding (or next) range repeats. Live —
+   *  it takes effect on the source that is playing right now, not just the
+   *  next one started. */
+  setLoop(enabled: boolean) {
+    this.#loop = enabled;
+    if (this.#source) this.#source.loop = enabled;
+  }
+
+  get loop() {
+    return this.#loop;
   }
 
   /**
@@ -122,7 +151,15 @@ export class WebAudioPlayback {
   get position() {
     if (!this.#playing || !this.#context) return this.#offset;
     const duration = this.#buffer?.duration ?? Number.POSITIVE_INFINITY;
-    return Math.min(duration, this.#offset + (this.#context.currentTime - this.#startedAt));
+    const elapsed = this.#context.currentTime - this.#startedAt;
+    if (!this.#loop || !this.#source?.loop) return Math.min(duration, this.#offset + elapsed);
+    // Looping: the first lap runs from the start offset to loopEnd (which may
+    // be shorter than a full lap), every lap after that spans the full
+    // loopStart..loopEnd range, wrapping the elapsed clock to match.
+    const span = Math.max(0.0001, this.#loopEnd - this.#loopStart);
+    const firstLap = this.#loopEnd - this.#offset;
+    if (elapsed < firstLap) return this.#offset + elapsed;
+    return this.#loopStart + ((elapsed - firstLap) % span);
   }
 
   get playing() {
