@@ -20,6 +20,21 @@ wildcards = "deny"
 
 [advisories]
 yanked = "deny"
+# RUSTSEC-2026-0206 (rustybuzz) and RUSTSEC-2026-0192 (ttf-parser) are
+# informational "unmaintained" notices, not vulnerabilities — both advisories
+# carry no patched version (`patched = []`), and every current release of
+# resvg/usvg (through 0.47.0, the latest on crates.io as of this writing)
+# still pins the same rustybuzz 0.20.1 / ttf-parser 0.25.1, so no upgrade of
+# the direct resvg/usvg/svg2pdf dependencies clears them. crates/phx-figure
+# does exercise text shaping through this stack — SVG axis/tick/point labels
+# go through resvg's `text` feature on every PNG and PDF export — so the code
+# path is reachable, not dead, and can't be dropped by disabling the feature.
+# Re-evaluate when resvg migrates to harfrust/skrifa (the advisories' named
+# successors) or when either crate regains a maintainer.
+ignore = [
+    { id = "RUSTSEC-2026-0206", reason = "rustybuzz unmaintained notice, no patched version exists; text shaping is reachable via phx-figure's SVG label rendering but resvg upstream has not migrated to harfrust yet" },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained notice, no patched version exists; same resvg/usvg font stack as RUSTSEC-2026-0206, no migration to skrifa upstream yet" },
+]
 
 [sources]
 unknown-registry = "deny"

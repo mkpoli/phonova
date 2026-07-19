@@ -58,14 +58,14 @@ jobs:
       - run: cargo build --target wasm32-unknown-unknown -p phx-wasm
 
   cargo-deny:
-    name: cargo-deny (licenses)
+    name: cargo-deny (licenses, advisories)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
-          command-arguments: licenses
+          command-arguments: licenses advisories
 
   oracle:
     name: oracle
