@@ -800,14 +800,6 @@ export class ProjectStore {
     return null;
   }
 
-  /** Reads a recording's WAV bytes as a File, for playback decoding. */
-  async readAudioFile(id: string, recording: RecordingEntry): Promise<File | null> {
-    const dir = await projectDir(id, false);
-    const audioDir = await dir.getDirectoryHandle(AUDIO_DIR, { create: false });
-    const bytes = await readFileBytes(audioDir, recording.fileName);
-    return bytes ? new File([bytes], recording.fileName) : null;
-  }
-
   /** Removes a project's autosave sidecar, discarding unsaved work. */
   async discardRecovery(id: string): Promise<void> {
     const dir = await projectDir(id, false);

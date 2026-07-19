@@ -597,8 +597,16 @@
       };
       annotationId = entry.annotationId;
       cursorTime = 0;
-      const file = await store.readAudioFile(project.id, entry);
-      if (file) await playback?.load(file);
+      // Playback decodes through the browser's native decoder, which does not
+      // reliably support every container the engine imports (AIFF in
+      // particular). Re-encoding through the engine's own decoded buffer keeps
+      // playback independent of the stored file's format — every recording
+      // plays back the same way regardless of whether it was imported as WAV,
+      // AIFF, or FLAC.
+      const wav = await client.exportSpanWav(entry.audioId, 0, entry.duration, 'Pcm16');
+      const owned = new Uint8Array(wav.byteLength);
+      owned.set(wav);
+      await playback?.load(new File([owned], `${entry.name}.wav`, { type: 'audio/wav' }));
       playback?.seek(0);
       resetAutosaveBaseline();
       route = 'editor';
