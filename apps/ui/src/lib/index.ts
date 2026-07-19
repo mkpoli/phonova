@@ -30,6 +30,7 @@ export { default as VoiceReportCard } from './VoiceReportCard.svelte';
 export { default as WaveThumb } from './WaveThumb.svelte';
 export { default as WaveformPane } from './WaveformPane.svelte';
 export { filesFromDataTransfer } from './dnd';
+export { LANDING_URL } from './links';
 export {
   createGroup,
   dissolveGroup,
