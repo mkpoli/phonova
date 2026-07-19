@@ -1,0 +1,18 @@
+File type = "ooTextFile"
+Object class = "TextGrid"
+
+xmin = 0
+xmax = 5.6
+tiers? <exists>
+size = 1
+item []:
+    item [1]:
+        class = "IntervalTier"
+        name = "orthographic"
+        xmin = 0
+        xmax = 5.6
+        intervals: size = 1
+        intervals [1]:
+            xmin = 0
+            xmax = 5.6
+            text = "many little wrinkles gathered between his eyes as he contemplated this and his brow moistened"

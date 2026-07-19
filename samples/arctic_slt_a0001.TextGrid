@@ -1,0 +1,166 @@
+File type = "ooTextFile"
+Object class = "TextGrid"
+
+xmin = 0
+xmax = 3.355
+tiers? <exists>
+size = 1
+item []:
+    item [1]:
+        class = "IntervalTier"
+        name = "phones"
+        xmin = 0
+        xmax = 3.355
+        intervals: size = 38
+        intervals [1]:
+            xmin = 0
+            xmax = 0.062
+            text = "pau"
+        intervals [2]:
+            xmin = 0.062
+            xmax = 0.18075
+            text = "pau"
+        intervals [3]:
+            xmin = 0.18075
+            xmax = 0.34325
+            text = "ao"
+        intervals [4]:
+            xmin = 0.34325
+            xmax = 0.45575
+            text = "th"
+        intervals [5]:
+            xmin = 0.45575
+            xmax = 0.61825
+            text = "er"
+        intervals [6]:
+            xmin = 0.61825
+            xmax = 0.66825
+            text = "ah"
+        intervals [7]:
+            xmin = 0.66825
+            xmax = 0.76825
+            text = "v"
+        intervals [8]:
+            xmin = 0.76825
+            xmax = 0.8245
+            text = "dh"
+        intervals [9]:
+            xmin = 0.8245
+            xmax = 0.85575
+            text = "ax"
+        intervals [10]:
+            xmin = 0.85575
+            xmax = 0.937
+            text = "d"
+        intervals [11]:
+            xmin = 0.937
+            xmax = 1.05575
+            text = "ey"
+        intervals [12]:
+            xmin = 1.05575
+            xmax = 1.10575
+            text = "n"
+        intervals [13]:
+            xmin = 1.10575
+            xmax = 1.162
+            text = "jh"
+        intervals [14]:
+            xmin = 1.162
+            xmax = 1.2245
+            text = "er"
+        intervals [15]:
+            xmin = 1.2245
+            xmax = 1.337
+            text = "t"
+        intervals [16]:
+            xmin = 1.337
+            xmax = 1.39325
+            text = "r"
+        intervals [17]:
+            xmin = 1.39325
+            xmax = 1.49325
+            text = "ey"
+        intervals [18]:
+            xmin = 1.49325
+            xmax = 1.662
+            text = "l"
+        intervals [19]:
+            xmin = 1.662
+            xmax = 1.68075
+            text = "pau"
+        intervals [20]:
+            xmin = 1.68075
+            xmax = 1.81825
+            text = "f"
+        intervals [21]:
+            xmin = 1.81825
+            xmax = 1.84325
+            text = "ih"
+        intervals [22]:
+            xmin = 1.84325
+            xmax = 1.95575
+            text = "l"
+        intervals [23]:
+            xmin = 1.95575
+            xmax = 1.98075
+            text = "ax"
+        intervals [24]:
+            xmin = 1.98075
+            xmax = 2.04325
+            text = "p"
+        intervals [25]:
+            xmin = 2.04325
+            xmax = 2.137
+            text = "s"
+        intervals [26]:
+            xmin = 2.137
+            xmax = 2.19325
+            text = "t"
+        intervals [27]:
+            xmin = 2.19325
+            xmax = 2.2995
+            text = "iy"
+        intervals [28]:
+            xmin = 2.2995
+            xmax = 2.45575
+            text = "l"
+        intervals [29]:
+            xmin = 2.45575
+            xmax = 2.59325
+            text = "z"
+        intervals [30]:
+            xmin = 2.59325
+            xmax = 2.63075
+            text = "pau"
+        intervals [31]:
+            xmin = 2.63075
+            xmax = 2.6495
+            text = "eh"
+        intervals [32]:
+            xmin = 2.6495
+            xmax = 2.70575
+            text = "t"
+        intervals [33]:
+            xmin = 2.70575
+            xmax = 2.7995
+            text = "s"
+        intervals [34]:
+            xmin = 2.7995
+            xmax = 2.88075
+            text = "eh"
+        intervals [35]:
+            xmin = 2.88075
+            xmax = 2.9245
+            text = "t"
+        intervals [36]:
+            xmin = 2.9245
+            xmax = 3.0495
+            text = "er"
+        intervals [37]:
+            xmin = 3.0495
+            xmax = 3.1495
+            text = "ax"
+        intervals [38]:
+            xmin = 3.1495
+            xmax = 3.355
+            text = "pau"
