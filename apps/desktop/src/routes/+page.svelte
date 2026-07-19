@@ -28,6 +28,7 @@
     ProjectStore,
     type ProjectState
   } from '$lib/project/ProjectStore';
+  import { applyDmabufGuard } from '$lib/platform/dmabufAdvisory';
 
   type Route = 'home' | 'project' | 'editor';
 
@@ -89,6 +90,9 @@
     customRamps = loadCustomRamps();
     palette = loadPalette(customRamps);
     void refreshProjects();
+    void applyDmabufGuard().then((advisory) => {
+      if (advisory) error = advisory;
+    });
 
     // Files the OS handed this launch (double-click, "Open with") — drained
     // once now, and again on `filesOpenedUnlisten`'s event for a relaunch or

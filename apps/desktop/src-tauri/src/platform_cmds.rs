@@ -1,5 +1,6 @@
 //! OS integration: the file-association handoff (CLI args on Windows/Linux,
-//! the macOS open-file event, and a second-instance relaunch).
+//! the macOS open-file event, and a second-instance relaunch) and the Linux
+//! WebKitGTK DMABUF-renderer advisory.
 //!
 //! `lib.rs` records every path the OS hands the process into [`AppState`]
 //! through [`record_pending_opens`]; the frontend drains it once on launch and
@@ -12,7 +13,7 @@ use std::path::Path;
 
 use tauri::State;
 
-use crate::state::AppState;
+use crate::state::{AppState, DmabufAdvisoryDto};
 
 /// Extensions the file-association handoff recognises, matched
 /// case-insensitively: `.wav` and `.TextGrid` recordings, and the `.phxproj`
@@ -70,4 +71,12 @@ pub fn read_external_file(state: State<AppState>, path: String) -> Result<Vec<u8
     }
     drop(openable);
     std::fs::read(&path).map_err(|e| e.to_string())
+}
+
+/// Reports whether the Linux WebKitGTK DMABUF-renderer advisory is relevant.
+#[tauri::command]
+pub fn dmabuf_advisory() -> DmabufAdvisoryDto {
+    let linux = cfg!(target_os = "linux");
+    let env_set = std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").as_deref() == Ok("1");
+    DmabufAdvisoryDto { linux, env_set }
 }

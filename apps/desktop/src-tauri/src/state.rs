@@ -51,6 +51,17 @@ impl AppState {
     }
 }
 
+/// Whether the Linux WebKitGTK DMABUF-renderer advisory applies: `linux` is
+/// true only on a Linux build, and `env_set` reports whether
+/// `WEBKIT_DISABLE_DMABUF_RENDERER` is already exported, in which case the
+/// workaround is already active and the advisory has nothing to add.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DmabufAdvisoryDto {
+    pub linux: bool,
+    pub env_set: bool,
+}
+
 /// Duration, sample rate, channel count, name, and content hash of an import.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

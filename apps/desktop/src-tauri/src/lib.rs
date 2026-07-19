@@ -115,6 +115,7 @@ pub fn run() {
             playback_cmds::playback_status,
             platform_cmds::take_pending_opens,
             platform_cmds::read_external_file,
+            platform_cmds::dmabuf_advisory,
         ])
         .build(tauri::generate_context!())
         .expect("build the Phonia desktop application");
