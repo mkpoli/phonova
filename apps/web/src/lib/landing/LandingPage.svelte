@@ -709,8 +709,11 @@
               {/if}
             </div>
           </div>
-          <figcaption>The application in an embedded frame. Open Phonia in its own window to use it.</figcaption>
+          <figcaption>The application in an embedded frame.</figcaption>
         </figure>
+        <div class="app-cta">
+          <a class="btn btn-primary" href={appHref} onclick={handleOpenPhonia}>Open the full app</a>
+        </div>
       </div>
     </section>
 
@@ -1384,6 +1387,10 @@
     font-family: var(--l-mono);
     font-size: 0.75rem;
     color: var(--l-muted);
+  }
+
+  .app-cta {
+    margin-top: 1.4rem;
   }
 
   .final {
