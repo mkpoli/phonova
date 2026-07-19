@@ -4,8 +4,11 @@ export { default as CommandPalette } from './CommandPalette.svelte';
 export { default as EditorView } from './EditorView.svelte';
 export { default as ExportDialog } from './ExportDialog.svelte';
 export { default as ProjectExportDialog } from './ProjectExportDialog.svelte';
+export { default as FirstRunKeyModePrompt } from './FirstRunKeyModePrompt.svelte';
 export { default as GradientEditor } from './GradientEditor.svelte';
+export { default as KeyboardMap } from './KeyboardMap.svelte';
 export { default as PalettePicker } from './PalettePicker.svelte';
+export { default as ShortcutEditor } from './ShortcutEditor.svelte';
 export { default as HomeView } from './HomeView.svelte';
 export { default as InlineRename } from './InlineRename.svelte';
 export { default as InspectorPanel } from './InspectorPanel.svelte';
@@ -25,7 +28,7 @@ export { default as SpectrogramPane } from './SpectrogramPane.svelte';
 export { default as TierLane } from './TierLane.svelte';
 export { default as TierPane } from './TierPane.svelte';
 export { default as TrackOverlay } from './TrackOverlay.svelte';
-export { default as TransportBar } from './TransportBar.svelte';
+export { default as Transport } from './Transport.svelte';
 export { default as VoiceReportCard } from './VoiceReportCard.svelte';
 export { default as WaveThumb } from './WaveThumb.svelte';
 export { default as WaveformPane } from './WaveformPane.svelte';
@@ -57,6 +60,28 @@ export {
   type CommandGroup,
   type CommandMatch
 } from './commands.svelte';
+export {
+  DEFAULT_BINDINGS,
+  KEY_MODES,
+  KEYBOARD_ROWS,
+  KEYMAP_COMMANDS,
+  MODIFIER_CODES,
+  KeyBindingsStore,
+  chordEquals,
+  chordFromEvent,
+  chordKey,
+  chordLabel,
+  chordMatchesEvent,
+  codeLabel,
+  getKeyBindings,
+  provideKeyBindings,
+  type Chord,
+  type KeyConflict,
+  type KeyModeId,
+  type KeyScope,
+  type KeyboardKey,
+  type KeymapCommand
+} from './keybindings.svelte';
 export {
   BUILTIN_PALETTES,
   DEFAULT_PALETTE,

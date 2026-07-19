@@ -5,6 +5,7 @@
   import IconMic from '~icons/lucide/mic';
   import IconSun from '~icons/lucide/sun';
   import IconMoon from '~icons/lucide/moon';
+  import IconKeyboard from '~icons/lucide/keyboard';
   import IconSparkles from '~icons/lucide/sparkles';
   import IconSearch from '~icons/lucide/search';
   import IconFolderPlus from '~icons/lucide/folder-plus';
@@ -35,6 +36,8 @@
     onDeleteProject: (id: string) => void;
     onDuplicateProject: (id: string) => void;
     onThemeChange: (theme: 'light' | 'dark') => void;
+    /** Opens the keyboard shortcut editor; absent hides the settings action. */
+    onOpenShortcuts?: () => void;
     /** Starts a microphone recording; absent when the browser cannot capture. */
     onStartRecording?: () => void;
     /** Whether a take is currently being captured. */
@@ -72,6 +75,7 @@
     onDeleteProject,
     onDuplicateProject,
     onThemeChange,
+    onOpenShortcuts,
     onStartRecording,
     recording = false,
     homeIndex,
@@ -433,6 +437,18 @@
           <IconSun aria-hidden="true" />
         {/if}
       </button>
+      {#if onOpenShortcuts}
+        <button
+          type="button"
+          class="ghost icon-only"
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts"
+          data-testid="open-shortcut-editor"
+          onclick={() => onOpenShortcuts?.()}
+        >
+          <IconKeyboard aria-hidden="true" />
+        </button>
+      {/if}
     </div>
   </header>
 

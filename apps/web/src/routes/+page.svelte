@@ -4,11 +4,14 @@
   import {
     CommandPalette,
     EditorView,
+    FirstRunKeyModePrompt,
     HomeView,
     ModeRail,
     ProjectView,
     RecordingStrip,
+    ShortcutEditor,
     provideCommandRegistry,
+    provideKeyBindings,
     registerCommands,
     createGroup as treeCreateGroup,
     renameGroup as treeRenameGroup,
@@ -64,10 +67,13 @@
   let annotationId = $state<bigint | null>(null);
   let cursorTime = $state(0);
   let isPlaying = $state(false);
+  let loopEnabled = $state(false);
   let theme = $state<'light' | 'dark'>('light');
   // The active spectrogram palette (default the brand ramp) and the machine's
-  // saved custom ramps. Both persist in localStorage, app-wide.
+  // saved custom ramps. Both persist in localStorage, app-wide. `paletteInvert`
+  // renders whichever ramp is active in reverse; it persists alongside.
   let palette = $state<PaletteSelection>(DEFAULT_PALETTE);
+  let paletteInvert = $state(false);
   let customRamps = $state<CustomRamp[]>([]);
   // App-wide UI scale as a fraction of the base root font size. rem-based layout
   // grows and shrinks with it; the bounds keep both extremes usable.
@@ -133,6 +139,20 @@
   let recordDestinationNew = $state(false);
 
   const commands = provideCommandRegistry();
+  const keyBindings = provideKeyBindings();
+  let shortcutEditorOpen = $state(false);
+
+  registerCommands([
+    {
+      id: 'openShortcutEditor',
+      title: 'Keyboard shortcuts…',
+      group: 'Appearance',
+      keywords: ['keymap', 'rebind', 'key mode', 'praat', 'shortcuts', 'keyboard'],
+      run: () => {
+        shortcutEditorOpen = true;
+      }
+    }
+  ]);
 
   // First-time visitors land on the marketing page instead of the app; a
   // returning visitor (the flag below) skips straight to the app. Three
@@ -203,7 +223,7 @@
     applyTheme(theme);
 
     customRamps = loadCustomRamps();
-    palette = loadPalette(customRamps);
+    ({ palette, invert: paletteInvert } = loadPalette(customRamps));
 
     const savedScale = Number(localStorage.getItem('phonix-ui-scale'));
     uiScale = Number.isFinite(savedScale) && savedScale > 0 ? clampScale(savedScale) : 1;
@@ -249,28 +269,31 @@
   // Restore the saved palette, resolving a custom selection against the live
   // ramp list so an edited ramp reloads with its current stops. Falls back to
   // the default when the saved ramp was deleted or nothing was stored.
-  function loadPalette(ramps: CustomRamp[]): PaletteSelection {
+  function loadPalette(ramps: CustomRamp[]): { palette: PaletteSelection; invert: boolean } {
     try {
       const raw = localStorage.getItem(PALETTE_KEY);
-      if (!raw) return DEFAULT_PALETTE;
-      const saved = JSON.parse(raw) as { kind: string; name?: string; id?: string };
+      if (!raw) return { palette: DEFAULT_PALETTE, invert: false };
+      const saved = JSON.parse(raw) as { kind: string; name?: string; id?: string; invert?: boolean };
+      const invert = saved.invert === true;
       if (saved.kind === 'custom' && saved.id) {
         const ramp = ramps.find((r) => r.id === saved.id);
-        return ramp ? { kind: 'custom', ramp } : DEFAULT_PALETTE;
+        return { palette: ramp ? { kind: 'custom', ramp } : DEFAULT_PALETTE, invert };
       }
       if (saved.kind === 'builtin' && saved.name) {
-        return { kind: 'builtin', name: saved.name } as PaletteSelection;
+        return { palette: { kind: 'builtin', name: saved.name } as PaletteSelection, invert };
       }
     } catch {
       // Unreadable selection: the default ramp stands.
     }
-    return DEFAULT_PALETTE;
+    return { palette: DEFAULT_PALETTE, invert: false };
   }
 
-  function persistPalette(sel: PaletteSelection) {
+  function persistPalette(sel: PaletteSelection, invert: boolean) {
     try {
       const ref =
-        sel.kind === 'custom' ? { kind: 'custom', id: sel.ramp.id } : { kind: 'builtin', name: sel.name };
+        sel.kind === 'custom'
+          ? { kind: 'custom', id: sel.ramp.id, invert }
+          : { kind: 'builtin', name: sel.name, invert };
       localStorage.setItem(PALETTE_KEY, JSON.stringify(ref));
     } catch {
       // Storage unavailable: the selection stays for the session.
@@ -279,7 +302,12 @@
 
   function handlePaletteChange(next: PaletteSelection) {
     palette = next;
-    persistPalette(next);
+    persistPalette(next, paletteInvert);
+  }
+
+  function handlePaletteInvertToggle() {
+    paletteInvert = !paletteInvert;
+    persistPalette(palette, paletteInvert);
   }
 
   // Persist a created or edited ramp, keeping the list keyed by id, and refresh
@@ -710,6 +738,11 @@
     } catch (caught) {
       report(caught);
     }
+  }
+
+  function handleLoopToggle() {
+    loopEnabled = !loopEnabled;
+    playback?.setLoop(loopEnabled);
   }
 
   function handleCursorChange(time: number) {
@@ -1294,6 +1327,7 @@
       onDeleteProject={deleteProject}
       onDuplicateProject={duplicateProject}
       onThemeChange={handleThemeChange}
+      onOpenShortcuts={() => (shortcutEditorOpen = true)}
       onStartRecording={recordingSupported ? startRecording : undefined}
       recording={capturing}
       {homeIndex}
@@ -1352,11 +1386,13 @@
       {isPlaying}
       {theme}
       {palette}
+      {paletteInvert}
       {customRamps}
       onFile={editorImportFile}
       onPlayToggle={handlePlayToggle}
       onThemeChange={handleThemeChange}
       onPaletteChange={handlePaletteChange}
+      onPaletteInvertToggle={handlePaletteInvertToggle}
       onSaveRamp={saveRamp}
       onDeleteRamp={deleteRamp}
       onCursorChange={handleCursorChange}
@@ -1391,6 +1427,8 @@
       onStartRecording={recordingSupported ? startRecording : undefined}
       recording={capturing}
       recordingElapsedSeconds={recordElapsed}
+      {loopEnabled}
+      onLoopToggle={handleLoopToggle}
     />
   {/if}
 </div>
@@ -1446,6 +1484,17 @@
 {/if}
 
 <CommandPalette registry={commands} />
+
+{#if keyBindings.promptDue}
+  <FirstRunKeyModePrompt
+    onChoose={(mode) => keyBindings.answerPrompt(mode)}
+    onDismiss={() => keyBindings.dismissPrompt()}
+  />
+{/if}
+
+{#if shortcutEditorOpen}
+  <ShortcutEditor onClose={() => (shortcutEditorOpen = false)} />
+{/if}
 {/if}
 
 <style>
