@@ -1107,7 +1107,7 @@
   }
 
   .palette-hint {
-    position: fixed;
+    position: absolute;
     left: 1.25rem;
     bottom: 1.25rem;
     display: flex;
