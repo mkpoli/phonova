@@ -36,8 +36,10 @@ export interface Command {
   group: CommandGroup;
   /** Engine-API names this action drives, searchable as aliases. */
   api?: readonly string[];
-  /** Shortcut label shown on the row, when the action has a key binding. */
-  shortcut?: string;
+  /** Shortcut label shown on the row, when the action has a key binding. A
+   *  function reads the live keymap so the label stays correct across a key
+   *  mode switch or a rebind, instead of freezing at registration time. */
+  shortcut?: string | (() => string);
   /** Extra search terms that do not belong in the visible title. */
   keywords?: readonly string[];
   /** Whether the action can run now; a false result hides the entry. */
@@ -194,6 +196,11 @@ function bestOf(a: number | null, b: number | null): number | null {
   if (a === null) return b;
   if (b === null) return a;
   return Math.max(a, b);
+}
+
+/** Resolves a command's shortcut label, calling it if it is a live getter. */
+export function commandShortcut(command: Command): string {
+  return typeof command.shortcut === 'function' ? command.shortcut() : (command.shortcut ?? '');
 }
 
 /**

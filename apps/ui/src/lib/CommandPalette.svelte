@@ -2,6 +2,7 @@
   import IconSearch from '~icons/lucide/search';
   import {
     COMMAND_GROUP_ORDER,
+    commandShortcut,
     searchCommands,
     type Command,
     type CommandGroup,
@@ -152,6 +153,7 @@
           </div>
           {#each section.items as command, itemIndex (command.id)}
             {@const index = flatIndex(section, itemIndex)}
+            {@const shortcut = commandShortcut(command)}
             <button
               type="button"
               class="palette-item"
@@ -170,8 +172,8 @@
                   <span class="item-api">{command.api.join(' · ')}</span>
                 {/if}
               </span>
-              {#if command.shortcut}
-                <kbd class="item-shortcut">{command.shortcut}</kbd>
+              {#if shortcut}
+                <kbd class="item-shortcut">{shortcut}</kbd>
               {/if}
             </button>
           {/each}
