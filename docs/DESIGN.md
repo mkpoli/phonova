@@ -195,6 +195,12 @@ target has nothing to show yet.
   either theme.
 - Readouts state units (`Hz`, `dB`, `s`) and never round below measurement
   precision.
+- **The inspector lists overlays as layers**: pitch, formants, and intensity
+  each get an eye toggle, their frozen swatch, a live value from the current
+  selection, and their analysis parameters nested underneath and collapsible.
+  The eye toggle is the same show flag the spectrogram reads — hiding a layer
+  removes its marks outright, it does not just dim the row. A struck-through
+  eye (Lucide `eye-off`) marks a hidden layer.
 
 ## Interaction
 

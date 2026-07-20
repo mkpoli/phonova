@@ -908,7 +908,13 @@
     </main>
 
     {#if inspectorOpen}
-      <InspectorPanel params={overlayParams} stats={overlayStats} onClose={() => (inspectorOpen = false)} />
+      <InspectorPanel
+        params={overlayParams}
+        stats={overlayStats}
+        {readout}
+        {formantMeans}
+        onClose={() => (inspectorOpen = false)}
+      />
     {/if}
   </div>
 
