@@ -2,7 +2,8 @@
   import IconSquare from '~icons/lucide/square';
   import IconX from '~icons/lucide/x';
   import InlineRename from './InlineRename.svelte';
-  import { formatTime } from './types';
+  import { amplitudeToMeterFill } from './meter';
+  import { formatSampleRate, formatTime } from './types';
 
   interface RecorderDevice {
     deviceId: string;
@@ -45,21 +46,8 @@
     onCancel
   }: Props = $props();
 
-  // A meter fill that reads sensibly for speech: map the level onto a decibel
-  // scale over the top 60 dB so quiet passages still move the bar.
-  function meterFill(value: number): number {
-    if (value <= 0) return 0;
-    const db = 20 * Math.log10(value);
-    return Math.max(0, Math.min(1, (db + 60) / 60));
-  }
-
-  const rmsFill = $derived(meterFill(level.rms));
-  const peakFill = $derived(meterFill(level.peak));
-
-  function rateLabel(hz: number): string {
-    if (hz <= 0) return '—';
-    return hz % 1000 === 0 ? `${hz / 1000} kHz` : `${(hz / 1000).toFixed(1)} kHz`;
-  }
+  const rmsFill = $derived(amplitudeToMeterFill(level.rms));
+  const peakFill = $derived(amplitudeToMeterFill(level.peak));
 </script>
 
 <div class="strip" data-testid="recording-strip" role="region" aria-label="Recording">
@@ -117,7 +105,7 @@
   </div>
 
   <span class="elapsed" data-testid="recording-elapsed">{formatTime(elapsedSeconds)}</span>
-  <span class="rate" data-testid="recording-samplerate">{rateLabel(sampleRate)}</span>
+  <span class="rate" data-testid="recording-samplerate">{formatSampleRate(sampleRate)}</span>
 
   <div class="actions">
     <button type="button" class="cancel" data-testid="recording-cancel" onclick={onCancel}>

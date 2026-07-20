@@ -571,6 +571,7 @@
       mediaId: entry.mediaId,
       name: entry.name,
       duration: entry.duration,
+      sampleRate: entry.sampleRate,
       audioId: entry.audioId,
       hasAnnotation: entry.hasAnnotation
     })) ?? []

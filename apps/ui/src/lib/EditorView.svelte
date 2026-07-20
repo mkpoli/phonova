@@ -6,7 +6,9 @@
   import AudioExportDialog from './AudioExportDialog.svelte';
   import ExportDialog from './ExportDialog.svelte';
   import RecordingSwitcher from './RecordingSwitcher.svelte';
+  import RecordingsRail from './RecordingsRail.svelte';
   import InspectorPanel from './InspectorPanel.svelte';
+  import LevelMeter from './LevelMeter.svelte';
   import OverviewStrip from './OverviewStrip.svelte';
   import PalettePicker from './PalettePicker.svelte';
   import ReadoutBar from './ReadoutBar.svelte';
@@ -42,6 +44,7 @@
     mediaId: number;
     name: string;
     duration: number;
+    sampleRate: number;
     audioId: AudioId | null;
     hasAnnotation: boolean;
   }
@@ -222,6 +225,7 @@
   let overlayStats = $state<OverlayStats>({ pitchMaxHz: 0, formantMaxHz: 0 });
   let inspectorOpen = $state(true);
   let exportOpen = $state(false);
+  let railOpen = $state(true);
 
   let selection = $state<Selection | null>(null);
   let readout = $state<SelectionReadout | null>(null);
@@ -235,6 +239,17 @@
     viewport = defaultViewport(duration);
     // A new recording invalidates any selection anchored in the old signal.
     selection = null;
+  });
+
+  // The recordings rail steps out of the way once measurement starts, per the
+  // owner's standing question about screen space while deep in a session: each
+  // fresh selection (not a held one) collapses it, but a manual reopen during
+  // that same selection sticks — this only fires again on the next fresh one.
+  let hadSelection = false;
+  $effect(() => {
+    const hasSelection = selection !== null;
+    if (hasSelection && !hadSelection) railOpen = false;
+    hadSelection = hasSelection;
   });
 
   // Selection readout: every value is an engine query over the box, so the bar
@@ -612,6 +627,16 @@
       }
     },
     {
+      id: 'toggleRecordingsRail',
+      title: 'Toggle recordings rail',
+      group: 'View',
+      keywords: ['recordings', 'compare', 'corpus', 'panel'],
+      enabled: () => (recordings?.length ?? 0) > 0,
+      run: () => {
+        railOpen = !railOpen;
+      }
+    },
+    {
       id: 'toggleWaveform',
       title: 'Toggle waveform pane',
       group: 'View',
@@ -849,6 +874,24 @@
   {/if}
 
   <div class="workspace">
+    {#if recordings && recordings.length > 0 && onSwitchRecording}
+      <RecordingsRail
+        {client}
+        {theme}
+        recordings={recordings.map((rec) => ({
+          mediaId: rec.mediaId,
+          name: rec.name,
+          duration: rec.duration,
+          sampleRate: rec.sampleRate,
+          audioId: rec.audioId
+        }))}
+        currentRecordingId={currentRecordingId ?? null}
+        open={railOpen}
+        onToggle={() => (railOpen = !railOpen)}
+        onSwitch={(mediaId) => onSwitchRecording?.(mediaId)}
+      />
+    {/if}
+
     <main
       class="timeline"
       data-testid="timeline"
@@ -906,6 +949,10 @@
         onIntervalActivate={handleTierInterval}
       />
     </main>
+
+    {#if audio}
+      <LevelMeter {client} audioId={audio.id} duration={audio.duration} {cursorTime} {isPlaying} />
+    {/if}
 
     {#if inspectorOpen}
       <InspectorPanel
@@ -1103,14 +1150,19 @@
     border-color: color-mix(in oklab, var(--accent) 32%, var(--chrome-strong));
   }
 
+  /* Four possible columns — recordings rail, timeline, level meter, inspector —
+     each conditionally rendered; an absent one leaves its `auto` track at zero
+     width, so the timeline's `minmax(0, 1fr)` always absorbs whatever the
+     chrome around it is not using. */
   .workspace {
     flex: 1 1 auto;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
   }
 
   .timeline {
+    min-width: 0;
     min-height: 0;
     display: grid;
     grid-template-rows: 1.5rem minmax(9rem, 22vh) minmax(12rem, 1fr) minmax(7rem, 32vh);

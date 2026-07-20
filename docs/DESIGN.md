@@ -223,6 +223,19 @@ target has nothing to show yet.
   total duration, and the readouts that report the open signal (selection
   length, view span, sample position, format) — one bar, not a transport row
   stacked over a separate status footer.
+- **The recordings rail** lists the open project's other takes down the
+  editor's left edge — a waveform thumbnail, duration, sample rate, and which
+  one is open — for sessions that compare several files. It collapses to a
+  narrow strip on click, and collapses itself the moment a selection starts a
+  fresh measurement, so the width goes to the data during close analysis;
+  reopening it during that same selection sticks. Marking two or more rows
+  records intent for a future overlay view — the engine has no
+  cross-recording analysis path yet, so nothing renders until one does.
+- **The level meter** holds a thin column at the editor's right edge: peak
+  and RMS in dBFS and a clip indicator, bars whose gradient stays in the
+  accent color until the signal nears the top of the range. It reads the
+  open recording's playback level and holds a fixed, narrow width regardless
+  of what plays.
 - **Focus** is always visible: one `:focus-visible` ring style everywhere.
 - Empty states name the one action that fills them, in one or two sentences,
   with keycap chips for the relevant keys.

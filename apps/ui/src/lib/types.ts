@@ -641,6 +641,13 @@ export function formatTime(seconds: number): string {
   return minutes > 0 ? `${minutes}:${rest.toFixed(3).padStart(6, '0')}` : rest.toFixed(3);
 }
 
+/** Formats a sample rate as a compact kHz label, or an em dash before the rate
+ *  is known. */
+export function formatSampleRate(hz: number): string {
+  if (hz <= 0) return '—';
+  return hz % 1000 === 0 ? `${hz / 1000} kHz` : `${(hz / 1000).toFixed(1)} kHz`;
+}
+
 export function clampViewport(viewport: ViewportState, duration: number): ViewportState {
   const minSpan = 0.005;
   const maxDuration = Math.max(duration, minSpan);
