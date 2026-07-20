@@ -106,9 +106,11 @@ Data colors are a separate, frozen vocabulary (see Data display).
 ### Typography
 
 - **UI text**: the platform sans stack. No webfont for chrome.
-- **Phonetic notation**: Voces (`--font-ipa`, SIL OFL) for tier labels, the
-  label editor, and transcriptions — IPA glyphs render consistently and
-  visibly differently from UI text.
+- **Phonetic notation**: Charis SIL (`--font-ipa`, SIL Open Font License 1.1)
+  for tier labels, the label editor, and transcriptions — full IPA Extensions,
+  Spacing Modifier Letters, and Combining Diacritical Marks coverage, so
+  stress marks, length marks, and diacritics render from the same face as the
+  base letters instead of falling back to a different font.
 - **Numerals**: every time, frequency, and level readout sets
   `font-variant-numeric: tabular-nums` so values align and don't jitter as
   they update.

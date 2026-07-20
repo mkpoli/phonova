@@ -11,7 +11,6 @@
       "name": "phonia-desktop",
       "version": "0.1.0",
       "dependencies": {
-        "@fontsource/voces": "^5.2.7",
         "@phonia/ui": "workspace:*",
         "@sveltejs/adapter-static": "^3.0.8",
         "@sveltejs/kit": "^2.16.0",
@@ -51,7 +50,6 @@
       "name": "phonia-web",
       "version": "0.1.0",
       "dependencies": {
-        "@fontsource/voces": "^5.2.7",
         "@phonia/ui": "workspace:*",
         "@sveltejs/adapter-static": "^3.0.8",
         "@sveltejs/kit": "^2.16.0",
@@ -124,8 +122,6 @@
     "@esbuild/win32-ia32": ["@esbuild/win32-ia32@0.25.12", "", { "os": "win32", "cpu": "ia32" }, "sha512-HkqnmmBoCbCwxUKKNPBixiWDGCpQGVsrQfJoVGYLPT41XWF8lHuE5N6WhVia2n4o5QK5M4tYr21827fNhi4byQ=="],
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
-
-    "@fontsource/voces": ["@fontsource/voces@5.2.7", "", {}, "sha512-mGgr72cf22Op42vizNr8UJw/tOy/BLtlfAkqLG4oX1nxTmzqxHynWRV2jfpkKVYys5gmqVT0B3vQdID46dIIdg=="],
 
     "@iconify-json/lucide": ["@iconify-json/lucide@1.2.117", "", { "dependencies": { "@iconify/types": "*" } }, "sha512-7isYKJKWRZ8NfLNSY8pIYmRWiMBkopL4/X22gZfFmePFhc7az0hQ5biqBLG6vdDEvMctFu2suZB3yQ29RL+8tA=="],
 

@@ -11,7 +11,6 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@fontsource/voces": "^5.2.7",
     "@phonia/ui": "workspace:*",
     "@sveltejs/adapter-static": "^3.0.8",
     "@sveltejs/kit": "^2.16.0",
