@@ -80,7 +80,7 @@ test.afterAll(() => {
 test('a 10-minute recording imports streamed: corpus at header speed, smooth scroll', async ({
   page
 }) => {
-  await page.goto('/');
+  await page.goto('/?app=1');
   await expect(page.getByTestId('home-empty')).toBeVisible();
 
   // Time-to-corpus: from selecting the file to the recording row appearing. The

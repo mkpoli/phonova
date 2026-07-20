@@ -28,7 +28,9 @@ test('drop wav, render, zoom, play, and scroll long fixture', async ({ page }) =
   await expect.poll(() => visibleSpan(page)).toBeGreaterThan(afterZoomIn);
 
   const beforePlay = await cursorTime(page);
-  await page.getByLabel('Play').click();
+  // Exact match: "Play" is a case-insensitive substring of the loop button's
+  // "Loop playback" label, so the default substring match resolves to both.
+  await page.getByLabel('Play', { exact: true }).click();
   await page.waitForTimeout(2100);
   const afterPlay = await cursorTime(page);
   expect(afterPlay - beforePlay).toBeGreaterThan(1.2);
@@ -64,20 +66,22 @@ test('analysis overlays: toggles, live pitch ceiling, clipping badge, screenshot
   expect(allOn).toBeGreaterThan(200);
 
   // Hiding formants (the densest layer) drops the mark count; showing restores.
-  await page.getByTestId('toggle-formant').uncheck();
+  await page.getByTestId('toggle-formant').click();
+  await expect(page.getByTestId('toggle-formant')).toHaveAttribute('aria-pressed', 'false');
   await expect.poll(() => overlayMarks(page)).toBeLessThan(allOn);
   const withoutFormants = await overlayMarks(page);
-  await page.getByTestId('toggle-formant').check();
+  await page.getByTestId('toggle-formant').click();
+  await expect(page.getByTestId('toggle-formant')).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => overlayMarks(page)).toBeGreaterThan(withoutFormants);
 
   // Hiding every track clears the overlay.
-  await page.getByTestId('toggle-pitch').uncheck();
-  await page.getByTestId('toggle-formant').uncheck();
-  await page.getByTestId('toggle-intensity').uncheck();
+  await page.getByTestId('toggle-pitch').click();
+  await page.getByTestId('toggle-formant').click();
+  await page.getByTestId('toggle-intensity').click();
   await expect.poll(() => overlayMarks(page)).toBe(0);
-  await page.getByTestId('toggle-pitch').check();
-  await page.getByTestId('toggle-formant').check();
-  await page.getByTestId('toggle-intensity').check();
+  await page.getByTestId('toggle-pitch').click();
+  await page.getByTestId('toggle-formant').click();
+  await page.getByTestId('toggle-intensity').click();
   await expect.poll(() => pitchMax(page), { timeout: 60_000 }).toBeGreaterThan(0);
 
   // Default ceiling (600 Hz) does not clip this male fixture.

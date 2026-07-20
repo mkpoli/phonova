@@ -7,7 +7,10 @@ import { expect, type Page } from '@playwright/test';
  * a project, and clicking its corpus row opens that recording in the editor.
  */
 export async function openEditorWithFixture(page: Page, wavPath: string): Promise<void> {
-  await page.goto('/');
+  // `?app=1` is the landing page's own "Open Phonia" link: it skips the
+  // first-visit marketing page and lands straight in the app, which is what
+  // every e2e test wants regardless of Playwright's fresh per-test storage.
+  await page.goto('/?app=1');
   await page.getByTestId('folder-input').setInputFiles([wavPath]);
   await expect(page.getByTestId('corpus')).toBeVisible();
   await page.getByTestId('corpus-row').first().click();

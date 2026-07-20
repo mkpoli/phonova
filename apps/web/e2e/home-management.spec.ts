@@ -57,7 +57,7 @@ function bundleName(file: string): string {
 }
 
 test('pin lifts a project to the top and persists across reload', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?app=1');
   await createProject(page, SOURCES.vowel, 'alpha');
   await createProject(page, SOURCES.sweep, 'beta');
 
@@ -83,7 +83,7 @@ test('pin lifts a project to the top and persists across reload', async ({ page 
 });
 
 test('group create, drag-in, and collapse round-trip across reload', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?app=1');
   await createProject(page, SOURCES.vowel, 'alpha');
   await createProject(page, SOURCES.sweep, 'beta');
 
@@ -110,7 +110,7 @@ test('group create, drag-in, and collapse round-trip across reload', async ({ pa
 });
 
 test('modifier clicks multi-select, then a single confirm deletes the batch', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?app=1');
   await createProject(page, SOURCES.vowel, 'alpha');
   await createProject(page, SOURCES.sweep, 'beta');
   await createProject(page, SOURCES.arctic, 'gamma');
@@ -131,7 +131,7 @@ test('modifier clicks multi-select, then a single confirm deletes the batch', as
 });
 
 test('batch export downloads one valid bundle per selected project', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?app=1');
   await createProject(page, SOURCES.vowel, 'alpha');
   await createProject(page, SOURCES.sweep, 'beta');
 
@@ -163,7 +163,7 @@ test('batch export downloads one valid bundle per selected project', async ({ pa
 });
 
 test('home renders pins, groups, and selection in both themes', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?app=1');
   await createProject(page, SOURCES.vowel, 'alpha');
   await createProject(page, SOURCES.sweep, 'beta');
   await createProject(page, SOURCES.arctic, 'gamma');

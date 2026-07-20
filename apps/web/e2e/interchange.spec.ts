@@ -68,7 +68,7 @@ test('project bundle round-trips groups, tags, and annotations across a wiped pr
   browser: Browser;
 }) => {
   test.setTimeout(120_000);
-  await page.goto('/');
+  await page.goto('/?app=1');
 
   // A project with two recordings, one annotated by its TextGrid.
   await page.getByTestId('folder-input').setInputFiles([
@@ -146,7 +146,7 @@ test('project bundle round-trips groups, tags, and annotations across a wiped pr
 
 test('references-only export re-links by hash against media already present', async ({ page }) => {
   test.setTimeout(120_000);
-  await page.goto('/');
+  await page.goto('/?app=1');
   await page.getByTestId('folder-input').setInputFiles([
     payload(audioDir, 'synth_vowel_a.wav', 'synth_vowel_a.wav', 'audio/wav')
   ]);

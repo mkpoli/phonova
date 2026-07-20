@@ -43,7 +43,7 @@ async function loadEditor(page: Page) {
 }
 
 test('context filtering: annotation actions are absent on the home screen', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?app=1');
   await expect(page.getByTestId('home')).toBeVisible();
   await openPalette(page);
 
@@ -73,10 +73,10 @@ test('palette runs the same code paths as buttons and keys', async ({ page }) =>
   const after = Number(await editor.getAttribute('data-cursor-time'));
   expect(after).toBeGreaterThan(before);
 
-  // Toggle a track overlay — the inspector checkbox reflects the shared state.
-  await expect(page.getByTestId('toggle-pitch')).toBeChecked();
+  // Toggle a track overlay — the inspector eye toggle reflects the shared state.
+  await expect(page.getByTestId('toggle-pitch')).toHaveAttribute('aria-pressed', 'true');
   await runCommand(page, 'togglePitchTrack', 'toggle pitch');
-  await expect(page.getByTestId('toggle-pitch')).not.toBeChecked();
+  await expect(page.getByTestId('toggle-pitch')).toHaveAttribute('aria-pressed', 'false');
 
   // Add an interval tier through the palette.
   await expect(page.getByTestId('tier-pane')).toHaveAttribute('data-tier-count', '0');

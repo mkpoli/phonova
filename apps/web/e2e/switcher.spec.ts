@@ -38,7 +38,7 @@ async function openAndAwaitThumbs(page: Page, popover: Locator) {
 
 test('switch recordings from the breadcrumb popover with the keyboard only', async ({ page }) => {
   test.setTimeout(120_000);
-  await page.goto('/');
+  await page.goto('/?app=1');
 
   await page.getByTestId('folder-input').setInputFiles(corpus);
   await expect(page.getByTestId('corpus')).toBeVisible();

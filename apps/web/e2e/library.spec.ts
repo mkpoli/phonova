@@ -17,7 +17,7 @@ const twoTakes = [
 ];
 
 async function importTakes(page: Page, files = twoTakes) {
-  await page.goto('/');
+  await page.goto('/?app=1');
   await page.getByTestId('folder-input').setInputFiles(files);
   await expect(page.getByTestId('corpus')).toBeVisible();
   await expect(page.getByTestId('corpus-row')).toHaveCount(files.length, { timeout: 30_000 });

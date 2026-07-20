@@ -43,7 +43,7 @@ test('dropping an unrecognized file reports a clear error naming it', async ({ p
   const badFile = path.join(dir, 'notes.txt');
   fs.writeFileSync(badFile, 'not an audio file');
 
-  await page.goto('/');
+  await page.goto('/?app=1');
   await page.getByTestId('folder-input').setInputFiles([badFile]);
   await expect(page.getByTestId('error')).toBeVisible();
   await expect(page.getByTestId('error')).toContainText('notes.txt');

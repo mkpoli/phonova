@@ -21,7 +21,7 @@ test.use({
 
 test('record from the microphone, land a corpus row, open it in the editor', async ({ page }) => {
   test.setTimeout(120_000);
-  await page.goto('/');
+  await page.goto('/?app=1');
 
   // The Record control sits beside the file actions on the home screen.
   await expect(page.getByTestId('record')).toBeVisible();

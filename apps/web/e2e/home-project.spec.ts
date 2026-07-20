@@ -34,7 +34,7 @@ async function toggleTheme(page: Page, expectDark: boolean) {
 }
 
 test('drop a folder, build a browsable corpus, screenshots both themes', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?app=1');
 
   // Empty state explains drop-to-start.
   await expect(page.getByTestId('home-empty')).toBeVisible();
@@ -83,7 +83,7 @@ test('drop a folder, build a browsable corpus, screenshots both themes', async (
 });
 
 test('open sample project loads the bundled corpus', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?app=1');
 
   // The empty state offers the sample entry and the first-run palette hint.
   await expect(page.getByTestId('home-empty')).toBeVisible();
@@ -108,7 +108,7 @@ test('opening the sample repeatedly always reaches a rendered editor', async ({ 
   // picks the paragraph, clicks nothing, and fails silently. The control is
   // only ever addressed by its test id here, and the whole open-to-render
   // path runs several times so a one-in-N flake fails the suite too.
-  await page.goto('/');
+  await page.goto('/?app=1');
 
   for (let attempt = 0; attempt < 4; attempt += 1) {
     await expect(page.getByTestId('home-empty')).toBeVisible();
@@ -133,7 +133,7 @@ test('opening the sample repeatedly always reaches a rendered editor', async ({ 
 
 test('annotate, recover after reload via autosave, then delete', async ({ page }) => {
   test.setTimeout(120_000);
-  await page.goto('/');
+  await page.goto('/?app=1');
 
   const files = [
     payload(audioDir, 'synth_vowel_a.wav', 'synth_vowel_a.wav', 'audio/wav'),
