@@ -201,6 +201,15 @@
     }
   }
 
+  // `?sample=1` drives the landing page's live embed: it opens the bundled
+  // sample project and jumps straight to its first recording's analysis, the
+  // same path the home screen's "Open sample project" button runs, so the
+  // frame shows a working waveform, spectrogram, and tiers instead of the
+  // empty home screen. Independent of `?app=1` — the embed always sends
+  // both, but nothing here depends on that pairing.
+  const autoOpenSample =
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('sample') === '1';
+
   // Autosave debounce, driven from a coarse tick against the engine state hash.
   let lastHash: bigint | null = null;
   let pendingSince: number | null = null;
@@ -230,6 +239,7 @@
     applyUiScale(uiScale);
 
     void refreshProjects();
+    if (autoOpenSample) void openSampleIntoEditor();
 
     recordingSupported = canRecord();
     if (recordingSupported) recorder = new MicRecorder(`${base}/recorder-worklet.js`);
@@ -583,6 +593,17 @@
     } finally {
       busy = false;
     }
+  }
+
+  // Drives the sample straight into the analysis editor for `?sample=1`
+  // (the landing page's live embed): open it exactly as the "Open sample
+  // project" button does, then open its first recording — the one with a
+  // matching bundled TextGrid — so the frame lands on a rendered waveform,
+  // spectrogram, and tier view rather than the project's file list.
+  async function openSampleIntoEditor() {
+    await openSampleProject();
+    const first = project?.recordings[0];
+    if (first) await openRecording(first);
   }
 
   async function createEmptyProject(name: string) {
